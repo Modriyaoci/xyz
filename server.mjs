@@ -296,6 +296,15 @@ function stripStartingGridFields(data) {
   return data;
 }
 
+function stripTyreAgeFields(data) {
+  if (!data || typeof data !== "object" || !Array.isArray(data.stints)) return data;
+  data.stints = data.stints.map((stint) => {
+    const { tyre_age_at_start, tyre_age, tire_age_at_start, tire_age, ...withoutAge } = stint || {};
+    return withoutAge;
+  });
+  return data;
+}
+
 function normaliseSessionData(data) {
   if (!data || typeof data !== "object" || Array.isArray(data)) return data;
   if (!Array.isArray(data.intervals) && Array.isArray(data.intervals_race)) data.intervals = data.intervals_race;

@@ -13,6 +13,7 @@ const state = {
   search: "",
   weatherView: "all",
   messageView: "all",
+  messageLanguage: "both",
   dataRequestId: 0,
 };
 
@@ -22,7 +23,7 @@ const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.h
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
   || (!localServer && !window.location.pathname.startsWith("/site/"));
 const STATIC_API_BASE = "https://api.openf1.org/v1";
-const STATIC_CACHE_VERSION = "20260827-sync-v6";
+const STATIC_CACHE_VERSION = "20260827-sync-v7";
 const staticRequestTimeoutMs = 6000;
 const staticRequestIntervalMs = 350;
 let staticNextRequestAt = 0;
@@ -383,6 +384,184 @@ const syncWarningText = (warnings) => {
   const fields = [...new Set(warnings.map((warning) => String(warning).split(":")[0]).map((field) => labels[field] || field))];
   return fields.length ? ` · 部分字段未更新：${fields.join("、")}` : "";
 };
+
+const raceControlDriverNames = Object.freeze({
+  VER: "维斯塔潘", HAD: "哈贾尔", RUS: "拉塞尔", ANT: "安东内利", LEC: "勒克莱尔", HAM: "汉密尔顿",
+  NOR: "诺里斯", PIA: "皮亚斯特里", ALO: "阿隆索", STR: "斯托尔", GAS: "加斯利", COL: "科拉平托",
+  LAW: "劳森", LIN: "林德布拉德", HUL: "霍肯伯格", BOR: "博托莱托", ALB: "阿尔本", SAI: "赛恩斯",
+  OCO: "奥康", BEA: "比尔曼", PER: "佩雷兹", BOT: "博塔斯", TSU: "角田裕毅",
+});
+
+const raceControlPhraseTranslations = [
+  ["FIA STEWARDS", "赛事干事"],
+  ["RESUMPTION ORDER", "重启顺位"],
+  ["ALL PASS HOLDERS MAY ACCESS THE PIT LANE", "所有持证人员均可进入维修区"],
+  ["LAPPED CARS MAY NOW OVERTAKE", "被套圈赛车现在可以解套"],
+  ["SAFETY CAR WILL USE START/FINISH STRAIGHT", "安全车将通过起发车直道"],
+  ["FAILING TO FOLLOW RACE DIRECTORS INSTRUCTIONS", "未按赛事总监的指示执行"],
+  ["FAILING TO SERVE TIME PENALTY CORRECTLY", "处罚执行不当"],
+  ["LEAVING THE TRACK WITHOUT A JUSTIFIABLE REASON", "无正当理由离开赛道"],
+  ["LEAVING THE TRACK AND GAINING AN ADVANTAGE", "离开赛道获得优势"],
+  ["FORCING ANOTHER DRIVER OFF THE TRACK", "迫使对手离开赛道"],
+  ["FORCING ANOTHER DRIVER OFF TRACK", "迫使对手离开赛道"],
+  ["CROSSING THE WHITE LINE AT PIT EXIT", "在维修区出口跨越白线"],
+  ["CROSSING THE WHITE LINE AT PIT ENTRY", "在维修区入口跨越白线"],
+  ["PRACTICE START INFRINGEMENT", "发车练习违规"],
+  ["STARTING PROCEDURE INFRINGEMENT", "违反发车程序"],
+  ["OUT OF POSITION AT SAFETY CAR LINE", "通过安全车线时未按规定顺位排序"],
+  ["WILL BE INVESTIGATED AFTER THE SESSION", "将会赛后调查"],
+  ["WILL BE INVESTIGATED AFTER THE SPRINT", "将会赛后调查"],
+  ["WILL BE INVESTIGATED AFTER THE RACE", "将会被赛后调查"],
+  ["NO FURTHER INVESTIGATION", "没有进一步调查"],
+  ["NO FURTHER ACTION", "不进一步调查"],
+  ["PENALTY SERVED INCORRECTLY", "处罚执行不当"],
+  ["PENALTY SERVED", "处罚已执行"],
+  ["5 SECOND TIME PENALTY", "5秒时间处罚"],
+  ["SECOND TIME PENALTY", "秒时间处罚"],
+  ["DRIVING ERRATICALLY", "危险驾驶"],
+  ["CAUSING A COLLISION", "引发碰撞"],
+  ["IMPEDING", "阻挡其他车手"],
+  ["IMPEDING ANOTHER DRIVER", "阻挡其他车手"],
+  ["UNSAFE RELEASE", "不安全释放"],
+  ["UNSAFE RE-JOIN", "不安全回场"],
+  ["PIT ENTRY VIOLATION", "维修区入口违规"],
+  ["LEAVING PIT EXIT ON RED LIGHT", "维修区出口红灯状态下驶出"],
+  ["SPEEDING IN THE PIT LANE", "维修区超速"],
+  ["YELLOW FLAG INFRINGEMENT", "黄旗下违规"],
+  ["IGNORING BLUE FLAGS", "无视蓝旗"],
+  ["MAXIMUM DELTA TIME", "超出最大赛段用时"],
+  ["BLACK AND WHITE FLAG", "黑白旗"],
+  ["CHEQUERED FLAG", "出示方格旗"],
+  ["MEDICAL CAR DEPLOYED", "医疗车已出动"],
+  ["RECOVERY VEHICLE", "吊车"],
+  ["MARSHALS", "赛道工作人员"],
+  ["PERSONNEL", "工作人员"],
+  ["PIT EXIT CLOSED", "维修区出口关闭"],
+  ["PIT EXIT OPEN", "维修区出口开放"],
+  ["PIT LANE ENTRY CLOSED", "维修区入口关闭"],
+  ["PIT LANE ENTRY OPEN", "维修区入口开放"],
+  ["PIT LANE CLOSED", "维修区关闭"],
+  ["PIT LANE OPEN", "维修区开放"],
+  ["PIT LANE CLEAR", "维修区清理完毕"],
+  ["ALL CARS THROUGH THE PIT LANE", "所有赛车通过维修区"],
+  ["DRIVE THROUGH PENALTY", "处罚通过维修区"],
+  ["VSC DEPLOYED", "虚拟安全车(VSC)已出动"],
+  ["VSC ENDING", "虚拟安全车(VSC)即将结束"],
+  ["VSC INFRINGEMENT", "虚拟安全车(VSC)下违规"],
+  ["SAFETY CAR DEPLOYED", "安全车(SC)已出动"],
+  ["SAFETY CAR IN THIS LAP", "安全车本圈结束"],
+  ["SAFETY CAR LIGHTS ON", "安全车车灯亮起"],
+  ["CAR SAFETY LIGHTS", "车载安全灯"],
+  ["SAFETY CAR INFRINGEMENT", "安全车下违规"],
+  ["THE SAFETY CAR", "安全车"],
+  ["GREEN LIGHT", "绿灯亮起"],
+  ["GREEN FLAG", "绿旗"],
+  ["RED FLAG", "红旗"],
+  ["BLUE FLAG", "蓝旗"],
+  ["DOUBLE YELLOW", "双黄旗"],
+  ["YELLOW FLAG", "黄旗"],
+  ["TRACK CLEAR", "赛道清理完毕"],
+  ["TRACK SURFACE SLIPPERY", "路面湿滑"],
+  ["WET TRACK", "赛道湿滑"],
+  ["LOW GRIP DELTA ACTIVE", "低抓地力时差规则生效"],
+  ["LOW GRIP DELTA INACTIVE", "低抓地力时差规则解除"],
+  ["LOW GRIP CONDITIONS", "赛道抓地力不足"],
+  ["NORMAL GRIP DELTA INACTIVE", "标准抓地力时差规则解除"],
+  ["NORMAL GRIP DELTA ACTIVE", "标准抓地力时差规则生效"],
+  ["NORMAL GRIP CONDITIONS", "赛道抓地条件正常"],
+  ["TRACK LIMITS", "超出赛道限制"],
+  ["LAP DELETED", "单圈成绩取消"],
+  ["F1 FREE PRACTICE", "练习赛"],
+  ["THE F1 RACE", "正赛"],
+  ["SPRINT QUALIFYING", "冲刺排位赛"],
+  ["QUALIFYING", "排位赛"],
+  ["SPRINT", "冲刺赛"],
+  ["SESSION START", "比赛开始"],
+  ["SESSION STARTED", "比赛开始"],
+  ["RACE START", "比赛开始"],
+  ["RACE WILL RESUME", "比赛将继续"],
+  ["SESSION WILL RESUME", "比赛将继续"],
+  ["SESSION RESUMED", "比赛继续"],
+  ["SESSION STOPPED", "比赛中止"],
+  ["SESSION ABORTED", "比赛中止"],
+  ["RACE SUSPENDED", "比赛暂停"],
+  ["SESSION FINISHED", "比赛结束"],
+  ["RACE CONTROL TEST", "赛会消息测试"],
+  ["UPDATE", "更新"],
+  ["FIRST CAR TO TAKE THE FLAG", "首辆冲线赛车"],
+  ["OVERTAKE ENABLED", "允许使用超车模式"],
+  ["OVERTAKE DISABLED", "禁止使用超车模式"],
+  ["AWNINGS MAY BE USED", "允许使用遮阳篷(遮雨篷)"],
+  ["AWNINGS TO BE REMOVED", "遮阳篷(遮雨篷)将被撤走"],
+  ["EXTRA FORMATION LAP", "追加暖胎圈"],
+  ["FORMATION LAP WILL START", "暖胎圈将开始"],
+  ["WILL START", "将会开始"],
+  ["STANDING START", "静态发车"],
+  ["OUT OF POSITION", "发车位置违规"],
+  ["REVIEWED", "经审核"],
+  ["UNDER INVESTIGATION", "调查中"],
+  ["NOTED", "被记录"],
+  ["INVOLVING", "涉及"],
+  ["INCIDENT", "事故"],
+  ["RECOVERY VEHICLE", "吊车"],
+  ["WAVED BLUE FLAG", "挥动蓝旗"],
+  ["TIMED AT", "在"],
+  ["IN TRACK SECTOR", "在赛段"],
+  ["ON TRACK", "在赛道上"],
+  ["FOR CAR", "对车号"],
+  ["CARS", "车号"],
+  ["CAR", "车号"],
+  ["PIT", "维修区"],
+  ["TIME", "圈速"],
+  ["DELETED", "被删除"],
+  ["LAP", "圈"],
+  ["TURN", "弯"],
+  ["CLEAR", "清理完毕"],
+  ["WAVED", "挥动"],
+  ["AT", "在"],
+  ["AND", "和"],
+  ["IS", "是"],
+].sort((a, b) => b[0].length - a[0].length);
+
+const escapeRaceControlRegex = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+function translateRaceControlMessage(value) {
+  let text = String(value ?? "").trim();
+  if (!text) return "--";
+  const hasLapDeleted = /\bLAP DELETED\b/i.test(text);
+  text = text.replace(/\bRISK OF RAIN FOR\s+(.+?)\s+IS\s+(\d+%?)\b/gi, (_, subject, percentage) => {
+    const label = /^THE\s+F1\s+RACE$/i.test(subject.trim()) || /^F1\s+RACE$/i.test(subject.trim()) ? "正赛" : subject.trim();
+    return `${label}降雨概率是${percentage}`;
+  });
+  text = text.replace(/\bRISK OF RAIN FOR\s+([^,.;!?]+)$/i, (_, subject) => {
+    const label = /^THE\s+F1\s+RACE$/i.test(subject.trim()) || /^F1\s+RACE$/i.test(subject.trim()) ? "正赛" : subject.trim();
+    return `${label}降雨概率`;
+  });
+  text = text.replace(/\bDOUBLE YELLOW IN TRACK SECTOR\s+(\d+)\b/gi, "双黄旗在赛段$1");
+  text = text.replace(/\bYELLOW IN TRACK SECTOR\s+(\d+)\b/gi, "黄旗在赛段$1");
+  text = text.replace(/\bCLEAR IN TRACK SECTOR\s+(\d+)\b/gi, "清理完毕在赛段$1");
+  text = text.replace(/\bYELLOW IN PIT LANE\b/gi, "黄旗在维修区");
+  text = text.replace(/\bMARSHALS ON TRACK AT TURN\s+(\d+)\b/gi, "赛道工作人员在赛道上在第$1弯");
+  text = text.replace(/\bAT TURN\s+(\d+)\s+LAP\s+(\d+)\b/gi, "在第$2圈第$1弯");
+  text = text.replace(/\bAT TURN\s+(\d+)\b/gi, "在第$1弯");
+  text = text.replace(/\bTURN\s+(\d+)\b/gi, "第$1弯");
+  text = text.replace(/\bLAP\s+(\d+)\b/gi, "第$1圈");
+  text = text.replace(/\b(\d{1,3})\s*\(([A-Z]{3})\)/gi, (_, car, code) => `${car} (${raceControlDriverNames[code.toUpperCase()] || code})`);
+  text = text.replace(/\bDOUBLE YELLOW\b/gi, hasLapDeleted ? "双黄旗下违规" : "双黄旗");
+  text = text.replace(/\bYELLOW FLAG INFRINGEMENT\b/gi, "黄旗下违规");
+  text = text.replace(/\bYELLOW FLAG\b/gi, hasLapDeleted ? "黄旗下违规" : "黄旗");
+  for (const [source, target] of raceControlPhraseTranslations) {
+    text = text.replace(new RegExp(`\\b${escapeRaceControlRegex(source)}\\b`, "gi"), target);
+  }
+  return text.replace(/\s{2,}/g, " ").trim();
+}
+
+function raceControlMessageParts(row) {
+  const english = String(row?.text_en || row?.message || "").trim() || "--";
+  const chinese = String(row?.text_zh || translateRaceControlMessage(english)).trim() || "--";
+  return { english, chinese };
+}
+
 const syncTimestampText = (data) => data?.synced_at ? ` · 同步于 ${dateText(data.synced_at)}` : "";
 const syncTitle = (data) => Array.isArray(data?.sync_warnings) && data.sync_warnings.length ? "同步完成（部分字段未更新）" : "同步完成";
 const sessionLabel = (name) => ({"Practice 1": "练习1", "Practice 2": "练习2", "Practice 3": "练习3", "Day 1": "测试第1天", "Day 2": "测试第2天", "Day 3": "测试第3天", "Sprint Qualifying": "冲刺排位赛", Sprint: "冲刺赛", Qualifying: "排位赛", Race: "正赛"}[name] || name || "会话");
@@ -968,7 +1147,16 @@ function renderMessages() {
   if (!messages.length) return;
   const limit = state.messageView === "all" ? messages.length : Number(state.messageView);
   const visible = messages.slice(Math.max(0, messages.length - limit)).reverse();
-  $("messageTable").querySelector("tbody").innerHTML = visible.map((row) => `<tr><td>${esc(dateText(row.date))}</td><td>${esc(row.lap_number ?? "--")}</td><td class="wrap-cell">${esc(row.message || "--")}</td></tr>`).join("");
+  const language = state.messageLanguage || "both";
+  $("messageTable").querySelector("tbody").innerHTML = visible.map((row) => {
+    const { english, chinese } = raceControlMessageParts(row);
+    const messageHtml = language === "en"
+      ? `<div class="message-line message-line-en">${esc(english)}</div>`
+      : language === "zh"
+        ? `<div class="message-line message-line-zh">${esc(chinese)}</div>`
+        : `<div class="message-lines"><div class="message-line message-line-en">${esc(english)}</div><div class="message-line message-line-zh">${esc(chinese)}</div></div>`;
+    return `<tr><td>${esc(dateText(row.date || row.utc))}</td><td>${esc(row.lap_number ?? row.lap ?? "--")}</td><td class="wrap-cell">${messageHtml}</td></tr>`;
+  }).join("");
 }
 
 async function loadCurrentData() {
@@ -1057,6 +1245,7 @@ $("driverSearch").addEventListener("input", (event) => { state.search = event.ta
 $("clearSearch").addEventListener("click", () => { $("driverSearch").value = ""; state.search = ""; renderResults(); });
 $("weatherView").addEventListener("change", (event) => { state.weatherView = event.target.value; renderWeather(); });
 $("messageView").addEventListener("change", (event) => { state.messageView = event.target.value; renderMessages(); });
+$("messageLanguage").addEventListener("change", (event) => { state.messageLanguage = event.target.value; renderMessages(); });
 document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => setActiveView(button.dataset.view)));
 document.querySelectorAll("[data-standings-kind]").forEach((button) => button.addEventListener("click", () => {
   state.standingsKind = button.dataset.standingsKind === "teams" ? "teams" : "drivers";

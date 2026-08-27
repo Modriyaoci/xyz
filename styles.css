@@ -118,6 +118,10 @@ h2 { margin: 2px 0 0; font-size: 17px; letter-spacing: -.015em; }
 .empty-cell { text-align: center !important; color: var(--subtle); padding: 28px 12px !important; cursor: default; }
 .table-footer { padding: 10px 16px; color: var(--subtle); font-size: 11px; }
 .wrap-cell { white-space: normal !important; }
+.message-lines { display: grid; gap: 4px; min-width: 260px; }
+.message-line { line-height: 1.45; }
+.message-line-en { color: var(--ink); }
+.message-line-zh { color: var(--muted); }
 .record-scroll { max-height: 390px; overflow: auto; }
 .record-scroll th { position: sticky; top: 0; z-index: 1; box-shadow: 0 1px 0 var(--line); }
 .inline-select { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 10px; font-weight: 700; white-space: nowrap; }
