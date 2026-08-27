@@ -22,6 +22,7 @@ const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.h
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
   || (!localServer && !window.location.pathname.startsWith("/site/"));
 const STATIC_API_BASE = "https://api.openf1.org/v1";
+const staticRequestTimeoutMs = 15000;
 const STATIC_CATALOG_URL = new URL("./meetings-2026.json", import.meta.url).href;
 const STATIC_MAPPED_URL = new URL("./netherlands-race-mapped.json", import.meta.url).href;
 const STATIC_STANDINGS_URL = new URL(
@@ -73,12 +74,12 @@ async function staticCacheSet(key, value) {
 async function staticFetchJson(endpoint) {
   for (let attempt = 0; attempt < 4; attempt += 1) {
     const controller = new AbortController();
-    const timer = window.setTimeout(() => controller.abort(), 30000);
+    const timer = window.setTimeout(() => controller.abort(), staticRequestTimeoutMs);
     let response;
     try {
       response = await fetch(`${STATIC_API_BASE}${endpoint}`, { headers: { accept: "application/json" }, signal: controller.signal });
     } catch (error) {
-      if (attempt < 3) { await staticSleep(1000 * (attempt + 1)); continue; }
+      if (attempt < 1) { await staticSleep(1000); continue; }
       throw error;
     } finally {
       window.clearTimeout(timer);

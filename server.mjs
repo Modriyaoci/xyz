@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.F1_PORT || 4173);
 const apiBase = "https://api.openf1.org/v1";
+const upstreamTimeoutMs = 15000;
 const cacheDir = path.join(root, "work", "openf1_cache");
 const localDutchDir = path.join(root, "work", "openf1_netherlands_2026");
 const localMapped = path.join(root, "outputs", "openf1-mapped-result", "netherlands_2026_race_openf1_mapped.json");
@@ -112,12 +113,12 @@ async function readBody(req) {
 async function fetchOpenF1(endpoint) {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 30000);
+    const timeout = setTimeout(() => controller.abort(), upstreamTimeoutMs);
     let response;
     try {
       response = await fetch(`${apiBase}${endpoint}`, { headers: { accept: "application/json" }, signal: controller.signal });
     } catch (error) {
-      if (attempt < 2) { await sleep(1000 * (attempt + 1)); continue; }
+      if (attempt < 1) { await sleep(1000); continue; }
       throw error;
     } finally {
       clearTimeout(timeout);
