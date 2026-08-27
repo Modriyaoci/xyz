@@ -104,6 +104,79 @@ function stripTyreAgeFields(data) {
   return data;
 }
 
+// Backend IDs are stable across the 2026 season; OpenF1 supplies the matching
+// driver acronym/name and team name for every session.
+const backendDriverIdByAcronym = new Map(Object.entries({
+  ALB: 347504, LIN: 347549, SAI: 347548, LEC: 347492, OCO: 347547, ALO: 347502,
+  COL: 347540, BOR: 347539, RUS: 347501, HAD: 347537, ANT: 347534, STR: 347503,
+  NOR: 347506, HAM: 347542, LAW: 347514, VER: 347482, HUL: 347544, BEA: 347520,
+  PIA: 347528, GAS: 347499, PER: 347519, BOT: 347525, CRA: 347908, FOR: 368438,
+  HER: 368439, IWA: 347538, BEG: 347535, BRO: 347536, VES: 347526, ARO: 347526,
+  HIR: 347541, TSU: 347546,
+}));
+const backendDriverIdByName = new Map(Object.entries({
+  "alexander albon": 347504, "arvid lindblad": 347549, "carlos sainz": 347548,
+  "charles leclerc": 347492, "esteban ocon": 347547, "fernando alonso": 347502,
+  "franco colapinto": 347540, "gabriel bortoleto": 347539, "george russell": 347501,
+  "isack hadjar": 347537, "kimi antonelli": 347534, "lance stroll": 347503,
+  "lando norris": 347506, "lewis hamilton": 347542, "liam lawson": 347514,
+  "max verstappen": 347482, "nico hulkenberg": 347544, "oliver bearman": 347520,
+  "oscar piastri": 347528, "pierre gasly": 347499, "sergio perez": 347519,
+  "valtteri bottas": 347525, "jak crawford": 347908, "leonardo fornaroli": 368438,
+  "colton herta": 368439, "ayumu iwasa": 347538, "dino beganovic": 347535,
+  "luke browning": 347536, "frederik vesti": 347526, "paul aron": 347526,
+  "ryo hirakawa": 347541, "yuki tsunoda": 347546,
+}));
+const backendDriverIdByCar = new Map([
+  [1, 347506], [3, 347482], [5, 347539], [10, 347499], [11, 347519], [12, 347534],
+  [14, 347502], [16, 347492], [18, 347503], [22, 347546], [23, 347504], [27, 347544],
+  [30, 347514], [31, 347547], [41, 347549], [43, 347540], [44, 347542], [55, 347548],
+  [63, 347501], [77, 347525], [81, 347528], [87, 347520],
+]);
+const backendTeamIdByName = new Map(Object.entries({
+  alpine: 385366, "aston martin": 385362, audi: 394048, cadillac: 390378,
+  ferrari: 385364, "haas f1 team": 385361, mclaren: 385367, mercedes: 385358,
+  "racing bulls": 385363, "red bull racing": 385355, williams: 385365,
+}));
+const identityKey = (value) => String(value || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
+
+function lookupIdentity(map, value) {
+  const key = identityKey(value);
+  if (!key) return null;
+  if (map.has(key)) return Number(map.get(key));
+  for (const [alias, id] of map) if (key.endsWith(` ${alias}`) || alias.endsWith(` ${key}`)) return Number(id);
+  return null;
+}
+
+function resolveBackendDriverId(driver) {
+  const acronym = String(driver?.name_acronym || "").trim().toUpperCase();
+  if (backendDriverIdByAcronym.has(acronym)) return Number(backendDriverIdByAcronym.get(acronym));
+  const name = lookupIdentity(backendDriverIdByName, driver?.full_name)
+    ?? lookupIdentity(backendDriverIdByName, `${driver?.first_name || ""} ${driver?.last_name || ""}`);
+  return name ?? backendDriverIdByCar.get(Number(driver?.driver_number)) ?? null;
+}
+
+function enrichBackendMapping(data) {
+  if (!data || typeof data !== "object") return data;
+  const drivers = Array.isArray(data.drivers) ? data.drivers : [];
+  const mapped = data.mapped && typeof data.mapped === "object" ? data.mapped : {};
+  const competitors = Array.isArray(mapped.competitors) ? mapped.competitors.slice() : [];
+  const byCar = new Map(competitors.map((row) => [Number(row.car_number), row]));
+  for (const driver of drivers) {
+    const car = Number(driver?.driver_number);
+    if (!Number.isFinite(car)) continue;
+    const id = resolveBackendDriverId(driver);
+    const teamId = lookupIdentity(backendTeamIdByName, driver?.team_name);
+    if (id == null && teamId == null) continue;
+    const row = byCar.get(car) || { car_number: car };
+    if (!byCar.has(car)) { byCar.set(car, row); competitors.push(row); }
+    if (id != null) row.id = id;
+    if (teamId != null) row.team_id = teamId;
+  }
+  data.mapped = { ...mapped, competitors };
+  return data;
+}
+
 async function staticSessionList(meetingKey) {
   const key = Number(meetingKey);
   const catalog = await staticCatalog();
@@ -125,6 +198,7 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   const cached = await staticCacheGet(cacheKey);
   if (!force && cached && Number(cached.session?.session_key) === requestedSessionKey) {
     const sanitised = stripTyreAgeFields(cached);
+    enrichBackendMapping(sanitised);
     await staticCacheSet(cacheKey, sanitised);
     return { data: sanitised, source: "cache" };
   }
@@ -154,6 +228,7 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   }
   if (unavailable.length) data.sync_warnings = unavailable.map((field) => `${field}: unavailable`);
   stripTyreAgeFields(data);
+  enrichBackendMapping(data);
   await staticCacheSet(cacheKey, data);
   return { data, source: "openf1" };
 }
@@ -704,7 +779,7 @@ async function loadCurrentData() {
   try {
     const payload = await api(`/api/session-data?meeting_key=${meetingKey}&session_key=${sessionKey}`);
     if (requestId !== state.dataRequestId || meetingKey !== state.activeMeeting?.meeting_key || sessionKey !== state.activeSession?.session_key) return;
-    state.data = payload.data || {};
+    state.data = enrichBackendMapping(payload.data || {});
     state.selectedDriver = null;
     const sourceLabel = payload.source === "cache" ? "本地缓存" : payload.source === "local" ? "本地快照" : "数据源刚刚拉取并已缓存";
     setStatus("数据已就绪", `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}`, false);
@@ -741,7 +816,7 @@ $("syncBtn").addEventListener("click", async () => {
   try {
     const payload = await api("/api/sync-session-data", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ meeting_key: meetingKey, session_key: sessionKey }) });
     if (requestId !== state.dataRequestId || meetingKey !== state.activeMeeting?.meeting_key || sessionKey !== state.activeSession?.session_key) return;
-    state.data = payload.data || {};
+    state.data = enrichBackendMapping(payload.data || {});
     state.selectedDriver = null;
     const sourceLabel = "数据源已同步并更新缓存";
     setStatus("同步完成", `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}`, false);
