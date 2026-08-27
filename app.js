@@ -22,7 +22,7 @@ const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.h
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
   || (!localServer && !window.location.pathname.startsWith("/site/"));
 const STATIC_API_BASE = "https://api.openf1.org/v1";
-const STATIC_CACHE_VERSION = "20260827-sync-v5";
+const STATIC_CACHE_VERSION = "20260827-sync-v6";
 const staticRequestTimeoutMs = 6000;
 const staticRequestIntervalMs = 350;
 let staticNextRequestAt = 0;
