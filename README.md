@@ -14,6 +14,6 @@ npm start
 
 ## GitHub Pages
 
-仓库内的 `.github/workflows/pages.yml` 会发布 `site/` 目录。发布后的页面在浏览器中直接读取数据源，并将每个会话的完整响应保存到 IndexedDB；点击“同步数据源”会强制重新拉取，失败时不会覆盖已有缓存。
+仓库内的 `.github/workflows/pages.yml` 会发布仓库根目录。根目录静态入口与 `site/` 本地服务入口保持同步；发布后的页面在浏览器中直接读取数据源，并将每个会话的完整响应保存到 IndexedDB；点击“同步数据源”会强制重新拉取，失败时不会覆盖已有缓存。
 
 GitHub Pages 的登录是前端入口校验，适合私有仓库或内部使用；需要服务端安全和真正的账户隔离时，请运行本地 Node 服务或部署 `server.mjs` 到支持 Node 的服务。
