@@ -19,6 +19,8 @@ const authSalt = "f1-openf1-local-auth";
 const authPasswordHash = crypto.scryptSync("123456", authSalt, 32);
 const authSessions = new Map();
 const sessionMaxAgeMs = 8 * 60 * 60 * 1000;
+const feedProbeAt = new Map();
+const feedProbeIntervalMs = 5 * 60 * 1000;
 
 await fs.mkdir(cacheDir, { recursive: true });
 
@@ -108,20 +110,30 @@ async function readBody(req) {
 }
 
 async function fetchOpenF1(endpoint) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 30000);
-  let response;
-  try {
-    response = await fetch(`${apiBase}${endpoint}`, { headers: { accept: "application/json" }, signal: controller.signal });
-  } finally {
-    clearTimeout(timeout);
-  }
-  if (!response.ok) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+    let response;
+    try {
+      response = await fetch(`${apiBase}${endpoint}`, { headers: { accept: "application/json" }, signal: controller.signal });
+    } catch (error) {
+      if (attempt < 2) { await sleep(1000 * (attempt + 1)); continue; }
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
+    if (response.ok) return response.json();
+    const retryable = response.status === 429 || response.status >= 500;
+    if (retryable && attempt < 2) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      await sleep(Math.max(1000, Number.isFinite(retryAfter) ? retryAfter * 1000 : 0) * (attempt + 1));
+      continue;
+    }
     const error = new Error(`数据源 ${response.status} for ${endpoint}`);
     error.status = response.status;
     throw error;
   }
-  return response.json();
+  throw new Error(`数据源请求失败 for ${endpoint}`);
 }
 
 async function cachedJson(file, endpoint, fallback, { preferFallback = false } = {}) {
@@ -280,6 +292,28 @@ function sessionCacheHealthy(data, sessionKey) {
   return true;
 }
 
+async function refreshCachedFeed(data, sessionKey, field) {
+  const sessionEnded = Date.parse(data.session?.date_end || "") < Date.now();
+  if (!sessionEnded || !Array.isArray(data[field]) || data[field].length) return false;
+  const key = Number(sessionKey);
+  const probeKey = `${field}:${key}`;
+  const now = Date.now();
+  if (now - (feedProbeAt.get(probeKey) || 0) < feedProbeIntervalMs) return false;
+  feedProbeAt.set(probeKey, now);
+  try {
+    const rows = await fetchOpenF1(`/${field}?session_key=${encodeURIComponent(key)}`);
+    if (!Array.isArray(rows) || !rows.length) return false;
+    data[field] = rows;
+    if (Array.isArray(data.sync_warnings)) {
+      data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith(`${field}:`));
+      if (!data.sync_warnings.length) delete data.sync_warnings;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
   const requestedSessionKey = Number(sessionKey);
   if (!Number.isInteger(requestedSessionKey)) throw new Error("该节点尚未获得数据源会话键，请在接口可用时重新加载分站目录");
@@ -291,6 +325,9 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
   if (!force && await exists(cacheFile)) {
     const data = normaliseSessionData(previousCache);
     if (sessionCacheHealthy(data, requestedSessionKey)) {
+      await refreshCachedFeed(data, requestedSessionKey, "weather");
+      if (["Race", "Sprint"].includes(data.session?.session_name)) await refreshCachedFeed(data, requestedSessionKey, "pit");
+      await refreshCachedFeed(data, requestedSessionKey, "race_control");
       await mergeDriverRoster(meetingKey, data);
       await writeJsonAtomic(cacheFile, data);
       return { data, source: "cache" };
@@ -327,22 +364,28 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
   const data = { meeting: { meeting_key: Number(meetingKey), country_name: session.country_name, location: session.location, meeting_name: session.meeting_name || session.country_name }, session, mapped };
   const failures = [];
   const unavailable = [];
+  const retained = [];
+  const requiredFields = new Set(["drivers", "session_result"]);
   for (const [key, endpoint] of endpoints) {
     await sleep(360);
     try { data[key] = await fetchOpenF1(endpoint); }
     catch (error) {
       // Some sessions legitimately have no starting grid or interval feed.
-      // Treat a 404 as an unavailable optional field, but never cache a
-      // timeout, server error, or other incomplete response.
+      // Keep a previous field when a transient error affects only one feed.
       if (error.status === 404) { data[key] = []; unavailable.push(key); }
-      else failures.push(`${key}: ${error.message}`);
+      else if (Array.isArray(previousCache?.[key])) {
+        data[key] = previousCache[key];
+        retained.push(`${key}: ${error.message}`);
+      } else if (requiredFields.has(key)) failures.push(`${key}: ${error.message}`);
+      else { data[key] = []; retained.push(`${key}: ${error.message}`); }
     }
   }
   if (failures.length) throw new Error(`同步失败，缓存未更新（${failures.join("；")}）`);
   normaliseSessionData(data);
   await mergeDriverRoster(meetingKey, data);
   if (!sessionCacheHealthy(data, requestedSessionKey)) throw new Error("同步返回的数据不完整，缓存未更新");
-  if (unavailable.length) data.sync_warnings = unavailable.map((field) => `${field}: unavailable`);
+  const syncWarnings = [...unavailable.map((field) => `${field}: unavailable`), ...retained];
+  if (syncWarnings.length) data.sync_warnings = syncWarnings;
   await writeJsonAtomic(cacheFile, data);
   return { data, source: "openf1" };
 }

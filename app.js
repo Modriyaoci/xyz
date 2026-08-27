@@ -30,6 +30,8 @@ const STATIC_STANDINGS_URL = new URL(
 ).href;
 const staticDb = { promise: null };
 const staticSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const staticFeedProbeAt = new Map();
+const staticFeedProbeIntervalMs = 5 * 60 * 1000;
 
 function openStaticDb() {
   if (staticDb.promise) return staticDb.promise;
@@ -75,6 +77,9 @@ async function staticFetchJson(endpoint) {
     let response;
     try {
       response = await fetch(`${STATIC_API_BASE}${endpoint}`, { headers: { accept: "application/json" }, signal: controller.signal });
+    } catch (error) {
+      if (attempt < 3) { await staticSleep(1000 * (attempt + 1)); continue; }
+      throw error;
     } finally {
       window.clearTimeout(timer);
     }
@@ -89,6 +94,20 @@ async function staticFetchJson(endpoint) {
     throw error;
   }
   throw new Error(`数据源请求失败 for ${endpoint}`);
+}
+
+async function refreshStaticCachedFeed(data, sessionKey, field) {
+  const sessionEnded = Date.parse(data.session?.date_end || "") < Date.now();
+  if (!sessionEnded || !Array.isArray(data[field]) || data[field].length) return;
+  const key = Number(sessionKey);
+  const probeKey = `${field}:${key}`;
+  const now = Date.now();
+  if (now - (staticFeedProbeAt.get(probeKey) || 0) < staticFeedProbeIntervalMs) return;
+  staticFeedProbeAt.set(probeKey, now);
+  try {
+    const rows = await staticFetchJson(`/${field}?session_key=${encodeURIComponent(key)}`);
+    if (Array.isArray(rows) && rows.length) data[field] = rows;
+  } catch { /* retain the existing cache when the data source is unavailable */ }
 }
 
 async function staticCatalog() {
@@ -206,6 +225,9 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   const cached = await staticCacheGet(cacheKey);
   if (!force && cached && Number(cached.session?.session_key) === requestedSessionKey) {
     const sanitised = stripTyreAgeFields(cached);
+    await refreshStaticCachedFeed(sanitised, requestedSessionKey, "weather");
+    if (["Race", "Sprint"].includes(sanitised.session?.session_name)) await refreshStaticCachedFeed(sanitised, requestedSessionKey, "pit");
+    await refreshStaticCachedFeed(sanitised, requestedSessionKey, "race_control");
     enrichBackendMapping(sanitised);
     await staticCacheSet(cacheKey, sanitised);
     return { data: sanitised, source: "cache" };
@@ -220,12 +242,16 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   ];
   const data = { meeting: { meeting_key: Number(meetingKey), country_name: session.country_name, location: session.location, meeting_name: session.meeting_name || session.country_name }, session, mapped: null };
   const unavailable = [];
+  const retained = [];
+  const requiredFields = new Set(["drivers", "session_result"]);
   for (const [key, endpoint] of endpoints) {
     await staticSleep(750);
     try { data[key] = await staticFetchJson(endpoint); }
     catch (error) {
       if (error.status === 404) { data[key] = []; unavailable.push(key); }
-      else throw new Error(`同步失败，缓存未更新（${key}: ${error.message}）`);
+      else if (Array.isArray(cached?.[key])) { data[key] = cached[key]; retained.push(`${key}: ${error.message}`); }
+      else if (requiredFields.has(key)) throw new Error(`同步失败，缺少必要数据（${key}: ${error.message}）`);
+      else { data[key] = []; retained.push(`${key}: ${error.message}`); }
     }
   }
   if (Number(meetingKey) === 1292 && requestedSessionKey === 11353) {
@@ -234,7 +260,8 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
       if (mappedResponse.ok) data.mapped = await mappedResponse.json();
     } catch { /* the data source remains usable without the optional mapping */ }
   }
-  if (unavailable.length) data.sync_warnings = unavailable.map((field) => `${field}: unavailable`);
+  const syncWarnings = [...unavailable.map((field) => `${field}: unavailable`), ...retained];
+  if (syncWarnings.length) data.sync_warnings = syncWarnings;
   stripTyreAgeFields(data);
   enrichBackendMapping(data);
   await staticCacheSet(cacheKey, data);
@@ -275,6 +302,12 @@ const number = (value, fallback = "--") => value === null || value === undefined
 const numeric = (value) => value === null || value === undefined || value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
 const fixed = (value, digits = 3) => numeric(value) == null ? "--" : numeric(value).toFixed(digits);
 const dateText = (value) => value ? String(value).replace("T", " ").replace("+00:00", " UTC").replace("Z", " UTC") : "--";
+const syncWarningText = (warnings) => {
+  if (!Array.isArray(warnings) || !warnings.length) return "";
+  const labels = { drivers: "车手", session_result: "赛果", starting_grid: "发车位", laps: "圈次", pit: "进站", position: "位置", intervals: "间隔", stints: "轮胎", race_control: "赛会消息", weather: "天气" };
+  const fields = [...new Set(warnings.map((warning) => String(warning).split(":")[0]).map((field) => labels[field] || field))];
+  return fields.length ? ` · 部分字段未更新：${fields.join("、")}` : "";
+};
 const sessionLabel = (name) => ({"Practice 1": "练习1", "Practice 2": "练习2", "Practice 3": "练习3", "Day 1": "测试第1天", "Day 2": "测试第2天", "Day 3": "测试第3天", "Sprint Qualifying": "冲刺排位赛", Sprint: "冲刺赛", Qualifying: "排位赛", Race: "正赛"}[name] || name || "会话");
 const statusLabel = (row) => row?.dsq ? "DSQ" : row?.dns ? "DNS" : row?.dnf ? "DNF" : "Finished";
 const raceSessionNames = new Set(["Race", "Sprint"]);
@@ -396,7 +429,7 @@ function resetDataPanels(message = "选择节点后加载数据") {
   $("driverDetails").innerHTML = `<span class="placeholder-icon">＋</span><span>点击上方赛果中的车手行</span><small>查看最后一圈、计时段、轮胎和赛道限制</small>`;
   $("weatherSnapshot").innerHTML = `<div class="empty-cell">暂无天气记录</div>`;
   $("weatherTable").querySelector("tbody").innerHTML = `<tr><td colspan="8" class="empty-cell">暂无天气记录</td></tr>`;
-  $("tyreTable").querySelector("tbody").innerHTML = `<tr><td colspan="7" class="empty-cell">暂无轮胎记录</td></tr>`;
+  $("tyreTable").querySelector("tbody").innerHTML = `<tr><td colspan="6" class="empty-cell">暂无轮胎记录</td></tr>`;
   $("messageTable").querySelector("tbody").innerHTML = `<tr><td colspan="3" class="empty-cell">暂无赛会消息</td></tr>`;
   ["weatherBadge", "tyreBadge", "messageBadge"].forEach((id) => $(id).textContent = "--");
 }
@@ -798,8 +831,7 @@ function renderDriverDetails() {
     <div class="detail-item"><label>最后一圈</label><strong>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</strong></div>
     <div class="detail-item"><label>最快圈</label><strong>${esc(fastestText)} ${colorBadgeOrEmpty(extension.bestLapColor)}</strong></div>
     <div class="detail-item"><label>当前轮胎</label><strong>${lastStint ? tyreChip(lastStint.compound, `${lastStint.compound} · L${lastStint.lap_start}-${lastStint.lap_end}`) : "--"}</strong></div>
-    <div class="detail-item"><label>轮胎段数 / 总圈数</label><strong>${extension.stints.length || "--"} / ${extension.stints.reduce((sum, stint) => sum + (Number(stint.lap_end) - Number(stint.lap_start) + 1), 0) || "--"}</strong></div>
-    <div class="detail-item"><label>进站次数</label><strong>${row.mapped.pitstop ?? extension.pits ?? "--"}</strong></div>
+    <div class="detail-item"><label>进站次数 / 总圈数</label><strong>${row.mapped.pitstop ?? extension.pits ?? "--"} / ${extension.stints.reduce((sum, stint) => sum + (Number(stint.lap_end) - Number(stint.lap_start) + 1), 0) || "--"}</strong></div>
     ${race ? `<div class="detail-item"><label>领跑圈数</label><strong>${row.mapped.laps_led ?? "--"}</strong></div>` : ""}
     <div class="detail-item"><label>赛道限制消息</label><strong>${extension.trackLimits ?? "--"}</strong></div>
     <div class="detail-item"><label>最后一圈计时段</label><strong>${sectorSummary(extension.sectors)}</strong></div>
@@ -837,14 +869,16 @@ function renderTyres() {
     if (!grouped.has(car)) grouped.set(car, []);
     grouped.get(car).push(stint);
   }
-  $("tyreBadge").textContent = `${grouped.size} 位车手 · ${stints.length} 段`;
+  const totalPitStops = Array.from(grouped.keys()).reduce((sum, car) => sum + driverPits(car, state.activePhase ? driverLapsForView(car) : null).length, 0);
+  $("tyreBadge").textContent = `${grouped.size} 位车手 · ${totalPitStops} 次进站`;
   if (!grouped.size) return;
   const drivers = new Map((state.data?.drivers || []).map((driver) => [Number(driver.driver_number), driver]));
   $("tyreTable").querySelector("tbody").innerHTML = Array.from(grouped.entries()).map(([car, rows]) => {
     const last = rows.at(-1);
     const totalLaps = rows.reduce((sum, row) => sum + (Number(row.lap_end) - Number(row.lap_start) + 1), 0);
     const strategy = rows.map((row) => `<span class="tyre-strategy-item">${tyreChip(row.compound, row.compound || "--")} <span>L${esc(row.lap_start)}-${esc(row.lap_end)}</span></span>`).join(`<span class="strategy-arrow" aria-hidden="true">→</span>`);
-    return `<tr><td>${esc(drivers.get(car)?.full_name || `车号 ${car}`)} <span class="acronym">${esc(drivers.get(car)?.name_acronym || "")}</span></td><td>${esc(car)}</td><td class="wrap-cell tyre-strategy">${strategy}</td><td>${esc(rows.length)}</td><td>${esc(totalLaps)}</td><td>${last ? tyreChip(last.compound, last.compound) : "--"}</td><td>${last ? `L${esc(last.lap_start)}-${esc(last.lap_end)}` : "--"}</td></tr>`;
+    const pitStops = driverPits(car, state.activePhase ? driverLapsForView(car) : null).length;
+    return `<tr><td>${esc(drivers.get(car)?.full_name || `车号 ${car}`)} <span class="acronym">${esc(drivers.get(car)?.name_acronym || "")}</span></td><td>${esc(car)}</td><td class="wrap-cell tyre-strategy">${strategy}</td><td>${esc(pitStops)}</td><td>${esc(totalLaps)}</td><td>${last ? tyreChip(last.compound, last.compound) : "--"}</td></tr>`;
   }).join("");
 }
 
@@ -880,7 +914,7 @@ async function loadCurrentData() {
     state.data = enrichBackendMapping(payload.data || {});
     state.selectedDriver = null;
     const sourceLabel = payload.source === "cache" ? "本地缓存" : payload.source === "local" ? "本地快照" : "数据源刚刚拉取并已缓存";
-    setStatus("数据已就绪", `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}`, false);
+    setStatus("数据已就绪", `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}${syncWarningText(state.data.sync_warnings)}`, false);
     $("cachePathLabel").textContent = `缓存状态：${sourceLabel}`;
     $("metricDrivers").textContent = number((state.data.session_result || []).length);
     const metricLaps = currentPhaseLaps();
@@ -917,7 +951,7 @@ $("syncBtn").addEventListener("click", async () => {
     state.data = enrichBackendMapping(payload.data || {});
     state.selectedDriver = null;
     const sourceLabel = "数据源已同步并更新缓存";
-    setStatus("同步完成", `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}`, false);
+    setStatus("同步完成", `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}${syncWarningText(state.data.sync_warnings)}`, false);
     $("cachePathLabel").textContent = `缓存状态：${sourceLabel}`;
     $("metricDrivers").textContent = number((state.data.session_result || []).length);
     const metricLaps = currentPhaseLaps();
