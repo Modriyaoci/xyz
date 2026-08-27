@@ -324,16 +324,21 @@ async function serveStatic(req, res, pathname) {
   if (pathname === "/site/index.html" && !authenticated(req)) {
     res.writeHead(302, { location: "/login" }); res.end(); return;
   }
-  let requested = pathname === "/" ? "/site/index.html" : pathname === "/login" ? "/site/login.html" : pathname;
-  if (!requested.startsWith("/site/")) return json(res, 404, { error: "not found" });
-  const candidate = path.resolve(root, `.${requested}`);
-  if (!candidate.startsWith(root)) return json(res, 403, { error: "forbidden" });
-  try {
-    const body = await fs.readFile(candidate);
-    const ext = path.extname(candidate);
-    const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8" }[ext] || "application/octet-stream";
-    res.writeHead(200, { "content-type": type }); res.end(body);
-  } catch { json(res, 404, { error: "not found" }); }
+  const requested = pathname === "/" ? "/site/index.html" : pathname === "/login" ? "/site/login.html" : pathname;
+  const candidates = requested.startsWith("/site/")
+    ? [requested, requested.replace(/^\/site/, "")]
+    : [requested, `/site${requested}`];
+  for (const relative of candidates) {
+    const candidate = path.resolve(root, `.${relative}`);
+    if (!candidate.startsWith(root)) return json(res, 403, { error: "forbidden" });
+    try {
+      const body = await fs.readFile(candidate);
+      const ext = path.extname(candidate);
+      const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8" }[ext] || "application/octet-stream";
+      res.writeHead(200, { "content-type": type }); res.end(body); return;
+    } catch { /* try the root or site fallback */ }
+  }
+  json(res, 404, { error: "not found" });
 }
 
 const server = http.createServer(async (req, res) => {
