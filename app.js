@@ -903,12 +903,14 @@ function renderDriverDetails() {
   const lastLap = extension.lastLap;
   const lastStint = extension.finalStint;
   const race = isRaceSession();
+  const totalStintLaps = extension.stints.reduce((sum, stint) => sum + (Number(stint.lap_end) - Number(stint.lap_start) + 1), 0);
   const fastestText = state.activePhase ? (row.fastest ? formatTime(row.fastest.lap_duration) : "--") : (row.mapped.fastest_lap_time || (row.fastest ? formatTime(row.fastest.lap_duration) : "--"));
   $("driverDetails").innerHTML = `<div class="detail-content"><div class="detail-name"><strong>${esc(row.driver.full_name || `车号 ${car}`)}</strong><span>#${esc(car)} · ${esc(row.driver.team_name || "--")}</span></div><div class="detail-grid">
     <div class="detail-item"><label>上一圈</label><strong>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</strong></div>
     <div class="detail-item"><label>最快圈</label><strong>${esc(fastestText)} ${colorBadgeOrEmpty(extension.bestLapColor)}</strong></div>
     <div class="detail-item"><label>当前轮胎</label><strong>${lastStint ? tyreChip(lastStint.compound, `${lastStint.compound} · L${lastStint.lap_start}-${lastStint.lap_end}`) : "--"}</strong></div>
-    <div class="detail-item"><label>进站次数 / 总圈数</label><strong>${row.mapped.pitstop ?? extension.pits ?? "--"} / ${extension.stints.reduce((sum, stint) => sum + (Number(stint.lap_end) - Number(stint.lap_start) + 1), 0) || "--"}</strong></div>
+    <div class="detail-item"><label>进站次数</label><strong>${row.mapped.pitstop ?? extension.pits ?? "--"}</strong></div>
+    <div class="detail-item"><label>总圈数</label><strong>${totalStintLaps || "--"}</strong></div>
     <div class="detail-item"><label>超出赛道限制</label><strong>${extension.trackLimits ?? "--"}</strong></div>
     <div class="detail-item"><label>计时段</label><strong>${sectorSummary(extension.sectors)}</strong></div>
   </div><div class="detail-color-block"><label>Mini-sector 颜色</label>${miniSectorSummary(extension.miniSectors)}</div></div>`;
