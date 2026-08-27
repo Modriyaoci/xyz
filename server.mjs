@@ -230,7 +230,7 @@ async function syncOfficialStandings() {
 
 async function localSessionData(meetingKey, sessionKey) {
   if (Number(meetingKey) !== 1292) return null;
-  const files = ["drivers.json", "session_result.json", "starting_grid.json", "laps.json", "pit.json", "position.json", "intervals_race.json", "stints.json", "race_control.json", "weather.json"];
+  const files = ["drivers.json", "session_result.json", "laps.json", "pit.json", "position.json", "intervals_race.json", "stints.json", "race_control.json", "weather.json"];
   const available = await Promise.all(files.map((name) => exists(path.join(localDutchDir, name))));
   if (!available.every(Boolean)) return null;
   const values = await Promise.all(files.map((name) => readJson(path.join(localDutchDir, name))));
@@ -270,7 +270,7 @@ async function mergeDriverRoster(meetingKey, data) {
   return data;
 }
 
-const sessionArrayFields = ["drivers", "session_result", "starting_grid", "laps", "pit", "position", "intervals", "stints", "race_control", "weather"];
+const sessionArrayFields = ["drivers", "session_result", "laps", "pit", "position", "intervals", "stints", "race_control", "weather"];
 
 function stripTyreAgeFields(data) {
   if (!data || typeof data !== "object" || !Array.isArray(data.stints)) return data;
@@ -278,6 +278,21 @@ function stripTyreAgeFields(data) {
     const { tyre_age_at_start, tyre_age, tire_age_at_start, tire_age, ...withoutAge } = stint || {};
     return withoutAge;
   });
+  return data;
+}
+
+function stripStartingGridFields(data) {
+  if (!data || typeof data !== "object") return data;
+  delete data.starting_grid;
+  delete data.starting_grid_derived;
+  delete data.starting_grid_source_session_key;
+  if (data.mapped && typeof data.mapped === "object" && Array.isArray(data.mapped.competitors)) {
+    data.mapped.competitors = data.mapped.competitors.map((competitor) => {
+      if (!competitor || typeof competitor !== "object") return competitor;
+      const { grid, laps_led, ...withoutRemovedFields } = competitor;
+      return withoutRemovedFields;
+    });
+  }
   return data;
 }
 
@@ -289,7 +304,7 @@ function normaliseSessionData(data) {
     data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith("starting_grid:"));
     if (!data.sync_warnings.length) delete data.sync_warnings;
   }
-  return stripTyreAgeFields(data);
+  return stripStartingGridFields(stripTyreAgeFields(data));
 }
 
 function sessionCacheHealthy(data, sessionKey) {

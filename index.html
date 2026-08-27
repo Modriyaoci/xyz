@@ -105,8 +105,8 @@
             </div>
             <div class="table-wrap">
               <table class="data-table results-table" id="resultsTable">
-                <thead><tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>发车位</th><th>圈数</th><th id="resultTimeHeader">总时间 / 差距</th><th>积分</th><th>状态</th><th>上一圈</th><th id="resultFastestHeader">最快圈</th><th>与上一名间距</th><th>与第一名间距</th><th>进站</th><th>领跑圈</th><th>NC（计算）</th><th>当前轮胎</th><th>赛道限制</th><th>小计时段</th><th>计时段</th></tr></thead>
-                <tbody><tr><td colspan="22" class="empty-cell">选择节点后加载数据</td></tr></tbody>
+                <thead><tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>圈数</th><th id="resultTimeHeader">总时间 / 差距</th><th>积分</th><th>状态</th><th>上一圈</th><th id="resultFastestHeader">最快圈</th><th>与上一名间距</th><th>与第一名间距</th><th>进站</th><th>NC（计算）</th><th>当前轮胎</th><th>超出赛道限制</th><th>小计时段</th><th>计时段</th></tr></thead>
+                <tbody><tr><td colspan="20" class="empty-cell">选择节点后加载数据</td></tr></tbody>
               </table>
             </div>
             <div class="table-footer" id="resultsFooter">数据行将在加载后显示。点击车手行可查看扩展字段。</div>
@@ -115,7 +115,7 @@
           <section class="split-grid">
             <div class="panel" aria-labelledby="driverDetailsTitle">
               <div class="panel-header compact"><div><div class="section-kicker">扩展字段</div><h2 id="driverDetailsTitle">车手详情</h2></div><span class="panel-badge">数据源</span></div>
-              <div class="detail-placeholder" id="driverDetails"><span class="placeholder-icon">＋</span><span>点击上方赛果中的车手行</span><small>查看最后一圈、计时段、轮胎和赛道限制</small></div>
+              <div class="detail-placeholder" id="driverDetails"><span class="placeholder-icon">＋</span><span>点击上方赛果中的车手行</span><small>查看上一圈、计时段、轮胎和超出赛道限制</small></div>
             </div>
             <div class="panel" aria-labelledby="weatherTitle">
             <div class="panel-header compact"><div><div class="section-kicker">环境</div><h2 id="weatherTitle">天气记录</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="weatherView"><option value="all">全部</option><option value="50">最近 50 条</option><option value="20">最近 20 条</option></select></label><span class="panel-badge" id="weatherBadge">--</span></div></div>
@@ -139,6 +139,6 @@
         </main>
       </div>
     </div>
-    <script type="module" src="./app.js?v=20260827-sync-v3"></script>
+    <script type="module" src="./app.js?v=20260827-sync-v5"></script>
   </body>
 </html>

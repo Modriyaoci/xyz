@@ -22,7 +22,7 @@ const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.h
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
   || (!localServer && !window.location.pathname.startsWith("/site/"));
 const STATIC_API_BASE = "https://api.openf1.org/v1";
-const STATIC_CACHE_VERSION = "20260827-sync-v2";
+const STATIC_CACHE_VERSION = "20260827-sync-v5";
 const staticRequestTimeoutMs = 6000;
 const staticRequestIntervalMs = 350;
 let staticNextRequestAt = 0;
@@ -201,6 +201,21 @@ function stripIgnoredSyncWarnings(data) {
   return data;
 }
 
+function stripStartingGridFields(data) {
+  if (!data || typeof data !== "object") return data;
+  delete data.starting_grid;
+  delete data.starting_grid_derived;
+  delete data.starting_grid_source_session_key;
+  if (data.mapped && typeof data.mapped === "object" && Array.isArray(data.mapped.competitors)) {
+    data.mapped.competitors = data.mapped.competitors.map((competitor) => {
+      if (!competitor || typeof competitor !== "object") return competitor;
+      const { grid, laps_led, ...withoutRemovedFields } = competitor;
+      return withoutRemovedFields;
+    });
+  }
+  return data;
+}
+
 // Backend IDs are stable across the 2026 season; OpenF1 supplies the matching
 // driver acronym/name and team name for every session.
 const backendDriverIdByAcronym = new Map(Object.entries({
@@ -294,7 +309,7 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   const cacheKey = `${STATIC_CACHE_VERSION}:session:${requestedSessionKey}`;
   const cached = await staticCacheGet(cacheKey);
   if (!force && cached && Number(cached.session?.session_key) === requestedSessionKey) {
-    const sanitised = stripIgnoredSyncWarnings(stripTyreAgeFields(cached));
+    const sanitised = stripStartingGridFields(stripIgnoredSyncWarnings(stripTyreAgeFields(cached)));
     await refreshStaticCachedFeed(sanitised, requestedSessionKey, "weather");
     if (["Race", "Sprint"].includes(sanitised.session?.session_name)) await refreshStaticCachedFeed(sanitised, requestedSessionKey, "pit");
     await refreshStaticCachedFeed(sanitised, requestedSessionKey, "race_control");
@@ -319,6 +334,7 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   const syncWarnings = [...feeds.unavailable.map((field) => `${field}: unavailable`), ...feeds.retained];
   if (syncWarnings.length) data.sync_warnings = syncWarnings;
   stripIgnoredSyncWarnings(data);
+  stripStartingGridFields(data);
   data.cache_version = STATIC_CACHE_VERSION;
   data.synced_at = new Date().toISOString();
   stripTyreAgeFields(data);
@@ -363,7 +379,7 @@ const fixed = (value, digits = 3) => numeric(value) == null ? "--" : numeric(val
 const dateText = (value) => value ? String(value).replace("T", " ").replace("+00:00", " UTC").replace("Z", " UTC") : "--";
 const syncWarningText = (warnings) => {
   if (!Array.isArray(warnings) || !warnings.length) return "";
-  const labels = { drivers: "车手", session_result: "赛果", starting_grid: "发车位", laps: "圈次", pit: "进站", position: "位置", intervals: "间隔", stints: "轮胎", race_control: "赛会消息", weather: "天气" };
+  const labels = { drivers: "车手", session_result: "赛果", laps: "圈次", pit: "进站", position: "位置", intervals: "间隔", stints: "轮胎", race_control: "赛会消息", weather: "天气" };
   const fields = [...new Set(warnings.map((warning) => String(warning).split(":")[0]).map((field) => labels[field] || field))];
   return fields.length ? ` · 部分字段未更新：${fields.join("、")}` : "";
 };
@@ -380,7 +396,7 @@ const colorBadgeOrEmpty = (value, prefix = "") => value == null || value === "" 
 const phaseLabel = (phase) => phase ? phase.toUpperCase() : "";
 const isRaceSession = () => raceSessionNames.has(state.activeSession?.session_name);
 const isQualifyingSession = () => qualifyingSessionNames.has(state.activeSession?.session_name);
-const resultColumnCount = () => isRaceSession() ? 22 : 18;
+const resultColumnCount = () => isRaceSession() ? 20 : 18;
 const formatTime = (value) => {
   const total = numeric(value);
   if (total == null) return "--";
@@ -475,7 +491,7 @@ function resultHeaderHtml() {
   const phase = phaseLabel(state.activePhase);
   const suffix = phase ? `（${phase}）` : "";
   const race = isRaceSession();
-  return `<tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th>${race ? "<th>发车位</th>" : ""}<th>圈数</th><th id="resultTimeHeader">${phase ? `${phase} 总时间 / 差距` : "总时间 / 差距"}</th>${race ? "<th>积分</th>" : ""}<th>状态</th><th id="resultLastLapHeader">上一圈${suffix}</th><th id="resultFastestHeader">最快圈${suffix}</th><th>与上一名间距</th><th id="resultGapHeader">与第一名间距</th><th>进站</th>${race ? "<th>领跑圈</th><th>NC（计算）</th>" : ""}<th>当前轮胎</th><th>赛道限制</th><th>小计时段</th><th>计时段</th></tr>`;
+  return `<tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>圈数</th><th id="resultTimeHeader">${phase ? `${phase} 总时间 / 差距` : "总时间 / 差距"}</th>${race ? "<th>积分</th>" : ""}<th>状态</th><th id="resultLastLapHeader">上一圈${suffix}</th><th id="resultFastestHeader">最快圈${suffix}</th><th>与上一名间距</th><th id="resultGapHeader">与第一名间距</th><th>进站</th>${race ? "<th>NC（计算）</th>" : ""}<th>当前轮胎</th><th>超出赛道限制</th><th>小计时段</th><th>计时段</th></tr>`;
 }
 
 function renderResultHeader() {
@@ -487,7 +503,7 @@ function resetDataPanels(message = "选择节点后加载数据") {
   renderResultHeader();
   $("resultsTable").querySelector("tbody").innerHTML = `<tr><td colspan="${resultColumnCount()}" class="empty-cell">${esc(message)}</td></tr>`;
   $("resultsFooter").textContent = message;
-  $("driverDetails").innerHTML = `<span class="placeholder-icon">＋</span><span>点击上方赛果中的车手行</span><small>查看最后一圈、计时段、轮胎和赛道限制</small>`;
+  $("driverDetails").innerHTML = `<span class="placeholder-icon">＋</span><span>点击上方赛果中的车手行</span><small>查看上一圈、计时段、轮胎和超出赛道限制</small>`;
   $("weatherSnapshot").innerHTML = `<div class="empty-cell">暂无天气记录</div>`;
   $("weatherTable").querySelector("tbody").innerHTML = `<tr><td colspan="8" class="empty-cell">暂无天气记录</td></tr>`;
   $("tyreTable").querySelector("tbody").innerHTML = `<tr><td colspan="6" class="empty-cell">暂无轮胎记录</td></tr>`;
@@ -846,12 +862,12 @@ function renderResults() {
       <td class="position">${esc(displayPosition)}</td><td>${esc(row.car)}</td>
       <td class="driver-cell">${esc(row.driver.full_name || `车号 ${row.car}`)} <span class="acronym">${esc(row.driver.name_acronym || "")}</span></td>
       <td>${esc(row.driver.team_name || "--")}</td><td>${esc(row.mapped.id ?? "--")}</td><td>${esc(row.mapped.team_id ?? "--")}</td>
-      ${race ? `<td>${esc(row.mapped.grid ?? "--")}</td>` : ""}<td>${esc(lapsText)}</td>
+      <td>${esc(lapsText)}</td>
       <td>${esc(displayTime(row))}</td>${race ? `<td>${esc(row.raw.points ?? row.mapped.points ?? "--")}</td>` : ""}
       <td class="${status === "Finished" ? "status-finished" : "status-dnf"}">${esc(status)}</td>
       <td>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</td><td>${esc(fastestText)} ${colorBadgeOrEmpty(extension.bestLapColor)}</td>
       <td>${esc(intervalToPrevious(row, rows.indexOf(row), rows, intervalMap))}</td><td>${esc(gapToLeaderText(row))}</td>
-      <td>${esc(row.mapped.pitstop ?? extension.pits ?? "--")}</td>${race ? `<td>${esc(row.mapped.laps_led ?? "--")}</td><td>${ncCell}</td>` : ""}
+      <td>${esc(row.mapped.pitstop ?? extension.pits ?? "--")}</td>${race ? `<td>${ncCell}</td>` : ""}
       <td>${currentTyre ? tyreChip(currentTyre, `${currentTyre} · ${currentTyreLaps ?? "--"} 圈`) : "--"}</td><td>${esc(extension.trackLimits ?? "--")}</td>
       <td><div class="row-colors">${colorText}</div></td>
       <td>${sectorSummary(extension.sectors)}</td>
@@ -889,13 +905,12 @@ function renderDriverDetails() {
   const race = isRaceSession();
   const fastestText = state.activePhase ? (row.fastest ? formatTime(row.fastest.lap_duration) : "--") : (row.mapped.fastest_lap_time || (row.fastest ? formatTime(row.fastest.lap_duration) : "--"));
   $("driverDetails").innerHTML = `<div class="detail-content"><div class="detail-name"><strong>${esc(row.driver.full_name || `车号 ${car}`)}</strong><span>#${esc(car)} · ${esc(row.driver.team_name || "--")}</span></div><div class="detail-grid">
-    <div class="detail-item"><label>最后一圈</label><strong>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</strong></div>
+    <div class="detail-item"><label>上一圈</label><strong>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</strong></div>
     <div class="detail-item"><label>最快圈</label><strong>${esc(fastestText)} ${colorBadgeOrEmpty(extension.bestLapColor)}</strong></div>
     <div class="detail-item"><label>当前轮胎</label><strong>${lastStint ? tyreChip(lastStint.compound, `${lastStint.compound} · L${lastStint.lap_start}-${lastStint.lap_end}`) : "--"}</strong></div>
     <div class="detail-item"><label>进站次数 / 总圈数</label><strong>${row.mapped.pitstop ?? extension.pits ?? "--"} / ${extension.stints.reduce((sum, stint) => sum + (Number(stint.lap_end) - Number(stint.lap_start) + 1), 0) || "--"}</strong></div>
-    ${race ? `<div class="detail-item"><label>领跑圈数</label><strong>${row.mapped.laps_led ?? "--"}</strong></div>` : ""}
-    <div class="detail-item"><label>赛道限制消息</label><strong>${extension.trackLimits ?? "--"}</strong></div>
-    <div class="detail-item"><label>最后一圈计时段</label><strong>${sectorSummary(extension.sectors)}</strong></div>
+    <div class="detail-item"><label>超出赛道限制</label><strong>${extension.trackLimits ?? "--"}</strong></div>
+    <div class="detail-item"><label>计时段</label><strong>${sectorSummary(extension.sectors)}</strong></div>
   </div><div class="detail-color-block"><label>Mini-sector 颜色</label>${miniSectorSummary(extension.miniSectors)}</div></div>`;
 }
 
