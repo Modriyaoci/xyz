@@ -83,7 +83,7 @@
             </div>
             <div class="table-wrap">
               <table class="data-table results-table" id="resultsTable">
-                <thead><tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>发车位</th><th>圈数</th><th id="resultTimeHeader">时间 / 差距</th><th>积分</th><th>状态</th><th>上一圈</th><th id="resultFastestHeader">最快圈</th><th>间隔</th><th>冠军差距</th><th>进站</th><th>领跑圈</th><th>NC（计算）</th><th>当前轮胎</th><th>赛道限制</th><th>小计时段</th><th>计时段</th></tr></thead>
+                <thead><tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>发车位</th><th>圈数</th><th id="resultTimeHeader">总时间 / 差距</th><th>积分</th><th>状态</th><th>上一圈</th><th id="resultFastestHeader">最快圈</th><th>与上一名间距</th><th>与第一名间距</th><th>进站</th><th>领跑圈</th><th>NC（计算）</th><th>当前轮胎</th><th>赛道限制</th><th>小计时段</th><th>计时段</th></tr></thead>
                 <tbody><tr><td colspan="22" class="empty-cell">选择节点后加载数据</td></tr></tbody>
               </table>
             </div>
@@ -104,18 +104,18 @@
 
           <section class="panel" aria-labelledby="tyreTitle">
             <div class="panel-header compact"><div><div class="section-kicker">策略</div><h2 id="tyreTitle">轮胎历史</h2></div><span class="panel-badge" id="tyreBadge">--</span></div>
-            <div class="table-wrap"><table class="data-table dense tyre-table" id="tyreTable"><thead><tr><th>车手</th><th>车号</th><th>轮胎策略（含圈次）</th><th>段数</th><th>总圈数</th><th>当前轮胎</th><th>当前胎龄</th><th>最后一段</th></tr></thead><tbody><tr><td colspan="8" class="empty-cell">暂无轮胎记录</td></tr></tbody></table></div>
+            <div class="table-wrap"><table class="data-table dense tyre-table" id="tyreTable"><thead><tr><th>车手</th><th>车号</th><th>轮胎策略（圈次）</th><th>段数</th><th>总圈数</th><th>当前轮胎</th><th>最后一段</th></tr></thead><tbody><tr><td colspan="7" class="empty-cell">暂无轮胎记录</td></tr></tbody></table></div>
           </section>
 
           <section class="panel" aria-labelledby="messagesTitle">
             <div class="panel-header compact"><div><div class="section-kicker">控制记录</div><h2 id="messagesTitle">赛会消息</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="messageView"><option value="all">全部</option><option value="100">最近 100 条</option><option value="30">最近 30 条</option></select></label><span class="panel-badge" id="messageBadge">--</span></div></div>
-            <div class="table-wrap record-scroll"><table class="data-table dense" id="messageTable"><thead><tr><th>时间</th><th>圈次</th><th>类别</th><th>旗帜</th><th>范围</th><th>车号</th><th>计时段</th><th>排位阶段</th><th>消息</th></tr></thead><tbody><tr><td colspan="9" class="empty-cell">暂无赛会消息</td></tr></tbody></table></div>
+            <div class="table-wrap record-scroll"><table class="data-table dense" id="messageTable"><thead><tr><th>时间</th><th>圈次</th><th>消息</th></tr></thead><tbody><tr><td colspan="3" class="empty-cell">暂无赛会消息</td></tr></tbody></table></div>
           </section>
 
           <footer class="page-footer"><span>数据源：<a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1 API</a></span><span id="cachePathLabel">缓存状态：--</span><span>不含赛道图、坐标和车辆位置数据</span></footer>
         </main>
       </div>
     </div>
-    <script type="module" src="./app.js?v=20260827-rate-limit-retry"></script>
+    <script type="module" src="./app.js?v=20260827-result-fields"></script>
   </body>
 </html>

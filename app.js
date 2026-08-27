@@ -95,6 +95,15 @@ async function staticCatalog() {
   }));
 }
 
+function stripTyreAgeFields(data) {
+  if (!data || typeof data !== "object" || !Array.isArray(data.stints)) return data;
+  data.stints = data.stints.map((stint) => {
+    const { tyre_age_at_start, tyre_age, tire_age_at_start, tire_age, ...withoutAge } = stint || {};
+    return withoutAge;
+  });
+  return data;
+}
+
 async function staticSessionList(meetingKey) {
   const key = Number(meetingKey);
   const catalog = await staticCatalog();
@@ -114,7 +123,11 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   if (!Number.isInteger(requestedSessionKey)) throw new Error("该节点尚未获得数据源会话键");
   const cacheKey = `session:${requestedSessionKey}`;
   const cached = await staticCacheGet(cacheKey);
-  if (!force && cached && Number(cached.session?.session_key) === requestedSessionKey) return { data: cached, source: "cache" };
+  if (!force && cached && Number(cached.session?.session_key) === requestedSessionKey) {
+    const sanitised = stripTyreAgeFields(cached);
+    await staticCacheSet(cacheKey, sanitised);
+    return { data: sanitised, source: "cache" };
+  }
   const sessionsPayload = await staticSessionList(meetingKey);
   const session = (sessionsPayload.data || []).find((item) => Number(item.session_key) === requestedSessionKey);
   if (!session) throw new Error("找不到对应数据源会话");
@@ -140,6 +153,7 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
     } catch { /* the data source remains usable without the optional mapping */ }
   }
   if (unavailable.length) data.sync_warnings = unavailable.map((field) => `${field}: unavailable`);
+  stripTyreAgeFields(data);
   await staticCacheSet(cacheKey, data);
   return { data, source: "openf1" };
 }
@@ -203,7 +217,7 @@ function resultHeaderHtml() {
   const phase = phaseLabel(state.activePhase);
   const suffix = phase ? `（${phase}）` : "";
   const race = isRaceSession();
-  return `<tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th>${race ? "<th>发车位</th>" : ""}<th>圈数</th><th id="resultTimeHeader">${phase ? `${phase} 时间 / 差距` : "时间 / 差距"}</th>${race ? "<th>积分</th>" : ""}<th>状态</th><th id="resultLastLapHeader">上一圈${suffix}</th><th id="resultFastestHeader">最快圈${suffix}</th><th>间隔</th><th id="resultGapHeader">${phase ? `${phase} 差距` : "冠军差距"}</th><th>进站</th>${race ? "<th>领跑圈</th><th>NC（计算）</th>" : ""}<th>当前轮胎</th><th>赛道限制</th><th>小计时段</th><th>计时段</th></tr>`;
+  return `<tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th>${race ? "<th>发车位</th>" : ""}<th>圈数</th><th id="resultTimeHeader">${phase ? `${phase} 总时间 / 差距` : "总时间 / 差距"}</th>${race ? "<th>积分</th>" : ""}<th>状态</th><th id="resultLastLapHeader">上一圈${suffix}</th><th id="resultFastestHeader">最快圈${suffix}</th><th>与上一名间距</th><th id="resultGapHeader">与第一名间距</th><th>进站</th>${race ? "<th>领跑圈</th><th>NC（计算）</th>" : ""}<th>当前轮胎</th><th>赛道限制</th><th>小计时段</th><th>计时段</th></tr>`;
 }
 
 function renderResultHeader() {
@@ -218,8 +232,8 @@ function resetDataPanels(message = "选择节点后加载数据") {
   $("driverDetails").innerHTML = `<span class="placeholder-icon">＋</span><span>点击上方赛果中的车手行</span><small>查看最后一圈、计时段、轮胎和赛道限制</small>`;
   $("weatherSnapshot").innerHTML = `<div class="empty-cell">暂无天气记录</div>`;
   $("weatherTable").querySelector("tbody").innerHTML = `<tr><td colspan="8" class="empty-cell">暂无天气记录</td></tr>`;
-  $("tyreTable").querySelector("tbody").innerHTML = `<tr><td colspan="8" class="empty-cell">暂无轮胎记录</td></tr>`;
-  $("messageTable").querySelector("tbody").innerHTML = `<tr><td colspan="9" class="empty-cell">暂无赛会消息</td></tr>`;
+  $("tyreTable").querySelector("tbody").innerHTML = `<tr><td colspan="7" class="empty-cell">暂无轮胎记录</td></tr>`;
+  $("messageTable").querySelector("tbody").innerHTML = `<tr><td colspan="3" class="empty-cell">暂无赛会消息</td></tr>`;
   ["weatherBadge", "tyreBadge", "messageBadge"].forEach((id) => $(id).textContent = "--");
 }
 
@@ -510,8 +524,39 @@ function displayGap(value) {
   return numeric === 0 ? "0" : `+${numeric.toFixed(3)}`;
 }
 
+function finalIntervalMap() {
+  const latest = new Map();
+  for (const row of state.data?.intervals || []) {
+    const car = Number(row.driver_number);
+    if (!Number.isFinite(car)) continue;
+    const previous = latest.get(car);
+    if (!previous || Date.parse(row.date || "") >= Date.parse(previous.date || "")) latest.set(car, row);
+  }
+  return latest;
+}
+
+function intervalToPrevious(row, rowIndex, rows, intervalMap) {
+  if (rowIndex === 0) return "--";
+  const source = intervalMap.get(row.car)?.interval;
+  if (numeric(source) != null) return displayGap(source);
+  const currentGap = numeric(row.gap);
+  const previousGap = numeric(rows[rowIndex - 1]?.gap);
+  if (currentGap != null && previousGap != null) return displayGap(Math.max(0, currentGap - previousGap));
+  const currentDuration = numeric(row.duration);
+  const previousDuration = numeric(rows[rowIndex - 1]?.duration);
+  return currentDuration != null && previousDuration != null
+    ? displayGap(Math.max(0, currentDuration - previousDuration))
+    : "--";
+}
+
+function gapToLeaderText(row) {
+  const mappedGap = row.mapped?.gap_to_leader;
+  return mappedGap !== null && mappedGap !== undefined && mappedGap !== "" ? String(mappedGap) : displayGap(row.gap);
+}
+
 function renderResults() {
   const rows = getResultRows();
+  const intervalMap = finalIntervalMap();
   renderResultHeader();
   const query = state.search.trim().toLowerCase();
   const filtered = rows.filter((row) => !query || [row.car, row.driver.full_name, row.driver.team_name, row.driver.name_acronym].some((value) => String(value ?? "").toLowerCase().includes(query)));
@@ -538,7 +583,7 @@ function renderResults() {
       <td>${esc(displayTime(row))}</td>${race ? `<td>${esc(row.raw.points ?? row.mapped.points ?? "--")}</td>` : ""}
       <td class="${status === "Finished" ? "status-finished" : "status-dnf"}">${esc(status)}</td>
       <td>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</td><td>${esc(fastestText)} ${colorBadgeOrEmpty(extension.bestLapColor)}</td>
-      <td>${esc(row.mapped.interval ?? "--")}</td><td>${esc(race ? (row.mapped.gap_to_leader ?? displayGap(row.gap)) : displayGap(row.gap))}</td>
+      <td>${esc(intervalToPrevious(row, rows.indexOf(row), rows, intervalMap))}</td><td>${esc(gapToLeaderText(row))}</td>
       <td>${esc(row.mapped.pitstop ?? extension.pits ?? "--")}</td>${race ? `<td>${esc(row.mapped.laps_led ?? "--")}</td><td>${ncCell}</td>` : ""}
       <td>${currentTyre ? tyreChip(currentTyre, `${currentTyre} · ${currentTyreLaps ?? "--"} 圈`) : "--"}</td><td>${esc(extension.trackLimits ?? "--")}</td>
       <td><div class="row-colors">${colorText}</div></td>
@@ -625,8 +670,8 @@ function renderTyres() {
   $("tyreTable").querySelector("tbody").innerHTML = Array.from(grouped.entries()).map(([car, rows]) => {
     const last = rows.at(-1);
     const totalLaps = rows.reduce((sum, row) => sum + (Number(row.lap_end) - Number(row.lap_start) + 1), 0);
-    const strategy = rows.map((row) => `<span class="tyre-strategy-item">${tyreChip(row.compound, row.compound || "--")} <span>L${esc(row.lap_start)}-${esc(row.lap_end)} · 胎龄${esc(row.tyre_age_at_start ?? "--")}</span></span>`).join(`<span class="strategy-arrow" aria-hidden="true">→</span>`);
-    return `<tr><td>${esc(drivers.get(car)?.full_name || `车号 ${car}`)} <span class="acronym">${esc(drivers.get(car)?.name_acronym || "")}</span></td><td>${esc(car)}</td><td class="wrap-cell tyre-strategy">${strategy}</td><td>${esc(rows.length)}</td><td>${esc(totalLaps)}</td><td>${last ? tyreChip(last.compound, last.compound) : "--"}</td><td>${esc(last?.tyre_age_at_start ?? "--")}</td><td>${last ? `L${esc(last.lap_start)}-${esc(last.lap_end)}` : "--"}</td></tr>`;
+    const strategy = rows.map((row) => `<span class="tyre-strategy-item">${tyreChip(row.compound, row.compound || "--")} <span>L${esc(row.lap_start)}-${esc(row.lap_end)}</span></span>`).join(`<span class="strategy-arrow" aria-hidden="true">→</span>`);
+    return `<tr><td>${esc(drivers.get(car)?.full_name || `车号 ${car}`)} <span class="acronym">${esc(drivers.get(car)?.name_acronym || "")}</span></td><td>${esc(car)}</td><td class="wrap-cell tyre-strategy">${strategy}</td><td>${esc(rows.length)}</td><td>${esc(totalLaps)}</td><td>${last ? tyreChip(last.compound, last.compound) : "--"}</td><td>${last ? `L${esc(last.lap_start)}-${esc(last.lap_end)}` : "--"}</td></tr>`;
   }).join("");
 }
 
@@ -638,7 +683,7 @@ function renderMessages() {
   if (!messages.length) return;
   const limit = state.messageView === "all" ? messages.length : Number(state.messageView);
   const visible = messages.slice(Math.max(0, messages.length - limit)).reverse();
-  $("messageTable").querySelector("tbody").innerHTML = visible.map((row) => `<tr><td>${esc(dateText(row.date))}</td><td>${esc(row.lap_number ?? "--")}</td><td>${esc(row.category || "--")}</td><td>${esc(row.flag || "--")}</td><td>${esc(row.scope || "--")}</td><td>${esc(row.driver_number ?? "--")}</td><td>${esc(row.sector ?? "--")}</td><td>${esc(row.qualifying_phase ?? "--")}</td><td>${esc(row.message || "--")}</td></tr>`).join("");
+  $("messageTable").querySelector("tbody").innerHTML = visible.map((row) => `<tr><td>${esc(dateText(row.date))}</td><td>${esc(row.lap_number ?? "--")}</td><td class="wrap-cell">${esc(row.message || "--")}</td></tr>`).join("");
 }
 
 async function loadCurrentData() {
