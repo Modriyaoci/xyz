@@ -9,8 +9,8 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.F1_PORT || 4173);
 const apiBase = "https://api.openf1.org/v1";
-const upstreamTimeoutMs = 6000;
-const upstreamRequestIntervalMs = 350;
+const upstreamTimeoutMs = 30000;
+const upstreamRequestIntervalMs = 400;
 let nextUpstreamRequestAt = 0;
 const cacheDir = path.join(root, "work", "openf1_cache");
 const localDutchDir = path.join(root, "work", "openf1_netherlands_2026");
@@ -123,15 +123,16 @@ async function fetchOpenF1(endpoint) {
     const timeout = setTimeout(() => controller.abort(), upstreamTimeoutMs);
     let response;
     try {
-      response = await fetch(`${apiBase}${endpoint}`, { headers: { accept: "application/json" }, signal: controller.signal });
+      response = await fetch(`${apiBase}${endpoint}`, { cache: "no-store", headers: { accept: "application/json" }, signal: controller.signal });
     } catch (error) {
-      if (attempt < 1 && error?.name !== "AbortError") { await sleep(500); continue; }
+      if (attempt < 1) { await sleep(800); continue; }
+      if (error?.name === "AbortError") throw new Error(`数据源请求超时（${upstreamTimeoutMs / 1000}秒） for ${endpoint}`);
       throw error;
     } finally {
       clearTimeout(timeout);
     }
     if (response.ok) return response.json();
-    const retryable = response.status === 429 || response.status >= 500;
+    const retryable = response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500;
     if (retryable && attempt < 1) {
       const retryAfter = Number(response.headers.get("retry-after"));
       await sleep(Math.min(3000, Math.max(700, Number.isFinite(retryAfter) ? retryAfter * 1000 : 0)));
@@ -293,15 +294,6 @@ function stripStartingGridFields(data) {
       return withoutRemovedFields;
     });
   }
-  return data;
-}
-
-function stripTyreAgeFields(data) {
-  if (!data || typeof data !== "object" || !Array.isArray(data.stints)) return data;
-  data.stints = data.stints.map((stint) => {
-    const { tyre_age_at_start, tyre_age, tire_age_at_start, tire_age, ...withoutAge } = stint || {};
-    return withoutAge;
-  });
   return data;
 }
 

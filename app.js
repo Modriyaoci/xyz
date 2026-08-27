@@ -23,9 +23,9 @@ const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.h
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
   || (!localServer && !window.location.pathname.startsWith("/site/"));
 const STATIC_API_BASE = "https://api.openf1.org/v1";
-const STATIC_CACHE_VERSION = "20260827-sync-v7";
-const staticRequestTimeoutMs = 6000;
-const staticRequestIntervalMs = 350;
+const STATIC_CACHE_VERSION = "20260827-sync-v8";
+const staticRequestTimeoutMs = 30000;
+const staticRequestIntervalMs = 400;
 let staticNextRequestAt = 0;
 const STATIC_CATALOG_URL = new URL("./meetings-2026.json", import.meta.url).href;
 const STATIC_MAPPED_URL = new URL("./netherlands-race-mapped.json", import.meta.url).href;
@@ -85,15 +85,16 @@ async function staticFetchJson(endpoint) {
     const timer = window.setTimeout(() => controller.abort(), staticRequestTimeoutMs);
     let response;
     try {
-      response = await fetch(`${STATIC_API_BASE}${endpoint}`, { headers: { accept: "application/json" }, signal: controller.signal });
+      response = await fetch(`${STATIC_API_BASE}${endpoint}`, { cache: "no-store", headers: { accept: "application/json" }, signal: controller.signal });
     } catch (error) {
-      if (attempt < 1 && error?.name !== "AbortError") { await staticSleep(500); continue; }
+      if (attempt < 1) { await staticSleep(800); continue; }
+      if (error?.name === "AbortError") throw new Error(`数据源请求超时（${staticRequestTimeoutMs / 1000}秒） for ${endpoint}`);
       throw error;
     } finally {
       window.clearTimeout(timer);
     }
     if (response.ok) return response.json();
-    if ((response.status === 429 || response.status >= 500) && attempt < 1) {
+    if ((response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500) && attempt < 1) {
       const retryAfter = Number(response.headers.get("retry-after"));
       await staticSleep(Math.min(3000, Math.max(700, Number.isFinite(retryAfter) ? retryAfter * 1000 : 0)));
       continue;
