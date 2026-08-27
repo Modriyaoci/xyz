@@ -9,7 +9,9 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.F1_PORT || 4173);
 const apiBase = "https://api.openf1.org/v1";
-const upstreamTimeoutMs = 15000;
+const upstreamTimeoutMs = 6000;
+const upstreamRequestIntervalMs = 350;
+let nextUpstreamRequestAt = 0;
 const cacheDir = path.join(root, "work", "openf1_cache");
 const localDutchDir = path.join(root, "work", "openf1_netherlands_2026");
 const localMapped = path.join(root, "outputs", "openf1-mapped-result", "netherlands_2026_race_openf1_mapped.json");
@@ -19,6 +21,7 @@ const authUsername = "nana";
 const authSalt = "f1-openf1-local-auth";
 const authPasswordHash = crypto.scryptSync("123456", authSalt, 32);
 const authSessions = new Map();
+const sessionSyncInFlight = new Map();
 const sessionMaxAgeMs = 8 * 60 * 60 * 1000;
 const feedProbeAt = new Map();
 const feedProbeIntervalMs = 5 * 60 * 1000;
@@ -111,23 +114,27 @@ async function readBody(req) {
 }
 
 async function fetchOpenF1(endpoint) {
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const now = Date.now();
+    const requestAt = Math.max(now, nextUpstreamRequestAt);
+    nextUpstreamRequestAt = requestAt + upstreamRequestIntervalMs;
+    if (requestAt > now) await sleep(requestAt - now);
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), upstreamTimeoutMs);
     let response;
     try {
       response = await fetch(`${apiBase}${endpoint}`, { headers: { accept: "application/json" }, signal: controller.signal });
     } catch (error) {
-      if (attempt < 1) { await sleep(1000); continue; }
+      if (attempt < 1 && error?.name !== "AbortError") { await sleep(500); continue; }
       throw error;
     } finally {
       clearTimeout(timeout);
     }
     if (response.ok) return response.json();
     const retryable = response.status === 429 || response.status >= 500;
-    if (retryable && attempt < 2) {
+    if (retryable && attempt < 1) {
       const retryAfter = Number(response.headers.get("retry-after"));
-      await sleep(Math.max(1000, Number.isFinite(retryAfter) ? retryAfter * 1000 : 0) * (attempt + 1));
+      await sleep(Math.min(3000, Math.max(700, Number.isFinite(retryAfter) ? retryAfter * 1000 : 0)));
       continue;
     }
     const error = new Error(`数据源 ${response.status} for ${endpoint}`);
@@ -278,6 +285,10 @@ function normaliseSessionData(data) {
   if (!data || typeof data !== "object" || Array.isArray(data)) return data;
   if (!Array.isArray(data.intervals) && Array.isArray(data.intervals_race)) data.intervals = data.intervals_race;
   for (const field of sessionArrayFields) if (!Array.isArray(data[field])) data[field] = [];
+  if (Array.isArray(data.sync_warnings)) {
+    data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith("starting_grid:"));
+    if (!data.sync_warnings.length) delete data.sync_warnings;
+  }
   return stripTyreAgeFields(data);
 }
 
@@ -295,7 +306,9 @@ function sessionCacheHealthy(data, sessionKey) {
 
 async function refreshCachedFeed(data, sessionKey, field) {
   const sessionEnded = Date.parse(data.session?.date_end || "") < Date.now();
-  if (!sessionEnded || !Array.isArray(data[field]) || data[field].length) return false;
+  const hasRetryWarning = Array.isArray(data.sync_warnings)
+    && data.sync_warnings.some((warning) => String(warning).startsWith(`${field}:`) && !String(warning).includes("unavailable"));
+  if (!sessionEnded || !Array.isArray(data[field]) || (data[field].length && !hasRetryWarning)) return false;
   const key = Number(sessionKey);
   const probeKey = `${field}:${key}`;
   const now = Date.now();
@@ -303,16 +316,63 @@ async function refreshCachedFeed(data, sessionKey, field) {
   feedProbeAt.set(probeKey, now);
   try {
     const rows = await fetchOpenF1(`/${field}?session_key=${encodeURIComponent(key)}`);
-    if (!Array.isArray(rows) || !rows.length) return false;
+    if (!Array.isArray(rows)) return false;
     data[field] = rows;
     if (Array.isArray(data.sync_warnings)) {
       data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith(`${field}:`));
       if (!data.sync_warnings.length) delete data.sync_warnings;
     }
+    data.synced_at = new Date().toISOString();
     return true;
   } catch {
     return false;
   }
+}
+
+function retryWarningFields(data) {
+  return [...new Set((Array.isArray(data?.sync_warnings) ? data.sync_warnings : [])
+    .filter((warning) => !String(warning).includes("unavailable"))
+    .map((warning) => String(warning).split(":")[0]))]
+    .filter((field) => sessionFeedDefinitions.some(([name]) => name === field));
+}
+
+const sessionFeedDefinitions = [
+  ["drivers", (sessionKey) => `/drivers?session_key=${sessionKey}`],
+  ["session_result", (sessionKey) => `/session_result?session_key=${sessionKey}`],
+  ["laps", (sessionKey) => `/laps?session_key=${sessionKey}`],
+  ["pit", (sessionKey) => `/pit?session_key=${sessionKey}`],
+  ["position", (sessionKey) => `/position?session_key=${sessionKey}`],
+  ["intervals", (sessionKey) => `/intervals?session_key=${sessionKey}`],
+  ["stints", (sessionKey) => `/stints?session_key=${sessionKey}`],
+  ["race_control", (sessionKey) => `/race_control?session_key=${sessionKey}`],
+  ["weather", (sessionKey) => `/weather?session_key=${sessionKey}`],
+];
+
+async function fetchSessionFeeds(sessionKey, cached, sessionName) {
+  const requiredFields = new Set(["drivers", "session_result"]);
+  const definitions = sessionFeedDefinitions;
+  const values = {};
+  const failures = [];
+  const unavailable = [];
+  const retained = [];
+  let cursor = 0;
+  async function worker() {
+    while (cursor < definitions.length) {
+      const index = cursor;
+      cursor += 1;
+      const [key, endpointFactory] = definitions[index];
+      try {
+        values[key] = await fetchOpenF1(endpointFactory(sessionKey));
+      } catch (error) {
+        if (error.status === 404) { values[key] = []; unavailable.push(key); }
+        else if (Array.isArray(cached?.[key])) { values[key] = cached[key]; retained.push(`${key}: ${error.message}`); }
+        else if (requiredFields.has(key)) failures.push(`${key}: ${error.message}`);
+        else { values[key] = []; retained.push(`${key}: ${error.message}`); }
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(3, definitions.length) }, () => worker()));
+  return { values, failures, unavailable, retained };
 }
 
 async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
@@ -329,6 +389,7 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
       await refreshCachedFeed(data, requestedSessionKey, "weather");
       if (["Race", "Sprint"].includes(data.session?.session_name)) await refreshCachedFeed(data, requestedSessionKey, "pit");
       await refreshCachedFeed(data, requestedSessionKey, "race_control");
+      for (const field of retryWarningFields(data)) await refreshCachedFeed(data, requestedSessionKey, field);
       await mergeDriverRoster(meetingKey, data);
       await writeJsonAtomic(cacheFile, data);
       return { data, source: "cache" };
@@ -353,40 +414,21 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
     } catch { /* the error below gives the user an actionable message */ }
   }
   if (!session) throw new Error("找不到对应数据源会话");
-  const endpoints = [
-    ["drivers", `/drivers?session_key=${requestedSessionKey}`], ["session_result", `/session_result?session_key=${requestedSessionKey}`], ["starting_grid", `/starting_grid?session_key=${requestedSessionKey}`],
-    ["laps", `/laps?session_key=${requestedSessionKey}`], ["pit", `/pit?session_key=${requestedSessionKey}`], ["position", `/position?session_key=${requestedSessionKey}`], ["intervals", `/intervals?session_key=${requestedSessionKey}`],
-    ["stints", `/stints?session_key=${requestedSessionKey}`], ["race_control", `/race_control?session_key=${requestedSessionKey}`], ["weather", `/weather?session_key=${requestedSessionKey}`],
-  ];
   let mapped = Number(previousCache?.session?.session_key) === requestedSessionKey ? previousCache?.mapped || null : null;
   if (!mapped && Number(meetingKey) === 1292 && requestedSessionKey === 11353 && await exists(localMapped)) {
     try { mapped = await readJson(localMapped); } catch { mapped = null; }
   }
   const data = { meeting: { meeting_key: Number(meetingKey), country_name: session.country_name, location: session.location, meeting_name: session.meeting_name || session.country_name }, session, mapped };
-  const failures = [];
-  const unavailable = [];
-  const retained = [];
-  const requiredFields = new Set(["drivers", "session_result"]);
-  for (const [key, endpoint] of endpoints) {
-    await sleep(360);
-    try { data[key] = await fetchOpenF1(endpoint); }
-    catch (error) {
-      // Some sessions legitimately have no starting grid or interval feed.
-      // Keep a previous field when a transient error affects only one feed.
-      if (error.status === 404) { data[key] = []; unavailable.push(key); }
-      else if (Array.isArray(previousCache?.[key])) {
-        data[key] = previousCache[key];
-        retained.push(`${key}: ${error.message}`);
-      } else if (requiredFields.has(key)) failures.push(`${key}: ${error.message}`);
-      else { data[key] = []; retained.push(`${key}: ${error.message}`); }
-    }
-  }
-  if (failures.length) throw new Error(`同步失败，缓存未更新（${failures.join("；")}）`);
+  const feeds = await fetchSessionFeeds(requestedSessionKey, previousCache, session.session_name);
+  Object.assign(data, feeds.values);
+  if (feeds.failures.length) throw new Error(`同步失败，缓存未更新（${feeds.failures.join("；")}）`);
   normaliseSessionData(data);
   await mergeDriverRoster(meetingKey, data);
   if (!sessionCacheHealthy(data, requestedSessionKey)) throw new Error("同步返回的数据不完整，缓存未更新");
-  const syncWarnings = [...unavailable.map((field) => `${field}: unavailable`), ...retained];
+  const syncWarnings = [...feeds.unavailable.map((field) => `${field}: unavailable`), ...feeds.retained];
   if (syncWarnings.length) data.sync_warnings = syncWarnings;
+  data.cache_version = "20260827-sync-v2";
+  data.synced_at = new Date().toISOString();
   await writeJsonAtomic(cacheFile, data);
   return { data, source: "openf1" };
 }
@@ -439,7 +481,16 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/session-data") return json(res, 200, await sessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")));
     if (url.pathname === "/api/sync-session-data" && req.method === "POST") {
       const body = await readBody(req);
-      return json(res, 200, await sessionData(body.meeting_key, body.session_key, { force: true }));
+      const syncKey = `${Number(body.meeting_key)}:${Number(body.session_key)}`;
+      let task = sessionSyncInFlight.get(syncKey);
+      if (!task) {
+        task = sessionData(body.meeting_key, body.session_key, { force: true });
+        sessionSyncInFlight.set(syncKey, task);
+        task.finally(() => {
+          if (sessionSyncInFlight.get(syncKey) === task) sessionSyncInFlight.delete(syncKey);
+        }).catch(() => {});
+      }
+      return json(res, 200, await task);
     }
     return serveStatic(req, res, url.pathname);
   } catch (error) { return json(res, 500, { error: error.message || "server error" }); }

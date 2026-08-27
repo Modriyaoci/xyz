@@ -22,7 +22,10 @@ const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.h
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
   || (!localServer && !window.location.pathname.startsWith("/site/"));
 const STATIC_API_BASE = "https://api.openf1.org/v1";
-const staticRequestTimeoutMs = 15000;
+const STATIC_CACHE_VERSION = "20260827-sync-v2";
+const staticRequestTimeoutMs = 6000;
+const staticRequestIntervalMs = 350;
+let staticNextRequestAt = 0;
 const STATIC_CATALOG_URL = new URL("./meetings-2026.json", import.meta.url).href;
 const STATIC_MAPPED_URL = new URL("./netherlands-race-mapped.json", import.meta.url).href;
 const STATIC_STANDINGS_URL = new URL(
@@ -72,22 +75,26 @@ async function staticCacheSet(key, value) {
 }
 
 async function staticFetchJson(endpoint) {
-  for (let attempt = 0; attempt < 4; attempt += 1) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    const now = Date.now();
+    const requestAt = Math.max(now, staticNextRequestAt);
+    staticNextRequestAt = requestAt + staticRequestIntervalMs;
+    if (requestAt > now) await staticSleep(requestAt - now);
     const controller = new AbortController();
     const timer = window.setTimeout(() => controller.abort(), staticRequestTimeoutMs);
     let response;
     try {
       response = await fetch(`${STATIC_API_BASE}${endpoint}`, { headers: { accept: "application/json" }, signal: controller.signal });
     } catch (error) {
-      if (attempt < 1) { await staticSleep(1000); continue; }
+      if (attempt < 1 && error?.name !== "AbortError") { await staticSleep(500); continue; }
       throw error;
     } finally {
       window.clearTimeout(timer);
     }
     if (response.ok) return response.json();
-    if (response.status === 429 && attempt < 3) {
+    if ((response.status === 429 || response.status >= 500) && attempt < 1) {
       const retryAfter = Number(response.headers.get("retry-after"));
-      await staticSleep(Math.max(1500, Number.isFinite(retryAfter) ? retryAfter * 1000 : 0) * (attempt + 1));
+      await staticSleep(Math.min(3000, Math.max(700, Number.isFinite(retryAfter) ? retryAfter * 1000 : 0)));
       continue;
     }
     const error = new Error(`数据源 ${response.status} for ${endpoint}`);
@@ -99,7 +106,9 @@ async function staticFetchJson(endpoint) {
 
 async function refreshStaticCachedFeed(data, sessionKey, field) {
   const sessionEnded = Date.parse(data.session?.date_end || "") < Date.now();
-  if (!sessionEnded || !Array.isArray(data[field]) || data[field].length) return;
+  const hasRetryWarning = Array.isArray(data.sync_warnings)
+    && data.sync_warnings.some((warning) => String(warning).startsWith(`${field}:`) && !String(warning).includes("unavailable"));
+  if (!sessionEnded || !Array.isArray(data[field]) || (data[field].length && !hasRetryWarning)) return;
   const key = Number(sessionKey);
   const probeKey = `${field}:${key}`;
   const now = Date.now();
@@ -107,8 +116,61 @@ async function refreshStaticCachedFeed(data, sessionKey, field) {
   staticFeedProbeAt.set(probeKey, now);
   try {
     const rows = await staticFetchJson(`/${field}?session_key=${encodeURIComponent(key)}`);
-    if (Array.isArray(rows) && rows.length) data[field] = rows;
+    if (Array.isArray(rows)) {
+      data[field] = rows;
+      if (Array.isArray(data.sync_warnings)) {
+        data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith(`${field}:`));
+        if (!data.sync_warnings.length) delete data.sync_warnings;
+      }
+      data.synced_at = new Date().toISOString();
+    }
   } catch { /* retain the existing cache when the data source is unavailable */ }
+}
+
+function retryWarningFields(data) {
+  return [...new Set((Array.isArray(data?.sync_warnings) ? data.sync_warnings : [])
+    .filter((warning) => !String(warning).includes("unavailable"))
+    .map((warning) => String(warning).split(":")[0]))]
+    .filter((field) => sessionFeedDefinitions.some(([name]) => name === field));
+}
+
+const sessionFeedDefinitions = [
+  ["drivers", (sessionKey) => `/drivers?session_key=${sessionKey}`],
+  ["session_result", (sessionKey) => `/session_result?session_key=${sessionKey}`],
+  ["laps", (sessionKey) => `/laps?session_key=${sessionKey}`],
+  ["pit", (sessionKey) => `/pit?session_key=${sessionKey}`],
+  ["position", (sessionKey) => `/position?session_key=${sessionKey}`],
+  ["intervals", (sessionKey) => `/intervals?session_key=${sessionKey}`],
+  ["stints", (sessionKey) => `/stints?session_key=${sessionKey}`],
+  ["race_control", (sessionKey) => `/race_control?session_key=${sessionKey}`],
+  ["weather", (sessionKey) => `/weather?session_key=${sessionKey}`],
+];
+
+async function fetchStaticSessionFeeds(sessionKey, cached, sessionName) {
+  const requiredFields = new Set(["drivers", "session_result"]);
+  const definitions = sessionFeedDefinitions;
+  const values = {};
+  const failures = [];
+  const unavailable = [];
+  const retained = [];
+  let cursor = 0;
+  async function worker() {
+    while (cursor < definitions.length) {
+      const index = cursor;
+      cursor += 1;
+      const [key, endpointFactory] = definitions[index];
+      try {
+        values[key] = await staticFetchJson(endpointFactory(sessionKey));
+      } catch (error) {
+        if (error.status === 404) { values[key] = []; unavailable.push(key); }
+        else if (Array.isArray(cached?.[key])) { values[key] = cached[key]; retained.push(`${key}: ${error.message}`); }
+        else if (requiredFields.has(key)) failures.push(`${key}: ${error.message}`);
+        else { values[key] = []; retained.push(`${key}: ${error.message}`); }
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(3, definitions.length) }, () => worker()));
+  return { values, failures, unavailable, retained };
 }
 
 async function staticCatalog() {
@@ -129,6 +191,13 @@ function stripTyreAgeFields(data) {
     const { tyre_age_at_start, tyre_age, tire_age_at_start, tire_age, ...withoutAge } = stint || {};
     return withoutAge;
   });
+  return data;
+}
+
+function stripIgnoredSyncWarnings(data) {
+  if (!data || typeof data !== "object" || !Array.isArray(data.sync_warnings)) return data;
+  data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith("starting_grid:"));
+  if (!data.sync_warnings.length) delete data.sync_warnings;
   return data;
 }
 
@@ -211,7 +280,7 @@ async function staticSessionList(meetingKey) {
   const meeting = catalog.find((item) => Number(item.meeting_key) === key);
   if (!meeting) throw new Error("找不到对应分站");
   if (meeting.sessions.length) return { data: meeting.sessions, source: "catalog" };
-  const cacheKey = `sessions:${key}`;
+  const cacheKey = `${STATIC_CACHE_VERSION}:sessions:${key}`;
   const cached = await staticCacheGet(cacheKey);
   if (Array.isArray(cached) && cached.length) return { data: cached, source: "cache" };
   const data = await staticFetchJson(`/sessions?meeting_key=${encodeURIComponent(key)}`);
@@ -222,13 +291,14 @@ async function staticSessionList(meetingKey) {
 async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } = {}) {
   const requestedSessionKey = Number(sessionKey);
   if (!Number.isInteger(requestedSessionKey)) throw new Error("该节点尚未获得数据源会话键");
-  const cacheKey = `session:${requestedSessionKey}`;
+  const cacheKey = `${STATIC_CACHE_VERSION}:session:${requestedSessionKey}`;
   const cached = await staticCacheGet(cacheKey);
   if (!force && cached && Number(cached.session?.session_key) === requestedSessionKey) {
-    const sanitised = stripTyreAgeFields(cached);
+    const sanitised = stripIgnoredSyncWarnings(stripTyreAgeFields(cached));
     await refreshStaticCachedFeed(sanitised, requestedSessionKey, "weather");
     if (["Race", "Sprint"].includes(sanitised.session?.session_name)) await refreshStaticCachedFeed(sanitised, requestedSessionKey, "pit");
     await refreshStaticCachedFeed(sanitised, requestedSessionKey, "race_control");
+    for (const field of retryWarningFields(sanitised)) await refreshStaticCachedFeed(sanitised, requestedSessionKey, field);
     enrichBackendMapping(sanitised);
     await staticCacheSet(cacheKey, sanitised);
     return { data: sanitised, source: "cache" };
@@ -236,33 +306,21 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   const sessionsPayload = await staticSessionList(meetingKey);
   const session = (sessionsPayload.data || []).find((item) => Number(item.session_key) === requestedSessionKey);
   if (!session) throw new Error("找不到对应数据源会话");
-  const endpoints = [
-    ["drivers", `/drivers?session_key=${requestedSessionKey}`], ["session_result", `/session_result?session_key=${requestedSessionKey}`], ["starting_grid", `/starting_grid?session_key=${requestedSessionKey}`],
-    ["laps", `/laps?session_key=${requestedSessionKey}`], ["pit", `/pit?session_key=${requestedSessionKey}`], ["position", `/position?session_key=${requestedSessionKey}`], ["intervals", `/intervals?session_key=${requestedSessionKey}`],
-    ["stints", `/stints?session_key=${requestedSessionKey}`], ["race_control", `/race_control?session_key=${requestedSessionKey}`], ["weather", `/weather?session_key=${requestedSessionKey}`],
-  ];
   const data = { meeting: { meeting_key: Number(meetingKey), country_name: session.country_name, location: session.location, meeting_name: session.meeting_name || session.country_name }, session, mapped: null };
-  const unavailable = [];
-  const retained = [];
-  const requiredFields = new Set(["drivers", "session_result"]);
-  for (const [key, endpoint] of endpoints) {
-    await staticSleep(750);
-    try { data[key] = await staticFetchJson(endpoint); }
-    catch (error) {
-      if (error.status === 404) { data[key] = []; unavailable.push(key); }
-      else if (Array.isArray(cached?.[key])) { data[key] = cached[key]; retained.push(`${key}: ${error.message}`); }
-      else if (requiredFields.has(key)) throw new Error(`同步失败，缺少必要数据（${key}: ${error.message}）`);
-      else { data[key] = []; retained.push(`${key}: ${error.message}`); }
-    }
-  }
+  const feeds = await fetchStaticSessionFeeds(requestedSessionKey, cached, session.session_name);
+  Object.assign(data, feeds.values);
+  if (feeds.failures.length) throw new Error(`同步失败，缺少必要数据（${feeds.failures.join("；")}）`);
   if (Number(meetingKey) === 1292 && requestedSessionKey === 11353) {
     try {
       const mappedResponse = await fetch(STATIC_MAPPED_URL, { cache: "no-store" });
       if (mappedResponse.ok) data.mapped = await mappedResponse.json();
     } catch { /* the data source remains usable without the optional mapping */ }
   }
-  const syncWarnings = [...unavailable.map((field) => `${field}: unavailable`), ...retained];
+  const syncWarnings = [...feeds.unavailable.map((field) => `${field}: unavailable`), ...feeds.retained];
   if (syncWarnings.length) data.sync_warnings = syncWarnings;
+  stripIgnoredSyncWarnings(data);
+  data.cache_version = STATIC_CACHE_VERSION;
+  data.synced_at = new Date().toISOString();
   stripTyreAgeFields(data);
   enrichBackendMapping(data);
   await staticCacheSet(cacheKey, data);
@@ -284,7 +342,7 @@ function enrichOfficialStandings(snapshot) {
 }
 
 async function staticStandings({ force = false } = {}) {
-  const cacheKey = `official-standings:${state.season}`;
+  const cacheKey = `${STATIC_CACHE_VERSION}:official-standings:${state.season}`;
   if (!force) {
     const cached = await staticCacheGet(cacheKey);
     if (cached && Number(cached.season) === Number(state.season)) return { data: cached, source: "cache" };
@@ -309,6 +367,8 @@ const syncWarningText = (warnings) => {
   const fields = [...new Set(warnings.map((warning) => String(warning).split(":")[0]).map((field) => labels[field] || field))];
   return fields.length ? ` · 部分字段未更新：${fields.join("、")}` : "";
 };
+const syncTimestampText = (data) => data?.synced_at ? ` · 同步于 ${dateText(data.synced_at)}` : "";
+const syncTitle = (data) => Array.isArray(data?.sync_warnings) && data.sync_warnings.length ? "同步完成（部分字段未更新）" : "同步完成";
 const sessionLabel = (name) => ({"Practice 1": "练习1", "Practice 2": "练习2", "Practice 3": "练习3", "Day 1": "测试第1天", "Day 2": "测试第2天", "Day 3": "测试第3天", "Sprint Qualifying": "冲刺排位赛", Sprint: "冲刺赛", Qualifying: "排位赛", Race: "正赛"}[name] || name || "会话");
 const statusLabel = (row) => row?.dsq ? "DSQ" : row?.dns ? "DNS" : row?.dnf ? "DNF" : "Finished";
 const raceSessionNames = new Set(["Race", "Sprint"]);
@@ -915,7 +975,7 @@ async function loadCurrentData() {
     state.data = enrichBackendMapping(payload.data || {});
     state.selectedDriver = null;
     const sourceLabel = payload.source === "cache" ? "本地缓存" : payload.source === "local" ? "本地快照" : "数据源刚刚拉取并已缓存";
-    setStatus("数据已就绪", `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}${syncWarningText(state.data.sync_warnings)}`, false);
+    setStatus("数据已就绪", `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}${syncTimestampText(state.data)}${syncWarningText(state.data.sync_warnings)}`, false);
     $("cachePathLabel").textContent = `缓存状态：${sourceLabel}`;
     $("metricDrivers").textContent = number((state.data.session_result || []).length);
     const metricLaps = currentPhaseLaps();
@@ -952,7 +1012,7 @@ $("syncBtn").addEventListener("click", async () => {
     state.data = enrichBackendMapping(payload.data || {});
     state.selectedDriver = null;
     const sourceLabel = "数据源已同步并更新缓存";
-    setStatus("同步完成", `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}${syncWarningText(state.data.sync_warnings)}`, false);
+    setStatus(syncTitle(state.data), `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}${syncTimestampText(state.data)}${syncWarningText(state.data.sync_warnings)}`, false);
     $("cachePathLabel").textContent = `缓存状态：${sourceLabel}`;
     $("metricDrivers").textContent = number((state.data.session_result || []).length);
     const metricLaps = currentPhaseLaps();
