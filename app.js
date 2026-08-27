@@ -6,6 +6,9 @@ const state = {
   activeSession: null,
   activePhase: null,
   data: null,
+  standings: null,
+  standingsKind: "drivers",
+  activeView: "schedule",
   selectedDriver: null,
   search: "",
   weatherView: "all",
@@ -15,11 +18,16 @@ const state = {
 
 // GitHub Pages cannot run the Node proxy. In that deployment the browser talks
 // to OpenF1 directly and keeps complete session snapshots in IndexedDB.
+const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
-  || !window.location.pathname.startsWith("/site/");
+  || (!localServer && !window.location.pathname.startsWith("/site/"));
 const STATIC_API_BASE = "https://api.openf1.org/v1";
 const STATIC_CATALOG_URL = new URL("./meetings-2026.json", import.meta.url).href;
 const STATIC_MAPPED_URL = new URL("./netherlands-race-mapped.json", import.meta.url).href;
+const STATIC_STANDINGS_URL = new URL(
+  window.location.pathname.startsWith("/site/") ? "../official-standings-2026.json" : "./official-standings-2026.json",
+  import.meta.url,
+).href;
 const staticDb = { promise: null };
 const staticSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -233,6 +241,34 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   return { data, source: "openf1" };
 }
 
+function enrichOfficialStandings(snapshot) {
+  if (!snapshot || typeof snapshot !== "object") return null;
+  const drivers = (Array.isArray(snapshot.drivers) ? snapshot.drivers : []).map((row) => ({
+    ...row,
+    backend_driver_id: resolveBackendDriverId({ name_acronym: row.code, full_name: row.name }),
+    backend_team_id: lookupIdentity(backendTeamIdByName, row.team),
+  }));
+  const teams = (Array.isArray(snapshot.teams) ? snapshot.teams : []).map((row) => ({
+    ...row,
+    backend_team_id: lookupIdentity(backendTeamIdByName, row.name),
+  }));
+  return { ...snapshot, drivers, teams };
+}
+
+async function staticStandings({ force = false } = {}) {
+  const cacheKey = `official-standings:${state.season}`;
+  if (!force) {
+    const cached = await staticCacheGet(cacheKey);
+    if (cached && Number(cached.season) === Number(state.season)) return { data: cached, source: "cache" };
+  }
+  const response = await fetch(STATIC_STANDINGS_URL, { cache: "no-store" });
+  if (!response.ok) throw new Error(`年度排名快照读取失败 ${response.status}`);
+  const data = await response.json();
+  if (!Array.isArray(data.drivers) || !Array.isArray(data.teams)) throw new Error("年度排名快照格式不完整");
+  await staticCacheSet(cacheKey, data);
+  return { data, source: "official" };
+}
+
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"}[char]));
 const number = (value, fallback = "--") => value === null || value === undefined || value === "" ? fallback : Number(value).toLocaleString("en-US");
@@ -268,6 +304,8 @@ async function api(path, options = {}) {
       const body = JSON.parse(options.body || "{}");
       return staticSessionSnapshot(body.meeting_key, body.session_key, { force: true });
     }
+    if (url.pathname === "/api/standings") return staticStandings();
+    if (url.pathname === "/api/sync-standings") return staticStandings({ force: true });
     return { authenticated: true, username: "nana" };
   }
   const response = await fetch(path, options);
@@ -286,6 +324,57 @@ function setStatus(title, meta, loading = false) {
   $("statusTitle").textContent = title;
   $("statusMeta").textContent = meta;
   $("dataStatus").classList.toggle("loading", loading);
+}
+
+function renderStandings() {
+  const snapshot = state.standings;
+  const kind = state.standingsKind;
+  const rows = snapshot ? (kind === "teams" ? snapshot.teams : snapshot.drivers) : [];
+  const table = $("standingsTable");
+  if (!table) return;
+  $("standingsTableTitle").textContent = kind === "teams" ? "车队排名" : "车手排名";
+  const header = kind === "teams"
+    ? "<tr><th>名次</th><th>车队</th><th>后台车队ID</th><th>积分</th></tr>"
+    : "<tr><th>名次</th><th>车手</th><th>缩写</th><th>国籍</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>积分</th></tr>";
+  table.querySelector("thead").innerHTML = header;
+  table.querySelector("tbody").innerHTML = rows.length
+    ? rows.map((row) => kind === "teams"
+      ? `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td>${esc(row.backend_team_id ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`
+      : `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td><span class="acronym">${esc(row.code || "--")}</span></td><td>${esc(row.nationality || "--")}</td><td>${esc(row.team || "--")}</td><td>${esc(row.backend_driver_id ?? "--")}</td><td>${esc(row.backend_team_id ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`).join("")
+    : `<tr><td colspan="${kind === "teams" ? 4 : 8}" class="empty-cell">${snapshot ? "暂无年度排名数据" : "点击加载年度排名"}</td></tr>`;
+  $("standingsCapturedAt").textContent = snapshot?.captured_at ? `官网快照：${dateText(snapshot.captured_at)}` : "官网快照：--";
+  $("standingsCount").textContent = snapshot ? `${rows.length} 条` : "--";
+  $("standingsSource").textContent = snapshot ? "数据源：官网排名快照" : "数据源：--";
+  document.querySelectorAll("[data-standings-kind]").forEach((button) => {
+    button.classList.toggle("active", button.dataset.standingsKind === kind);
+    button.setAttribute("aria-selected", button.dataset.standingsKind === kind ? "true" : "false");
+  });
+}
+
+async function loadOfficialStandings({ force = false } = {}) {
+  const button = $("standingsSyncBtn");
+  const status = $("standingsStatus");
+  if (button) button.disabled = true;
+  if (status) status.textContent = force ? "正在刷新官网快照…" : "正在读取官网快照…";
+  try {
+    const payload = await api(force ? "/api/sync-standings" : "/api/standings", force ? { method: "POST" } : {});
+    state.standings = enrichOfficialStandings(payload.data);
+    renderStandings();
+    if (status) status.textContent = payload.source === "cache" || payload.source === "local" ? "已读取本地快照" : "排名快照已更新";
+  } catch (error) {
+    if (status) status.textContent = error.message || "年度排名读取失败";
+    if (!state.standings) renderStandings();
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function setActiveView(view) {
+  state.activeView = view === "standings" ? "standings" : "schedule";
+  $("scheduleView").hidden = state.activeView !== "schedule";
+  $("standingsView").hidden = state.activeView !== "standings";
+  document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === state.activeView));
+  if (state.activeView === "standings" && !state.standings) loadOfficialStandings();
 }
 
 function resultHeaderHtml() {
@@ -587,16 +676,25 @@ function getResultRows() {
 
 function displayTime(row) {
   if (state.activePhase) return row.duration == null ? "--" : formatTime(row.duration);
-  if (row.mapped?.time?.value) return row.mapped.time.value;
-  if (row.duration == null) return row.gap == null ? "--" : `+${Number(row.gap).toFixed(3)}`;
+  if (isRaceSession() && Number(row.raw?.position) !== 1) {
+    return displayGap(row.gap ?? row.mapped?.gap_to_leader);
+  }
+  if (row.mapped?.time?.value) return displayGap(row.mapped.time.value);
+  if (row.duration == null) return displayGap(row.gap);
   return formatTime(row.duration);
 }
 
 function displayGap(value) {
   if (value == null || value === "") return "--";
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return String(value);
-  return numeric === 0 ? "0" : `+${numeric.toFixed(3)}`;
+  const text = String(value).trim();
+  const laps = text.match(/^\+?\s*(\d+)\s*(?:LAPS?|L)$/i);
+  if (laps) {
+    const count = Number(laps[1]);
+    return `+ ${count} ${count === 1 ? "lap" : "laps"}`;
+  }
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return text || "--";
+  return amount === 0 ? "0" : `+${amount.toFixed(3)}`;
 }
 
 function finalIntervalMap() {
@@ -626,7 +724,7 @@ function intervalToPrevious(row, rowIndex, rows, intervalMap) {
 
 function gapToLeaderText(row) {
   const mappedGap = row.mapped?.gap_to_leader;
-  return mappedGap !== null && mappedGap !== undefined && mappedGap !== "" ? String(mappedGap) : displayGap(row.gap);
+  return mappedGap !== null && mappedGap !== undefined && mappedGap !== "" ? displayGap(mappedGap) : displayGap(row.gap);
 }
 
 function renderResults() {
@@ -847,6 +945,12 @@ $("driverSearch").addEventListener("input", (event) => { state.search = event.ta
 $("clearSearch").addEventListener("click", () => { $("driverSearch").value = ""; state.search = ""; renderResults(); });
 $("weatherView").addEventListener("change", (event) => { state.weatherView = event.target.value; renderWeather(); });
 $("messageView").addEventListener("change", (event) => { state.messageView = event.target.value; renderMessages(); });
+document.querySelectorAll("[data-view]").forEach((button) => button.addEventListener("click", () => setActiveView(button.dataset.view)));
+document.querySelectorAll("[data-standings-kind]").forEach((button) => button.addEventListener("click", () => {
+  state.standingsKind = button.dataset.standingsKind === "teams" ? "teams" : "drivers";
+  renderStandings();
+}));
+$("standingsSyncBtn")?.addEventListener("click", () => loadOfficialStandings({ force: true }));
 
 resetDataPanels();
 loadMeetings();

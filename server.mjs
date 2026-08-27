@@ -2,6 +2,8 @@ import http from "node:http";
 import fs from "node:fs/promises";
 import path from "node:path";
 import crypto from "node:crypto";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
@@ -10,6 +12,8 @@ const apiBase = "https://api.openf1.org/v1";
 const cacheDir = path.join(root, "work", "openf1_cache");
 const localDutchDir = path.join(root, "work", "openf1_netherlands_2026");
 const localMapped = path.join(root, "outputs", "openf1-mapped-result", "netherlands_2026_race_openf1_mapped.json");
+const officialStandingsFile = path.join(root, "official-standings-2026.json");
+const execFileAsync = promisify(execFile);
 const authUsername = "nana";
 const authSalt = "f1-openf1-local-auth";
 const authPasswordHash = crypto.scryptSync("123456", authSalt, 32);
@@ -185,6 +189,23 @@ async function sessions(meetingKey) {
     if (fallback.length) return { data: fallback, source: "catalog", error: error.message };
     throw error;
   }
+}
+
+async function officialStandings() {
+  if (!(await exists(officialStandingsFile))) throw new Error("年度排名快照尚未生成");
+  const data = await readJson(officialStandingsFile);
+  if (!Array.isArray(data.drivers) || !Array.isArray(data.teams)) throw new Error("年度排名快照格式不完整");
+  return { data, source: "local" };
+}
+
+async function syncOfficialStandings() {
+  try {
+    await execFileAsync(process.execPath, [path.join(root, "scripts", "sync-official-standings.mjs"), "2026"], { cwd: root, timeout: 120000 });
+  } catch (error) {
+    const detail = error?.stderr?.trim() || error?.message || "官网快照同步失败";
+    throw new Error(`年度排名同步失败：${detail}`);
+  }
+  return officialStandings();
 }
 
 async function localSessionData(meetingKey, sessionKey) {
@@ -369,6 +390,8 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname.startsWith("/api/") && !authenticated(req)) return json(res, 401, { error: "需要登录" });
     if (url.pathname === "/api/meetings") return json(res, 200, await meetings(url.searchParams.get("year") || "2026"));
     if (url.pathname === "/api/sessions") return json(res, 200, await sessions(url.searchParams.get("meeting_key")));
+    if (url.pathname === "/api/standings" && req.method === "GET") return json(res, 200, await officialStandings());
+    if (url.pathname === "/api/sync-standings" && req.method === "POST") return json(res, 200, await syncOfficialStandings());
     if (url.pathname === "/api/session-data") return json(res, 200, await sessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")));
     if (url.pathname === "/api/sync-session-data" && req.method === "POST") {
       const body = await readBody(req);

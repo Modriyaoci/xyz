@@ -1,0 +1,285 @@
+{
+  "season": 2026,
+  "captured_at": "2026-08-27T05:27:27.284Z",
+  "source": {
+    "drivers": "https://www.formula1.com/en/results/2026/drivers",
+    "teams": "https://www.formula1.com/en/results/2026/team"
+  },
+  "drivers": [
+    {
+      "position": 1,
+      "name": "Kimi Antonelli",
+      "code": "ANT",
+      "nationality": "ITA",
+      "team": "Mercedes",
+      "points": 242,
+      "url": "https://www.formula1.com/en/results/2026/drivers/ANDANT01/kimi-antonelli"
+    },
+    {
+      "position": 2,
+      "name": "George Russell",
+      "code": "RUS",
+      "nationality": "GBR",
+      "team": "Mercedes",
+      "points": 183,
+      "url": "https://www.formula1.com/en/results/2026/drivers/GEORUS01/george-russell"
+    },
+    {
+      "position": 3,
+      "name": "Lewis Hamilton",
+      "code": "HAM",
+      "nationality": "GBR",
+      "team": "Ferrari",
+      "points": 183,
+      "url": "https://www.formula1.com/en/results/2026/drivers/LEWHAM01/lewis-hamilton"
+    },
+    {
+      "position": 4,
+      "name": "Lando Norris",
+      "code": "NOR",
+      "nationality": "GBR",
+      "team": "McLaren",
+      "points": 159,
+      "url": "https://www.formula1.com/en/results/2026/drivers/LANNOR01/lando-norris"
+    },
+    {
+      "position": 5,
+      "name": "Charles Leclerc",
+      "code": "LEC",
+      "nationality": "MON",
+      "team": "Ferrari",
+      "points": 155,
+      "url": "https://www.formula1.com/en/results/2026/drivers/CHALEC01/charles-leclerc"
+    },
+    {
+      "position": 6,
+      "name": "Max Verstappen",
+      "code": "VER",
+      "nationality": "NED",
+      "team": "Red Bull Racing",
+      "points": 112,
+      "url": "https://www.formula1.com/en/results/2026/drivers/MAXVER01/max-verstappen"
+    },
+    {
+      "position": 7,
+      "name": "Oscar Piastri",
+      "code": "PIA",
+      "nationality": "AUS",
+      "team": "McLaren",
+      "points": 104,
+      "url": "https://www.formula1.com/en/results/2026/drivers/OSCPIA01/oscar-piastri"
+    },
+    {
+      "position": 8,
+      "name": "Isack Hadjar",
+      "code": "HAD",
+      "nationality": "FRA",
+      "team": "Red Bull Racing",
+      "points": 68,
+      "url": "https://www.formula1.com/en/results/2026/drivers/ISAHAD01/isack-hadjar"
+    },
+    {
+      "position": 9,
+      "name": "Liam Lawson",
+      "code": "LAW",
+      "nationality": "NZL",
+      "team": "Red Bull Racing",
+      "points": 49,
+      "url": "https://www.formula1.com/en/results/2026/drivers/LIALAW01/liam-lawson"
+    },
+    {
+      "position": 10,
+      "name": "Pierre Gasly",
+      "code": "GAS",
+      "nationality": "FRA",
+      "team": "Alpine",
+      "points": 44,
+      "url": "https://www.formula1.com/en/results/2026/drivers/PIEGAS01/pierre-gasly"
+    },
+    {
+      "position": 11,
+      "name": "Arvid Lindblad",
+      "code": "LIN",
+      "nationality": "GBR",
+      "team": "Racing Bulls",
+      "points": 23,
+      "url": "https://www.formula1.com/en/results/2026/drivers/ARVLIN01/arvid-lindblad"
+    },
+    {
+      "position": 12,
+      "name": "Franco Colapinto",
+      "code": "COL",
+      "nationality": "ARG",
+      "team": "Alpine",
+      "points": 19,
+      "url": "https://www.formula1.com/en/results/2026/drivers/FRACOL01/franco-colapinto"
+    },
+    {
+      "position": 13,
+      "name": "Oliver Bearman",
+      "code": "BEA",
+      "nationality": "GBR",
+      "team": "Haas F1 Team",
+      "points": 18,
+      "url": "https://www.formula1.com/en/results/2026/drivers/OLIBEA01/oliver-bearman"
+    },
+    {
+      "position": 14,
+      "name": "Gabriel Bortoleto",
+      "code": "BOR",
+      "nationality": "BRA",
+      "team": "Audi",
+      "points": 10,
+      "url": "https://www.formula1.com/en/results/2026/drivers/GABBOR01/gabriel-bortoleto"
+    },
+    {
+      "position": 15,
+      "name": "Nico Hulkenberg",
+      "code": "HUL",
+      "nationality": "GER",
+      "team": "Audi",
+      "points": 6,
+      "url": "https://www.formula1.com/en/results/2026/drivers/NICHUL01/nico-hulkenberg"
+    },
+    {
+      "position": 16,
+      "name": "Carlos Sainz",
+      "code": "SAI",
+      "nationality": "ESP",
+      "team": "Williams",
+      "points": 6,
+      "url": "https://www.formula1.com/en/results/2026/drivers/CARSAI01/carlos-sainz"
+    },
+    {
+      "position": 17,
+      "name": "Alexander Albon",
+      "code": "ALB",
+      "nationality": "THA",
+      "team": "Williams",
+      "points": 5,
+      "url": "https://www.formula1.com/en/results/2026/drivers/ALEALB01/alexander-albon"
+    },
+    {
+      "position": 18,
+      "name": "Esteban Ocon",
+      "code": "OCO",
+      "nationality": "FRA",
+      "team": "Haas F1 Team",
+      "points": 3,
+      "url": "https://www.formula1.com/en/results/2026/drivers/ESTOCO01/esteban-ocon"
+    },
+    {
+      "position": 19,
+      "name": "Fernando Alonso",
+      "code": "ALO",
+      "nationality": "ESP",
+      "team": "Aston Martin",
+      "points": 3,
+      "url": "https://www.formula1.com/en/results/2026/drivers/FERALO01/fernando-alonso"
+    },
+    {
+      "position": 20,
+      "name": "Yuki Tsunoda",
+      "code": "TSU",
+      "nationality": "JPN",
+      "team": "Racing Bulls",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2026/drivers/YUKTSU01/yuki-tsunoda"
+    },
+    {
+      "position": 21,
+      "name": "Lance Stroll",
+      "code": "STR",
+      "nationality": "CAN",
+      "team": "Aston Martin",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2026/drivers/LANSTR01/lance-stroll"
+    },
+    {
+      "position": 22,
+      "name": "Valtteri Bottas",
+      "code": "BOT",
+      "nationality": "FIN",
+      "team": "Cadillac",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2026/drivers/VALBOT01/valtteri-bottas"
+    },
+    {
+      "position": 23,
+      "name": "Sergio Perez",
+      "code": "PER",
+      "nationality": "MEX",
+      "team": "Cadillac",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2026/drivers/SERPER01/sergio-perez"
+    }
+  ],
+  "teams": [
+    {
+      "position": 1,
+      "name": "Mercedes",
+      "points": 425,
+      "url": "https://www.formula1.com/en/results/2026/team/Mercedes"
+    },
+    {
+      "position": 2,
+      "name": "Ferrari",
+      "points": 338,
+      "url": "https://www.formula1.com/en/results/2026/team/Ferrari"
+    },
+    {
+      "position": 3,
+      "name": "McLaren",
+      "points": 263,
+      "url": "https://www.formula1.com/en/results/2026/team/McLaren-Mercedes"
+    },
+    {
+      "position": 4,
+      "name": "Red Bull Racing",
+      "points": 186,
+      "url": "https://www.formula1.com/en/results/2026/team/Red-Bull-Racing-Red-Bull-Ford"
+    },
+    {
+      "position": 5,
+      "name": "Racing Bulls",
+      "points": 66,
+      "url": "https://www.formula1.com/en/results/2026/team/Racing-Bulls-Red-Bull-Ford"
+    },
+    {
+      "position": 6,
+      "name": "Alpine",
+      "points": 63,
+      "url": "https://www.formula1.com/en/results/2026/team/Alpine-Mercedes"
+    },
+    {
+      "position": 7,
+      "name": "Haas F1 Team",
+      "points": 21,
+      "url": "https://www.formula1.com/en/results/2026/team/Haas-Ferrari"
+    },
+    {
+      "position": 8,
+      "name": "Audi",
+      "points": 16,
+      "url": "https://www.formula1.com/en/results/2026/team/Audi"
+    },
+    {
+      "position": 9,
+      "name": "Williams",
+      "points": 11,
+      "url": "https://www.formula1.com/en/results/2026/team/Atlassian-Williams-Mercedes"
+    },
+    {
+      "position": 10,
+      "name": "Aston Martin",
+      "points": 3,
+      "url": "https://www.formula1.com/en/results/2026/team/Aston-Martin-Aramco-Honda"
+    },
+    {
+      "position": 11,
+      "name": "Cadillac",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2026/team/Cadillac-Ferrari"
+    }
+  ]
+}
