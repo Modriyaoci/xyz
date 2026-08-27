@@ -61,20 +61,26 @@ async function staticCacheSet(key, value) {
 }
 
 async function staticFetchJson(endpoint) {
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 30000);
-  let response;
-  try {
-    response = await fetch(`${STATIC_API_BASE}${endpoint}`, { headers: { accept: "application/json" }, signal: controller.signal });
-  } finally {
-    window.clearTimeout(timer);
-  }
-  if (!response.ok) {
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), 30000);
+    let response;
+    try {
+      response = await fetch(`${STATIC_API_BASE}${endpoint}`, { headers: { accept: "application/json" }, signal: controller.signal });
+    } finally {
+      window.clearTimeout(timer);
+    }
+    if (response.ok) return response.json();
+    if (response.status === 429 && attempt < 3) {
+      const retryAfter = Number(response.headers.get("retry-after"));
+      await staticSleep(Math.max(1500, Number.isFinite(retryAfter) ? retryAfter * 1000 : 0) * (attempt + 1));
+      continue;
+    }
     const error = new Error(`数据源 ${response.status} for ${endpoint}`);
     error.status = response.status;
     throw error;
   }
-  return response.json();
+  throw new Error(`数据源请求失败 for ${endpoint}`);
 }
 
 async function staticCatalog() {
@@ -120,7 +126,7 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   const data = { meeting: { meeting_key: Number(meetingKey), country_name: session.country_name, location: session.location, meeting_name: session.meeting_name || session.country_name }, session, mapped: null };
   const unavailable = [];
   for (const [key, endpoint] of endpoints) {
-    await staticSleep(360);
+    await staticSleep(750);
     try { data[key] = await staticFetchJson(endpoint); }
     catch (error) {
       if (error.status === 404) { data[key] = []; unavailable.push(key); }
