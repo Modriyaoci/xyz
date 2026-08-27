@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111827" />
+    <title>登录 | F1 数据中心</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body class="login-page">
+    <main class="login-shell">
+      <section class="login-panel" aria-labelledby="loginTitle">
+        <div class="login-brand"><div class="brand-mark" aria-hidden="true">F1</div><div><div class="brand-title">F1 数据中心</div><div class="brand-subtitle">赛后数据</div></div></div>
+        <div class="eyebrow">Private access</div>
+        <h1 id="loginTitle">登录</h1>
+        <p class="login-subtitle">请输入账户信息继续。</p>
+        <form id="loginForm">
+          <label>账户名<input id="username" name="username" autocomplete="username" required /></label>
+          <label>密码<input id="password" name="password" type="password" autocomplete="current-password" required /></label>
+          <button class="primary-button login-button" type="submit"><span>进入数据中心</span><span aria-hidden="true">→</span></button>
+          <div class="login-error" id="loginError" role="alert"></div>
+        </form>
+      </section>
+    </main>
+    <script>
+      const form = document.getElementById("loginForm");
+      const error = document.getElementById("loginError");
+      const staticMode = new URLSearchParams(window.location.search).get("static") === "1" || !window.location.pathname.startsWith("/site/");
+      const homePath = staticMode ? "./" : "/";
+      if (staticMode && window.localStorage.getItem("f1-static-auth") === "1") window.location.replace(homePath);
+      if (!staticMode) fetch("/api/me").then((response) => response.json()).then((payload) => { if (payload.authenticated) window.location.replace(homePath); }).catch(() => {});
+      form.addEventListener("submit", async (event) => {
+        event.preventDefault();
+        error.textContent = "";
+        const button = form.querySelector("button");
+        button.disabled = true;
+        try {
+          const credentials = { username: document.getElementById("username").value, password: document.getElementById("password").value };
+          if (staticMode) {
+            if (credentials.username !== "nana" || credentials.password !== "123456") throw new Error("账户名或密码不正确");
+            window.localStorage.setItem("f1-static-auth", "1");
+          } else {
+            const response = await fetch("/api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(credentials) });
+            const payload = await response.json();
+            if (!response.ok) throw new Error(payload.error || "登录失败");
+          }
+          window.location.replace(homePath);
+        } catch (loginError) {
+          error.textContent = loginError.message;
+          button.disabled = false;
+        }
+      });
+    </script>
+  </body>
+</html>

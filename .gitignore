@@ -1,0 +1,6 @@
+work/openf1_cache/
+work/openf1_netherlands_2026/
+work/quarantine/
+outputs/
+.DS_Store
+npm-debug.log*

@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#111827" />
+    <title>F1 赛后数据</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script>
+      const staticPages = new URLSearchParams(window.location.search).get("static") === "1" || !window.location.pathname.startsWith("/site/");
+      if (staticPages && window.localStorage.getItem("f1-static-auth") !== "1") window.location.replace("./login.html");
+    </script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true">F1</div>
+          <div>
+            <div class="brand-title">F1 数据中心</div>
+            <div class="brand-subtitle">赛后数据</div>
+          </div>
+        </div>
+        <div class="topbar-actions">
+          <span class="connection-state"><span class="state-dot"></span><span id="connectionText">正在连接</span></span>
+          <span class="account-name">nana</span>
+          <button class="ghost-button top-logout" id="logoutBtn">退出</button>
+          <button class="icon-button" id="refreshBtn" title="刷新当前节点" aria-label="刷新当前节点">↻</button>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <aside class="sidebar" aria-label="主导航">
+          <div class="side-item active"><span class="side-icon">⌂</span><span>赛程管理</span></div>
+          <div class="side-item"><span class="side-icon">◌</span><span>数据说明</span></div>
+          <div class="sidebar-note">数据缓存<br />按需加载</div>
+        </aside>
+
+        <main class="main-content">
+          <div class="breadcrumbs"><span>F1</span><span>/</span><span>赛程管理</span><span>/</span><strong>比赛详情</strong></div>
+
+          <section class="meeting-head" aria-labelledby="pageTitle">
+            <div>
+              <div class="eyebrow">赛后数据节点</div>
+              <h1 id="pageTitle">荷兰大奖赛</h1>
+              <p id="pageSubtitle">选择分站和会话节点，按需加载并缓存。</p>
+            </div>
+            <div class="meeting-id-block">
+              <span>Meeting</span><strong id="meetingKeyLabel">1292</strong>
+              <span>Session</span><strong id="sessionKeyLabel">11353</strong>
+            </div>
+          </section>
+
+          <section class="selector-panel" aria-label="分站和节点选择">
+            <div class="selector-row">
+              <label>赛季<select id="seasonSelect"></select></label>
+              <label>分站<select id="meetingSelect"></select></label>
+              <label>节点<select id="sessionSelect"></select></label>
+              <button class="primary-button" id="loadBtn"><span>加载数据</span><span aria-hidden="true">→</span></button>
+              <button class="ghost-button sync-button" id="syncBtn" title="从数据源重新同步当前节点">↻ <span>同步数据源</span></button>
+            </div>
+            <div class="selector-hint" id="selectorHint">2026 每站的 Meeting / Session 已预置；首次选择节点时请求数据源，成功后保存在本地缓存。</div>
+          </section>
+
+          <nav class="session-nav" id="sessionTabs" aria-label="会话节点"></nav>
+
+          <section class="status-strip" id="dataStatus" aria-live="polite">
+            <div class="status-title"><span class="status-pulse"></span><span id="statusTitle">等待加载</span></div>
+            <div class="status-meta" id="statusMeta">请选择一个会话节点</div>
+          </section>
+
+          <section class="metric-row" id="metrics">
+            <div class="metric"><span class="metric-label">车手</span><strong id="metricDrivers">--</strong><span class="metric-note">当前节点</span></div>
+            <div class="metric"><span class="metric-label">圈数</span><strong id="metricLaps">--</strong><span class="metric-note">完成圈数</span></div>
+            <div class="metric"><span class="metric-label">天气记录</span><strong id="metricWeather">--</strong><span class="metric-note">时间序列</span></div>
+            <div class="metric"><span class="metric-label">赛会消息</span><strong id="metricMessages">--</strong><span class="metric-note">控制记录</span></div>
+          </section>
+
+          <section class="panel" aria-labelledby="resultsTitle">
+            <div class="panel-header">
+              <div><div class="section-kicker">结果表</div><h2 id="resultsTitle">赛果</h2></div>
+              <div class="panel-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="driverSearch" type="search" placeholder="搜索车手、车号或车队" /></label><button class="ghost-button" id="clearSearch">清除</button></div>
+            </div>
+            <div class="table-wrap">
+              <table class="data-table results-table" id="resultsTable">
+                <thead><tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>发车位</th><th>圈数</th><th id="resultTimeHeader">时间 / 差距</th><th>积分</th><th>状态</th><th>上一圈</th><th id="resultFastestHeader">最快圈</th><th>间隔</th><th>冠军差距</th><th>进站</th><th>领跑圈</th><th>NC（计算）</th><th>当前轮胎</th><th>赛道限制</th><th>小计时段</th><th>计时段</th></tr></thead>
+                <tbody><tr><td colspan="22" class="empty-cell">选择节点后加载数据</td></tr></tbody>
+              </table>
+            </div>
+            <div class="table-footer" id="resultsFooter">数据行将在加载后显示。点击车手行可查看扩展字段。</div>
+          </section>
+
+          <section class="split-grid">
+            <div class="panel" aria-labelledby="driverDetailsTitle">
+              <div class="panel-header compact"><div><div class="section-kicker">扩展字段</div><h2 id="driverDetailsTitle">车手详情</h2></div><span class="panel-badge">数据源</span></div>
+              <div class="detail-placeholder" id="driverDetails"><span class="placeholder-icon">＋</span><span>点击上方赛果中的车手行</span><small>查看最后一圈、计时段、轮胎和赛道限制</small></div>
+            </div>
+            <div class="panel" aria-labelledby="weatherTitle">
+            <div class="panel-header compact"><div><div class="section-kicker">环境</div><h2 id="weatherTitle">天气记录</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="weatherView"><option value="all">全部</option><option value="50">最近 50 条</option><option value="20">最近 20 条</option></select></label><span class="panel-badge" id="weatherBadge">--</span></div></div>
+              <div class="weather-grid" id="weatherSnapshot"><div class="empty-cell">暂无天气记录</div></div>
+              <div class="mini-table-wrap record-scroll"><table class="mini-table" id="weatherTable"><thead><tr><th>时间</th><th>气温</th><th>赛道</th><th>湿度</th><th>气压</th><th>风速</th><th>风向</th><th>降雨</th></tr></thead><tbody><tr><td colspan="8" class="empty-cell">--</td></tr></tbody></table></div>
+            </div>
+          </section>
+
+          <section class="panel" aria-labelledby="tyreTitle">
+            <div class="panel-header compact"><div><div class="section-kicker">策略</div><h2 id="tyreTitle">轮胎历史</h2></div><span class="panel-badge" id="tyreBadge">--</span></div>
+            <div class="table-wrap"><table class="data-table dense tyre-table" id="tyreTable"><thead><tr><th>车手</th><th>车号</th><th>轮胎策略（含圈次）</th><th>段数</th><th>总圈数</th><th>当前轮胎</th><th>当前胎龄</th><th>最后一段</th></tr></thead><tbody><tr><td colspan="8" class="empty-cell">暂无轮胎记录</td></tr></tbody></table></div>
+          </section>
+
+          <section class="panel" aria-labelledby="messagesTitle">
+            <div class="panel-header compact"><div><div class="section-kicker">控制记录</div><h2 id="messagesTitle">赛会消息</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="messageView"><option value="all">全部</option><option value="100">最近 100 条</option><option value="30">最近 30 条</option></select></label><span class="panel-badge" id="messageBadge">--</span></div></div>
+            <div class="table-wrap record-scroll"><table class="data-table dense" id="messageTable"><thead><tr><th>时间</th><th>圈次</th><th>类别</th><th>旗帜</th><th>范围</th><th>车号</th><th>计时段</th><th>排位阶段</th><th>消息</th></tr></thead><tbody><tr><td colspan="9" class="empty-cell">暂无赛会消息</td></tr></tbody></table></div>
+          </section>
+
+          <footer class="page-footer"><span>数据源：<a href="https://openf1.org/" target="_blank" rel="noreferrer">OpenF1 API</a></span><span id="cachePathLabel">缓存状态：--</span><span>不含赛道图、坐标和车辆位置数据</span></footer>
+        </main>
+      </div>
+    </div>
+    <script type="module" src="./app.js?v=20260827-sector-timing"></script>
+  </body>
+</html>
