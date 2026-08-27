@@ -1,0 +1,38 @@
+name: Sync official F1 standings snapshot
+
+on:
+  schedule:
+    # 00:00 UTC is 08:00 Asia/Shanghai every Monday.
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: official-standings-sync
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Fetch official standings snapshot
+        run: node scripts/sync-official-standings.mjs 2026
+      - name: Commit changed snapshot
+        run: |
+          if git diff --quiet -- official-standings-2026.json; then
+            echo "Official standings snapshot is unchanged"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add official-standings-2026.json
+          git commit -m "Update official F1 standings snapshot"
+          git push
