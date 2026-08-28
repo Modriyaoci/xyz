@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#111827" />
     <title>F1 赛后数据</title>
-    <link rel="stylesheet" href="./styles.css" />
+    <link rel="stylesheet" href="./styles.css?v=20260828-ui-v2" />
     <script>
       const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
       const staticPages = new URLSearchParams(window.location.search).get("static") === "1" || (!localServer && !window.location.pathname.startsWith("/site/"));
@@ -173,9 +173,9 @@
             <section class="panel guide-panel" aria-labelledby="guideTermsTitle">
               <div class="panel-header"><div><div class="section-kicker">07 · 比赛术语</div><h2 id="guideTermsTitle">比赛术语</h2></div><span class="panel-badge">业务解释</span></div>
               <div class="table-wrap"><table class="data-table guide-table guide-terms-table"><thead><tr><th>英文术语（消息内容，不是字段）</th><th>中文含义</th><th>在页面中的作用</th></tr></thead><tbody>
-                <tr><td><code>SESSION STARTED</code> / <code>RACE START</code></td><td>会话已开始 / 正赛开始</td><td>标记练习、排位或比赛正式进入计时阶段。</td></tr>
-                <tr><td><code>SESSION RESUMED</code> / <code>RACE WILL RESUME</code></td><td>会话继续 / 比赛将继续</td><td>红旗或暂停后恢复运行，不代表重新开始一场比赛。</td></tr>
-                <tr><td><code>SESSION ABORTED</code> / <code>RACE SUSPENDED</code></td><td>会话中止 / 比赛暂停</td><td>说明当前流程被中断；消息仍保留在赛会记录中。</td></tr>
+                <tr><td><code>SESSION STARTED</code> / <code>RACE START</code></td><td>比赛开始 / 比赛开始</td><td>标记练习、排位或比赛正式进入计时阶段。</td></tr>
+                <tr><td><code>SESSION RESUMED</code> / <code>RACE WILL RESUME</code></td><td>比赛继续 / 比赛将继续</td><td>红旗或暂停后恢复运行，不代表重新开始一场比赛。</td></tr>
+                <tr><td><code>SESSION ABORTED</code> / <code>RACE SUSPENDED</code></td><td>比赛中止 / 比赛暂停</td><td>说明当前流程被中断；消息仍保留在赛会记录中。</td></tr>
                 <tr><td><code>TRACK CLEAR</code> / <code>CLEAR</code></td><td>赛道清理完毕</td><td>表示事故处理或障碍清理完成，通常与旗语恢复配合出现。</td></tr>
                 <tr><td><code>VSC DEPLOYED</code> / <code>VSC ENDING</code></td><td>虚拟安全车已出动 / 即将结束</td><td>全场受虚拟安全车速度规则约束，页面只记录赛会状态。</td></tr>
                 <tr><td><code>SAFETY CAR DEPLOYED</code> / <code>SAFETY CAR IN THIS LAP</code></td><td>安全车出动 / 安全车本圈结束</td><td>实际安全车带队控速；“本圈结束”表示将驶回维修区。</td></tr>
@@ -197,7 +197,7 @@
                 <tr><td><code>LOW GRIP CONDITIONS</code> / <code>NORMAL GRIP CONDITIONS</code></td><td>赛道抓地力不足 / 赛道抓地条件正常</td><td>描述低抓地力或正常抓地力规则的当前状态。</td></tr>
                 <tr><td>紫色 / 绿色 / 黄色 / 红色 / 蓝色计时色</td><td>全场最快 / 个人最快 / 不如上一圈 / 损失大量时间 / 进站或出站</td><td>颜色字段用于解释圈速、计时段和小计时段的状态；灰色表示没有有效数据。</td></tr>
                 <tr><td><code>Finished</code> / <code>DNF</code> / <code>DNS</code> / <code>DSQ</code></td><td>完成 / 退赛事件 / 未发车 / 取消资格</td><td>状态来源于数据源事件；DNF 是事件，不能直接等同于 NC。</td></tr>
-                <tr><td><code>NC</code> / <code>Classified</code></td><td>未获分类 / 获得分类</td><td>仅正赛和冲刺赛按冠军实际圈数 × 90% 向下取整判断；DSQ、DNS 优先级更高。</td></tr>
+                <tr><td><code>NC</code> / <code>Not Classified</code></td><td>未获正式排名</td><td>仅正赛和冲刺赛按冠军实际圈数 × 90% 向下取整判断；DSQ、DNS 优先级更高。</td></tr>
               </tbody></table></div>
               <div class="guide-sources"><span>参考：</span><a href="https://www.fia.com/regulation/category/110" target="_blank" rel="noreferrer">FIA Formula One Sporting Regulations</a><span>、</span><a href="https://openf1.org/docs/" target="_blank" rel="noreferrer">OpenF1 数据字段文档</a><span>。页面中文是本地词典优先、缺失时机器翻译。</span></div>
             </section>
@@ -355,6 +355,6 @@
         </main>
       </div>
     </div>
-    <script type="module" src="./app.js?v=20260828-backend-fields-v5"></script>
+    <script type="module" src="./app.js?v=20260828-backend-fields-v6"></script>
   </body>
 </html>
