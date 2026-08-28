@@ -6,11 +6,11 @@
 
 `backend-fields.mjs` 是赛程管理和实时推送共用的转换模块。每个会话响应都会提供 `mapped`：
 
-- 基础字段：`winner`、`competitors`、`fields`，包括后台车手 ID、后台车队 ID、车号、名次、圈数、状态、时间、间距、进站次数、最快圈、积分和 NC 描述。
+- 基础字段：`winner`、`competitors`、`fields`，严格使用后台字段名 `_id`、`teamuid`、`car_number`、`position`、`laps`、`status`、`time`、`interval`、`gap_to_leader`、`pitstop_count`、`fastest_lap_time`、`points` 和 `position_desc`。
 - 扩展字段：`extra.weather`、`last_lap_time`、`last_lap_time_color`、`best_lap_time_color`、`sectors`、`mini_sectors_data`、`tire_info`、`tire_history`、`track_limits`。
 - 赛会消息：`messages`，统一为 `lap`、`text_en`、`text_zh`、`utc`。
 
-车手和车队 ID 使用后台映射表，计时、轮胎、天气和赛会消息由数据源字段转换；NC 仅在正赛和冲刺赛按冠军实际圈数的 90% 向下取整计算。
+车手和车队 ID 使用后台映射表；数据源字段只在转换层使用，页面和 `mapped` 响应不暴露 `id`、`team_id`、`pitstop` 等数据源命名。NC 仅在正赛和冲刺赛按冠军实际圈数的 90% 向下取整计算。
 
 ## 本地运行
 

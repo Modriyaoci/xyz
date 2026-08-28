@@ -35,7 +35,7 @@
           <button class="side-item active" data-view="schedule" type="button"><span class="side-icon">⌂</span><span>赛程管理</span></button>
           <button class="side-item" data-view="standings" type="button"><span class="side-icon">▤</span><span>年度排名</span></button>
           <button class="side-item" data-view="liveTiming" type="button"><span class="side-icon">◉</span><span>实时推送</span></button>
-          <div class="side-item"><span class="side-icon">◌</span><span>数据说明</span></div>
+          <button class="side-item" data-view="dataGuide" type="button"><span class="side-icon">◌</span><span>数据说明</span></button>
           <div class="sidebar-note">数据缓存<br />按需同步</div>
         </aside>
 
@@ -58,6 +58,151 @@
               <div class="standings-meta"><span id="standingsStatus">选择年度排名后读取</span><span id="standingsCapturedAt">官网快照：--</span><span id="standingsSource">数据源：--</span></div>
               <div class="table-wrap"><table class="data-table standings-table" id="standingsTable"><thead><tr><th>名次</th><th>车手</th><th>缩写</th><th>国籍</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>积分</th></tr></thead><tbody><tr><td colspan="8" class="empty-cell">等待排名数据</td></tr></tbody></table></div>
             </section>
+          </section>
+
+          <section id="dataGuideView" class="data-guide-view" hidden aria-labelledby="dataGuideTitle">
+            <div class="breadcrumbs"><span>F1</span><span>/</span><strong>数据说明</strong></div>
+
+            <section class="meeting-head guide-head" aria-labelledby="dataGuideTitle">
+              <div>
+                <div class="eyebrow">字段词典</div>
+                <h1 id="dataGuideTitle">数据说明</h1>
+              </div>
+              <div class="guide-head-meta"><span class="guide-head-label">字段范围</span><strong>赛果 · 扩展 · 环境 · 排名</strong><span class="guide-head-label">数据处理</span><strong>原始值 + 计算值 + 映射值</strong></div>
+            </section>
+
+            <section class="guide-legend" aria-label="字段类型说明">
+              <div class="guide-legend-item"><span class="guide-tag tag-source">原始数据</span><span>接口直接返回，页面只做格式化展示。</span></div>
+              <div class="guide-legend-item"><span class="guide-tag tag-derived">计算数据</span><span>根据原始数据计算、排序或统计后展示。</span></div>
+              <div class="guide-legend-item"><span class="guide-tag tag-mapping">映射数据</span><span>按后台映射表补充车手 ID、车队 ID。</span></div>
+            </section>
+
+            <section class="guide-color-legend" aria-label="颜色字段说明">
+              <div class="guide-color-title">颜色字段</div>
+              <div class="guide-color-group"><strong>计时颜色</strong><span class="guide-color-item"><span class="color-badge color-purple">紫</span><span>全场最快</span></span><span class="guide-color-item"><span class="color-badge color-green">绿</span><span>个人最快</span></span><span class="guide-color-item"><span class="color-badge color-yellow">黄</span><span>不如上一圈</span></span><span class="guide-color-item"><span class="color-badge color-red">红</span><span>损失大量时间</span></span><span class="guide-color-item"><span class="color-badge color-blue">蓝</span><span>进站 / 出站</span></span><span class="guide-color-item"><span class="color-badge color-gray">灰</span><span>没有有效数据</span></span></div>
+              <div class="guide-color-group"><strong>小计时段</strong><span class="guide-color-item"><span class="color-badge color-purple">紫</span><span>全场最快</span></span><span class="guide-color-item"><span class="color-badge color-green">绿</span><span>个人最快</span></span><span class="guide-color-item"><span class="color-badge color-yellow">黄</span><span>不如上一圈</span></span><span class="guide-color-item"><span class="color-badge color-red">红</span><span>损失大量时间</span></span><span class="guide-color-item"><span class="color-badge color-blue">蓝</span><span>进站 / 出站</span></span><span class="guide-color-item"><span class="color-badge color-gray">灰</span><span>没有有效数据</span></span></div>
+              <div class="guide-color-group"><strong>轮胎配方</strong><span class="guide-color-item"><span class="tyre-chip tyre-soft"><i></i>SOFT</span><span>软胎</span></span><span class="guide-color-item"><span class="tyre-chip tyre-medium"><i></i>MEDIUM</span><span>中性胎</span></span><span class="guide-color-item"><span class="tyre-chip tyre-hard"><i></i>HARD</span><span>硬胎</span></span><span class="guide-color-item"><span class="tyre-chip tyre-intermediate"><i></i>INTERMEDIATE</span><span>半雨胎</span></span><span class="guide-color-item"><span class="tyre-chip tyre-wet"><i></i>WET</span><span>全雨胎</span></span></div>
+              <div class="guide-color-note">字段：<code>last_lap_time_color</code>、<code>best_lap_time_color</code>、<code>sectors.*_color</code>、<code>mini_sectors_data.*.color</code>、<code>tire_info</code>、<code>tire_history</code>。</div>
+            </section>
+
+            <section class="panel guide-panel" aria-labelledby="guideStructureTitle">
+              <div class="panel-header"><div><div class="section-kicker">00 · 数据结构</div><h2 id="guideStructureTitle">数据结构</h2></div><span class="panel-badge">公共字段</span></div>
+              <div class="table-wrap"><table class="data-table guide-table guide-structure-table"><thead><tr><th>中文名称</th><th>后台英文</th><th>作用</th><th>结构 / 注意</th></tr></thead><tbody>
+                <tr><td>节点 ID</td><td><code>id</code></td><td>唯一标识一条赛后节点数据。</td><td>由后台业务对象使用；不同节点不能复用。</td></tr>
+                <tr><td>父级 ID</td><td><code>parent_id</code></td><td>把节点挂到对应赛程或分站。</td><td>用于和赛程管理的父级对象建立关系。</td></tr>
+                <tr><td>运动类型 ID</td><td><code>sport_id</code></td><td>标识数据属于 F1。</td><td>当前 F1 使用固定运动类型。</td></tr>
+                <tr><td>节点名称</td><td><code>name</code></td><td>标识练习、排位、冲刺或正赛节点。</td><td>用于后台路由和节点展示。</td></tr>
+                <tr><td>节点类型</td><td><code>type</code> / <code>type_id</code></td><td>区分 race、session 等业务类型。</td><td>具体类型按后台 MappingType 处理。</td></tr>
+                <tr><td>状态</td><td><code>status</code> / <code>status_specific</code></td><td>记录节点当前生命周期和细分状态。</td><td>不是车手状态；车手状态在 competitors.status。</td></tr>
+                <tr><td>节点时间</td><td><code>time</code> / <code>start_time</code> / <code>end_time</code></td><td>记录会话时间和开始、结束时间。</td><td>时间戳由后台保存，页面按本地时区格式化。</td></tr>
+                <tr><td>冠军对象</td><td><code>winner</code></td><td>快速读取第一名车手的核心赛果。</td><td>结构与 competitors 单行一致，包含 ID、圈数、时间等。</td></tr>
+                <tr><td>车手结果列表</td><td><code>competitors</code></td><td>保存所有车手的排名和赛果。</td><td>每位车手一条；车手匹配主键是 car_number。</td></tr>
+                <tr><td>节点汇总字段</td><td><code>fields</code></td><td>保存该节点整体的圈数和完成情况。</td><td>常用 <code>laps</code>、<code>laps_completed</code>、<code>substatus</code>。</td></tr>
+                <tr><td>赛会消息</td><td><code>messages</code></td><td>保存时间、圈次和赛会控制中心消息。</td><td>每条消息含 <code>lap</code>、<code>text_en</code>、<code>text_zh</code>、<code>utc</code>。</td></tr>
+                <tr><td>扩展字段</td><td><code>extra</code></td><td>保存主表之外的天气、圈速颜色、计时段、轮胎和限制次数。</td><td>按车手 ID 组织车手扩展数据；天气是节点级对象。</td></tr>
+              </tbody></table></div>
+            </section>
+
+            <section class="panel guide-panel" aria-labelledby="guideResultTitle">
+              <div class="panel-header"><div><div class="section-kicker">01 · 赛果主表</div><h2 id="guideResultTitle">赛果主表</h2></div><span class="panel-badge">按节点变化</span></div>
+              <div class="table-wrap"><table class="data-table guide-table"><thead><tr><th>字段</th><th>后台英文</th><th>作用</th><th>来源 / 处理</th><th>适用节点</th></tr></thead><tbody>
+                <tr><td>名次</td><td><code>position</code></td><td>车手在当前会话的最终排序位置。</td><td><span class="guide-tag tag-source">原始</span>Race / Sprint 使用官方 position；Q1-Q3 按该阶段有效成绩从快到慢重新排序。</td><td>全部</td></tr>
+                <tr><td>车号</td><td><code>car_number</code></td><td>识别赛车和车手的稳定主键。</td><td><span class="guide-tag tag-source">原始</span>按车号匹配车手，不使用姓名匹配。</td><td>全部</td></tr>
+                <tr><td>车手、缩写</td><td><code>_id</code>（身份）</td><td>显示车手全名和三字母缩写。</td><td><span class="guide-tag tag-mapping">映射</span>名称是后台车手 ID 对应的展示信息，没有单独的后台姓名字段。</td><td>全部</td></tr>
+                <tr><td>车队</td><td><code>teamuid</code></td><td>显示车手所属车队。</td><td><span class="guide-tag tag-mapping">映射</span>车队名称由后台车队 ID 对应的展示信息提供。</td><td>全部</td></tr>
+                <tr><td>后台车手 ID</td><td><code>_id</code></td><td>让前台车手和业务后台的车手实体对应。</td><td><span class="guide-tag tag-mapping">映射</span>按缩写、姓名或车号匹配后台车手映射表。</td><td>全部</td></tr>
+                <tr><td>后台车队 ID</td><td><code>teamuid</code></td><td>让前台车队和业务后台的车队实体对应。</td><td><span class="guide-tag tag-mapping">映射</span>按车队名称匹配后台车队映射表。</td><td>全部</td></tr>
+                <tr><td>圈数</td><td><code>laps</code></td><td>车手已完成的圈数，用于赛果和 NC 判断。</td><td><span class="guide-tag tag-source">原始</span>优先使用接口结果圈数，缺失时取有效圈数据的最大圈次。</td><td>全部</td></tr>
+                <tr><td>总时间 / 差距</td><td><code>time</code> / <code>gap_to_leader</code></td><td>显示车手完成时间或与第一名的差距。</td><td><span class="guide-tag tag-derived">计算 / 格式化</span>正赛和冲刺赛第一名显示总时间，其余车手显示 gap_to_leader；排位显示对应阶段成绩。</td><td>全部</td></tr>
+                <tr><td>积分</td><td><code>points</code></td><td>显示该会话获得的比赛积分。</td><td><span class="guide-tag tag-source">原始</span>使用接口提供的积分，不自行重算。</td><td>正赛、冲刺赛</td></tr>
+                <tr><td>状态</td><td><code>status</code></td><td>区分已完成、退赛、未发车和取消资格。</td><td><span class="guide-tag tag-derived">计算</span>按接口状态标记和会话结束时间生成展示状态。</td><td>全部</td></tr>
+                <tr><td>上一圈</td><td><code>last_lap_time</code> / <code>last_lap_time_color</code></td><td>车手最近一圈的用时，反映当前节奏。</td><td><span class="guide-tag tag-source">原始</span>取选定节点最新有效圈；颜色字段用于标记该圈相对个人和全场最快圈的表现。</td><td>有圈速的节点</td></tr>
+                <tr><td>最快圈</td><td><code>fastest_lap_time</code> / <code>best_lap_time_color</code></td><td>车手在当前节点的个人最快有效圈。</td><td><span class="guide-tag tag-derived">计算</span>从有效圈中取最小值；颜色字段用于标记个人最好或全场最好。</td><td>有圈速的节点</td></tr>
+                <tr><td>与上一名间距</td><td><code>interval</code></td><td>显示车手与前一名的时间差。</td><td><span class="guide-tag tag-source">原始</span>优先使用接口间隔，没有时由相邻车手差距相减补算。</td><td>有排名的节点</td></tr>
+                <tr><td>与第一名间距</td><td><code>gap_to_leader</code></td><td>显示车手落后领跑者的差距。</td><td><span class="guide-tag tag-source">原始</span>使用接口 gap_to_leader；无值时显示为空，不用 NaN 填充。</td><td>有排名的节点</td></tr>
+                <tr><td>进站</td><td><code>pitstop_count</code></td><td>统计车手本场进入维修区的次数。</td><td><span class="guide-tag tag-derived">统计</span>按后台字段 pitstop_count 汇总维修区记录。</td><td>全部，数据源有记录时</td></tr>
+                <tr><td>NC（计算）</td><td><code>position_desc</code></td><td>标记正赛或冲刺赛中未达到正式分类圈数的车手。</td><td><span class="guide-tag tag-derived">计算</span>冠军实际圈数 × 90%，向下取整；DSQ、DNS 优先，不覆盖。</td><td>正赛、冲刺赛</td></tr>
+                <tr><td>当前轮胎</td><td><code>tire_info</code></td><td>显示车手最后一个已知轮胎配方和该段圈次。</td><td><span class="guide-tag tag-derived">整理</span>取最后一段轮胎记录，展示配方和圈次。</td><td>有轮胎数据的节点</td></tr>
+                <tr><td>超出赛道限制</td><td><code>track_limits</code></td><td>统计车手被记录的超出赛道限制次数。</td><td><span class="guide-tag tag-derived">统计</span>统计与车号关联且包含 TRACK LIMITS 的赛会消息。</td><td>有赛会消息的节点</td></tr>
+                <tr><td>小计时段</td><td><code>mini_sectors_data</code></td><td>用连续色点表示 S1、S2、S3 内各 mini-sector 的状态。</td><td><span class="guide-tag tag-source">原始</span>读取计时数据中的 mini-sector 状态码；三组色点之间保持分隔。</td><td>有计时数据的节点</td></tr>
+                <tr><td>计时段</td><td><code>sectors</code></td><td>分两行展示 S1、S2、S3 的上一圈成绩和个人最好成绩。</td><td><span class="guide-tag tag-derived">整理</span>上一圈来自最新有效圈，个人最好取该车手各计时段最小值；颜色含义见上方颜色字段说明。</td><td>有计时数据的节点</td></tr>
+              </tbody></table></div>
+            </section>
+
+            <div class="guide-two-column">
+              <section class="panel guide-panel" aria-labelledby="guideDriverTitle">
+                <div class="panel-header compact"><div><div class="section-kicker">02 · 车手扩展</div><h2 id="guideDriverTitle">车手详情</h2></div></div>
+                <div class="guide-copy"><p><strong>上一圈 / 最快圈</strong>（<code>last_lap_time</code> / <code>fastest_lap_time</code>）：同赛果主表，并按颜色字段说明展示全场最快、个人最快、慢于上一圈、损失大量时间和进站 / 出站。</p><p><strong>当前轮胎</strong>（<code>tire_info</code>）：当前最后一段轮胎配方和起止圈；最后一段没有结束圈时按数据源已有范围展示。</p><p><strong>进站次数</strong>（<code>pitstop_count</code>）：以维修区进站记录为准；没有进站记录就不虚构次数。</p><p><strong>总圈数</strong>（<code>total_laps</code>）：轮胎历史各段圈数合计，用来检查轮胎策略是否覆盖比赛圈次。</p><p><strong>超出赛道限制</strong>（<code>track_limits</code>）：该车号关联的限制事件数量，不代表处罚结果。</p><p><strong>计时段 / 小计时段</strong>（<code>sectors</code> / <code>mini_sectors_data</code>）：计时段显示两行成绩，小计时段只显示有数据的色点，不把缺失值显示成 0.000。</p></div>
+              </section>
+              <section class="panel guide-panel" aria-labelledby="guideTyreTitle">
+                <div class="panel-header compact"><div><div class="section-kicker">03 · 轮胎历史</div><h2 id="guideTyreTitle">轮胎策略表</h2></div></div>
+                <div class="guide-copy"><p><strong>轮胎策略（圈次）</strong>（<code>tire_history</code>）：按进站前后分段列出配方和覆盖圈次，便于还原策略变化。</p><p><strong>进站</strong>（<code>pitstop_count</code>）：每位车手对应的维修区记录数。</p><p><strong>总圈数</strong>（<code>total_laps</code>）：所有轮胎段圈数合计。轮胎年龄等实时胎龄字段不采集。</p><p><strong>当前轮胎</strong>（<code>tire_info</code>）：该车手最后一段轮胎，作为赛果主表的当前状态。</p><p>轮胎历史是按车手合并的一行，避免同一车手被拆成多行；没有数据的节点显示为空。</p></div>
+              </section>
+            </div>
+
+            <section class="panel guide-panel" aria-labelledby="guideWeatherTitle">
+              <div class="panel-header"><div><div class="section-kicker">04 · 环境与赛会消息</div><h2 id="guideWeatherTitle">天气与赛会消息</h2></div><span class="panel-badge">时间序列</span></div>
+              <div class="table-wrap"><table class="data-table guide-table"><thead><tr><th>模块</th><th>字段</th><th>后台英文</th><th>作用</th><th>处理方式</th></tr></thead><tbody>
+                <tr><td rowspan="9">天气记录</td><td>时间</td><td><code>weather</code></td><td>记录采样发生的时间。</td><td><span class="guide-tag tag-source">原始</span>按天气记录时间排序，支持查看全部或最近记录。</td></tr>
+                <tr><td>气温 / 赛道温度</td><td><code>air_temperature</code> / <code>track_temperature</code></td><td>判断环境和路面温度变化。</td><td><span class="guide-tag tag-source">原始</span>以 °C 展示。</td></tr>
+                <tr><td>湿度 / 气压</td><td><code>humidity</code> / <code>pressure</code></td><td>观察空气湿度和气压。</td><td><span class="guide-tag tag-source">原始</span>分别以 %、hPa 展示。</td></tr>
+                <tr><td>风速 / 风向</td><td><code>wind_speed</code> / <code>wind_direction</code></td><td>观察风对赛车平衡和抓地力的影响。</td><td><span class="guide-tag tag-source">原始</span>风速以 m/s，风向保留角度。</td></tr>
+                <tr><td>风向（方向）</td><td><code>wind_direction_abbr</code></td><td>把风向角度转成 N、NE、E 等方向缩写。</td><td><span class="guide-tag tag-derived">整理</span>按 45° 区间生成方向缩写，角度字段仍保留。</td></tr>
+                <tr><td>降雨</td><td><code>rainfall</code></td><td>标记该采样时刻数据源是否报告降雨。</td><td><span class="guide-tag tag-source">原始</span>显示“是 / 否”；降雨概率消息按赛会词典翻译。</td></tr>
+                <tr><td>天气快照</td><td><code>weather</code></td><td>快速查看当前节点最新环境值。</td><td><span class="guide-tag tag-derived">整理</span>取时间序列最后一条，不替代明细记录。</td></tr>
+                <tr><td>记录条数</td><td><code>weather</code></td><td>判断天气接口是否完整返回。</td><td><span class="guide-tag tag-derived">统计</span>统计当前节点可用记录数。</td></tr>
+                <tr><td>查看</td><td>—</td><td>控制明细展示范围。</td><td><span class="guide-tag tag-derived">页面</span>支持全部、最近 50 条、最近 20 条。</td></tr>
+                <tr><td rowspan="4">赛会消息</td><td>时间 / 圈次</td><td><code>messages.utc</code> / <code>messages.lap</code></td><td>定位消息发生的时间和比赛进度。</td><td><span class="guide-tag tag-source">原始</span>显示消息时间和圈次。</td></tr>
+                <tr><td>英文消息</td><td><code>messages.text_en</code></td><td>保留数据源原始赛会广播内容。</td><td><span class="guide-tag tag-source">原始</span>不改写英文文本。</td></tr>
+                <tr><td>中文消息</td><td><code>messages.text_zh</code></td><td>方便中文用户快速理解赛会广播。</td><td><span class="guide-tag tag-derived">翻译</span>先查本地词典，词典没有的内容使用机器翻译；中文不回写英文原文。</td></tr>
+                <tr><td>查看语言 / 条数</td><td>—</td><td>切换英文、中文或双语，并控制显示条数。</td><td><span class="guide-tag tag-derived">页面</span>支持英文和中文两行展示、全部或最近记录。</td></tr>
+              </tbody></table></div>
+            </section>
+
+            <div class="guide-two-column">
+              <section class="panel guide-panel" aria-labelledby="guideStandingsTitle">
+                <div class="panel-header compact"><div><div class="section-kicker">05 · 年度排名</div><h2 id="guideStandingsTitle">年度排名</h2></div><span class="panel-badge">官网快照</span></div>
+                <div class="guide-copy"><p><strong>名次</strong>（<code>position</code>）：官网排名快照中的赛季累计名次。</p><p><strong>车手 / 车队 / 国籍 / 缩写</strong>：官网快照的身份信息和展示字段。</p><p><strong>后台车手 ID / 后台车队 ID</strong>（<code>_id</code> / <code>teamuid</code>）：仍使用后台映射表，不使用官网内部 ID。</p><p><strong>积分</strong>（<code>points</code>）：官网排名快照提供的赛季累计积分。</p><p>排名数据每周一 08:00（北京时间）自动同步，也可点击人工同步；失败时保留上一次成功快照并报警。</p></div>
+              </section>
+              <section class="panel guide-panel" aria-labelledby="guideLiveTitle">
+                <div class="panel-header compact"><div><div class="section-kicker">06 · 实时推送</div><h2 id="guideLiveTitle">实时推送</h2></div><span class="panel-badge">覆盖当前快照</span></div>
+                <div class="guide-copy"><p><strong>数据内容</strong>：实时页沿用赛程管理的字段命名和映射规则，包含赛果、圈速、计时段、轮胎、天气和赛会消息。</p><p><strong>更新方式</strong>：打开实时更新后持续拉取当前会话，页面用新快照覆盖旧快照。</p><p><strong>存储方式</strong>：实时数据不写入赛后缓存，不会覆盖赛程管理中已保存的节点数据。</p><p><strong>缺失字段</strong>：实时接口没有返回的字段直接留空，不使用其他节点的 Q3、上一圈或颜色数据补齐。</p></div>
+              </section>
+            </div>
+
+            <section class="panel guide-panel" aria-labelledby="guideTermsTitle">
+              <div class="panel-header"><div><div class="section-kicker">07 · 比赛术语</div><h2 id="guideTermsTitle">比赛术语</h2></div><span class="panel-badge">业务解释</span></div>
+              <div class="table-wrap"><table class="data-table guide-table guide-terms-table"><thead><tr><th>英文术语（消息内容，不是字段）</th><th>中文含义</th><th>在页面中的作用</th></tr></thead><tbody>
+                <tr><td><code>SESSION STARTED</code> / <code>RACE START</code></td><td>会话已开始 / 正赛开始</td><td>标记练习、排位或比赛正式进入计时阶段。</td></tr>
+                <tr><td><code>SESSION RESUMED</code> / <code>RACE WILL RESUME</code></td><td>会话继续 / 比赛将继续</td><td>红旗或暂停后恢复运行，不代表重新开始一场比赛。</td></tr>
+                <tr><td><code>SESSION ABORTED</code> / <code>RACE SUSPENDED</code></td><td>会话中止 / 比赛暂停</td><td>说明当前流程被中断；消息仍保留在赛会记录中。</td></tr>
+                <tr><td><code>TRACK CLEAR</code> / <code>CLEAR</code></td><td>赛道清理完毕</td><td>表示事故处理或障碍清理完成，通常与旗语恢复配合出现。</td></tr>
+                <tr><td><code>VSC DEPLOYED</code> / <code>VSC ENDING</code></td><td>虚拟安全车已出动 / 即将结束</td><td>全场受虚拟安全车速度规则约束，页面只记录赛会状态。</td></tr>
+                <tr><td><code>SAFETY CAR DEPLOYED</code> / <code>SAFETY CAR IN THIS LAP</code></td><td>安全车出动 / 安全车本圈结束</td><td>实际安全车带队控速；“本圈结束”表示将驶回维修区。</td></tr>
+                <tr><td><code>YELLOW FLAG</code> / <code>DOUBLE YELLOW</code></td><td>黄旗 / 双黄旗</td><td>事故或危险区域的警示；双黄旗代表更高等级的减速和禁止超车要求。</td></tr>
+                <tr><td><code>GREEN FLAG</code> / <code>RED FLAG</code></td><td>绿旗 / 红旗</td><td>绿旗表示赛道恢复可正常行驶；红旗表示会话暂停，车手需减速回到维修区。</td></tr>
+                <tr><td><code>BLUE FLAG</code> / <code>BLACK AND WHITE FLAG</code></td><td>蓝旗 / 黑白旗</td><td>蓝旗通常提示被套圈车让行；黑白旗是对车手行为的正式警告。</td></tr>
+                <tr><td><code>PIT LANE OPEN</code> / <code>PIT LANE CLOSED</code></td><td>维修区开放 / 关闭</td><td>说明赛车是否可以通过维修区参与发车或比赛流程。</td></tr>
+                <tr><td><code>PIT EXIT OPEN</code> / <code>PIT EXIT CLOSED</code></td><td>维修区出口开放 / 关闭</td><td>控制赛车能否从维修区出口驶入赛道。</td></tr>
+                <tr><td><code>TRACK LIMITS</code> / <code>LAP DELETED</code></td><td>超出赛道限制 / 单圈成绩取消</td><td>前者计入车手关联事件次数；后者表示该圈成绩不再用于排名或最快圈。</td></tr>
+                <tr><td><code>MOVING UNDER BRAKING</code></td><td>刹车区变线</td><td>车手在制动区域改变行驶线路，作为可能违规的赛会消息记录。</td></tr>
+                <tr><td><code>IMPEDING</code> / <code>CAUSING A COLLISION</code></td><td>阻挡其他车手 / 引发碰撞</td><td>记录车手行为被赛事干事关注，是否处罚要看后续调查结果。</td></tr>
+                <tr><td><code>FORCING ANOTHER DRIVER OFF THE TRACK</code></td><td>迫使对手离开赛道</td><td>描述攻防中的具体行为，不等同于已经判罚。</td></tr>
+                <tr><td><code>UNSAFE RELEASE</code> / <code>UNSAFE RE-JOIN</code></td><td>不安全释放 / 不安全回场</td><td>分别对应维修区放车和离开赛道后回到赛道时造成危险的情况。</td></tr>
+                <tr><td><code>SPEEDING IN THE PIT LANE</code> / <code>FALSE START</code></td><td>维修区超速 / 抢跑</td><td>记录违反速度限制或发车程序的事件，处罚以干事决定为准。</td></tr>
+                <tr><td><code>UNDER INVESTIGATION</code> / <code>WILL BE INVESTIGATED AFTER THE SESSION</code></td><td>调查中 / 将会赛后调查</td><td>说明事件尚未有最终结论；不能直接把消息当作已处罚。</td></tr>
+                <tr><td><code>NO FURTHER ACTION</code> / <code>REVIEWED</code></td><td>不进一步调查 / 经审核</td><td>表示干事查看后不再采取措施，保留原始消息用于审计。</td></tr>
+                <tr><td><code>RISK OF RAIN FOR xx</code></td><td>未来 xx 分钟降雨概率</td><td>按中文语序显示为“正赛降雨概率是 30%”这类消息，不把概率误写成温度或当前降雨。</td></tr>
+                <tr><td><code>WET TRACK</code> / <code>TRACK SURFACE SLIPPERY</code></td><td>赛道湿滑 / 路面湿滑</td><td>描述赛道抓地力状态，不代表每辆车都装了湿地胎。</td></tr>
+                <tr><td><code>LOW GRIP CONDITIONS</code> / <code>NORMAL GRIP CONDITIONS</code></td><td>赛道抓地力不足 / 赛道抓地条件正常</td><td>描述低抓地力或正常抓地力规则的当前状态。</td></tr>
+                <tr><td>紫色 / 绿色 / 黄色 / 红色 / 蓝色计时色</td><td>全场最快 / 个人最快 / 不如上一圈 / 损失大量时间 / 进站或出站</td><td>颜色字段用于解释圈速、计时段和小计时段的状态；灰色表示没有有效数据。</td></tr>
+                <tr><td><code>Finished</code> / <code>DNF</code> / <code>DNS</code> / <code>DSQ</code></td><td>完成 / 退赛事件 / 未发车 / 取消资格</td><td>状态来源于数据源事件；DNF 是事件，不能直接等同于 NC。</td></tr>
+                <tr><td><code>NC</code> / <code>Classified</code></td><td>未获分类 / 获得分类</td><td>仅正赛和冲刺赛按冠军实际圈数 × 90% 向下取整判断；DSQ、DNS 优先级更高。</td></tr>
+              </tbody></table></div>
+              <div class="guide-sources"><span>参考：</span><a href="https://www.fia.com/regulation/category/110" target="_blank" rel="noreferrer">FIA Formula One Sporting Regulations</a><span>、</span><a href="https://openf1.org/docs/" target="_blank" rel="noreferrer">OpenF1 数据字段文档</a><span>。页面中文是本地词典优先、缺失时机器翻译。</span></div>
+            </section>
+
+            <section class="guide-notice"><strong>核对原则</strong><span>车号是车手匹配主键；后台 ID 来自映射；没有数据就留空；NC 只在正赛和冲刺赛按 90% 圈数规则计算；所有时间按“分:秒.毫秒”展示。</span></section>
           </section>
 
           <section id="liveTimingView" class="live-timing-view" hidden aria-labelledby="liveTimingTitle">
@@ -210,6 +355,6 @@
         </main>
       </div>
     </div>
-    <script type="module" src="./app.js?v=20260828-backend-fields-v3"></script>
+    <script type="module" src="./app.js?v=20260828-backend-fields-v5"></script>
   </body>
 </html>

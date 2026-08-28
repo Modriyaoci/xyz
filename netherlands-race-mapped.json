@@ -11,21 +11,19 @@
   "start_time": 1787490000,
   "end_time": 1787497200,
   "winner": {
-    "id": 347506,
-    "team_id": 385367,
     "laps": 72,
     "time": {
       "value": "2:04:44.859"
     },
     "points": 25,
-    "pitstop": 3,
     "fastest_lap_time": "1:14.321",
-    "car_number": 1
+    "car_number": 1,
+    "_id": 347506,
+    "teamuid": 385367,
+    "pitstop_count": 3
   },
   "competitors": [
     {
-      "id": 347506,
-      "team_id": 385367,
       "laps": 72,
       "time": {
         "value": "2:04:44.859"
@@ -36,13 +34,13 @@
       "position": 1,
       "position_desc": "",
       "gap_to_leader": "",
-      "pitstop": 3,
       "fastest_lap_time": "1:14.321",
-      "car_number": 1
+      "car_number": 1,
+      "_id": 347506,
+      "teamuid": 385367,
+      "pitstop_count": 3
     },
     {
-      "id": 347534,
-      "team_id": 385358,
       "laps": 72,
       "time": {
         "value": "+11.536"
@@ -53,13 +51,13 @@
       "position": 2,
       "position_desc": "",
       "gap_to_leader": "+11.536",
-      "pitstop": 4,
       "fastest_lap_time": "1:14.571",
-      "car_number": 12
+      "car_number": 12,
+      "_id": 347534,
+      "teamuid": 385358,
+      "pitstop_count": 4
     },
     {
-      "id": 347501,
-      "team_id": 385358,
       "laps": 72,
       "time": {
         "value": "+15.906"
@@ -70,13 +68,13 @@
       "position": 3,
       "position_desc": "",
       "gap_to_leader": "+15.906",
-      "pitstop": 3,
       "fastest_lap_time": "1:15.393",
-      "car_number": 63
+      "car_number": 63,
+      "_id": 347501,
+      "teamuid": 385358,
+      "pitstop_count": 3
     },
     {
-      "id": 347542,
-      "team_id": 385364,
       "laps": 72,
       "time": {
         "value": "+16.755"
@@ -87,13 +85,13 @@
       "position": 4,
       "position_desc": "",
       "gap_to_leader": "+16.755",
-      "pitstop": 3,
       "fastest_lap_time": "1:14.566",
-      "car_number": 44
+      "car_number": 44,
+      "_id": 347542,
+      "teamuid": 385364,
+      "pitstop_count": 3
     },
     {
-      "id": 347492,
-      "team_id": 385364,
       "laps": 72,
       "time": {
         "value": "+17.258"
@@ -104,13 +102,13 @@
       "position": 5,
       "position_desc": "",
       "gap_to_leader": "+17.258",
-      "pitstop": 4,
       "fastest_lap_time": "1:14.230",
-      "car_number": 16
+      "car_number": 16,
+      "_id": 347492,
+      "teamuid": 385364,
+      "pitstop_count": 4
     },
     {
-      "id": 347528,
-      "team_id": 385367,
       "laps": 72,
       "time": {
         "value": "+32.332"
@@ -121,13 +119,13 @@
       "position": 6,
       "position_desc": "",
       "gap_to_leader": "+32.332",
-      "pitstop": 4,
       "fastest_lap_time": "1:14.303",
-      "car_number": 81
+      "car_number": 81,
+      "_id": 347528,
+      "teamuid": 385367,
+      "pitstop_count": 4
     },
     {
-      "id": 347514,
-      "team_id": 385355,
       "laps": 72,
       "time": {
         "value": "+1:19.915"
@@ -138,13 +136,13 @@
       "position": 7,
       "position_desc": "",
       "gap_to_leader": "+79.915",
-      "pitstop": 3,
       "fastest_lap_time": "1:15.435",
-      "car_number": 30
+      "car_number": 30,
+      "_id": 347514,
+      "teamuid": 385355,
+      "pitstop_count": 3
     },
     {
-      "id": 347544,
-      "team_id": 394048,
       "laps": 71,
       "time": {
         "value": "1L"
@@ -155,13 +153,13 @@
       "position": 8,
       "position_desc": "",
       "gap_to_leader": "1L",
-      "pitstop": 3,
       "fastest_lap_time": "1:16.048",
-      "car_number": 27
+      "car_number": 27,
+      "_id": 347544,
+      "teamuid": 394048,
+      "pitstop_count": 3
     },
     {
-      "id": 347502,
-      "team_id": 385362,
       "laps": 71,
       "time": {
         "value": "1L"
@@ -172,13 +170,13 @@
       "position": 9,
       "position_desc": "",
       "gap_to_leader": "1L",
-      "pitstop": 2,
       "fastest_lap_time": "1:16.946",
-      "car_number": 14
+      "car_number": 14,
+      "_id": 347502,
+      "teamuid": 385362,
+      "pitstop_count": 2
     },
     {
-      "id": 347499,
-      "team_id": 385366,
       "laps": 71,
       "time": {
         "value": "1L"
@@ -189,13 +187,13 @@
       "position": 10,
       "position_desc": "",
       "gap_to_leader": "1L",
-      "pitstop": 3,
       "fastest_lap_time": "1:16.220",
-      "car_number": 10
+      "car_number": 10,
+      "_id": 347499,
+      "teamuid": 385366,
+      "pitstop_count": 3
     },
     {
-      "id": 347546,
-      "team_id": 385363,
       "laps": 71,
       "time": {
         "value": "1L"
@@ -206,13 +204,13 @@
       "position": 11,
       "position_desc": "",
       "gap_to_leader": "1L",
-      "pitstop": 3,
       "fastest_lap_time": "1:16.639",
-      "car_number": 22
+      "car_number": 22,
+      "_id": 347546,
+      "teamuid": 385363,
+      "pitstop_count": 3
     },
     {
-      "id": 347549,
-      "team_id": 385363,
       "laps": 71,
       "time": {
         "value": "1L"
@@ -223,13 +221,13 @@
       "position": 12,
       "position_desc": "",
       "gap_to_leader": "1L",
-      "pitstop": 3,
       "fastest_lap_time": "1:16.653",
-      "car_number": 41
+      "car_number": 41,
+      "_id": 347549,
+      "teamuid": 385363,
+      "pitstop_count": 3
     },
     {
-      "id": 347539,
-      "team_id": 394048,
       "laps": 71,
       "time": {
         "value": "1L"
@@ -240,13 +238,13 @@
       "position": 13,
       "position_desc": "",
       "gap_to_leader": "1L",
-      "pitstop": 4,
       "fastest_lap_time": "1:15.515",
-      "car_number": 5
+      "car_number": 5,
+      "_id": 347539,
+      "teamuid": 394048,
+      "pitstop_count": 4
     },
     {
-      "id": 347540,
-      "team_id": 385366,
       "laps": 70,
       "time": {
         "value": "2L"
@@ -257,13 +255,13 @@
       "position": 14,
       "position_desc": "",
       "gap_to_leader": "2L",
-      "pitstop": 4,
       "fastest_lap_time": "1:15.578",
-      "car_number": 43
+      "car_number": 43,
+      "_id": 347540,
+      "teamuid": 385366,
+      "pitstop_count": 4
     },
     {
-      "id": 347519,
-      "team_id": 390378,
       "laps": 70,
       "time": {
         "value": "2L"
@@ -274,13 +272,13 @@
       "position": 15,
       "position_desc": "",
       "gap_to_leader": "2L",
-      "pitstop": 3,
       "fastest_lap_time": "1:17.523",
-      "car_number": 11
+      "car_number": 11,
+      "_id": 347519,
+      "teamuid": 390378,
+      "pitstop_count": 3
     },
     {
-      "id": 347548,
-      "team_id": 385365,
       "laps": 70,
       "time": {
         "value": "2L"
@@ -291,13 +289,13 @@
       "position": 16,
       "position_desc": "",
       "gap_to_leader": "2L",
-      "pitstop": 3,
       "fastest_lap_time": "1:17.328",
-      "car_number": 55
+      "car_number": 55,
+      "_id": 347548,
+      "teamuid": 385365,
+      "pitstop_count": 3
     },
     {
-      "id": 347504,
-      "team_id": 385365,
       "laps": 66,
       "time": {
         "value": ""
@@ -308,13 +306,13 @@
       "position": 17,
       "position_desc": "",
       "gap_to_leader": "6L",
-      "pitstop": 3,
       "fastest_lap_time": "1:17.147",
-      "car_number": 23
+      "car_number": 23,
+      "_id": 347504,
+      "teamuid": 385365,
+      "pitstop_count": 3
     },
     {
-      "id": 347525,
-      "team_id": 390378,
       "laps": 61,
       "time": {
         "value": ""
@@ -325,13 +323,13 @@
       "position": 18,
       "position_desc": "NC",
       "gap_to_leader": "11L",
-      "pitstop": 3,
       "fastest_lap_time": "1:17.822",
-      "car_number": 77
+      "car_number": 77,
+      "_id": 347525,
+      "teamuid": 390378,
+      "pitstop_count": 3
     },
     {
-      "id": 347547,
-      "team_id": 385361,
       "laps": 52,
       "time": {
         "value": ""
@@ -342,13 +340,13 @@
       "position": 19,
       "position_desc": "NC",
       "gap_to_leader": "20L",
-      "pitstop": 3,
       "fastest_lap_time": "1:17.588",
-      "car_number": 31
+      "car_number": 31,
+      "_id": 347547,
+      "teamuid": 385361,
+      "pitstop_count": 3
     },
     {
-      "id": 347503,
-      "team_id": 385362,
       "laps": 45,
       "time": {
         "value": ""
@@ -359,13 +357,13 @@
       "position": 20,
       "position_desc": "NC",
       "gap_to_leader": "27L",
-      "pitstop": 3,
       "fastest_lap_time": "1:17.883",
-      "car_number": 18
+      "car_number": 18,
+      "_id": 347503,
+      "teamuid": 385362,
+      "pitstop_count": 3
     },
     {
-      "id": 347520,
-      "team_id": 385361,
       "laps": 2,
       "time": {
         "value": ""
@@ -376,13 +374,13 @@
       "position": 21,
       "position_desc": "NC",
       "gap_to_leader": "70L",
-      "pitstop": 1,
       "fastest_lap_time": "1:37.522",
-      "car_number": 87
+      "car_number": 87,
+      "_id": 347520,
+      "teamuid": 385361,
+      "pitstop_count": 1
     },
     {
-      "id": 347482,
-      "team_id": 385355,
       "laps": 0,
       "time": {
         "value": ""
@@ -393,9 +391,11 @@
       "position": 22,
       "position_desc": "NC",
       "gap_to_leader": "",
-      "pitstop": 0,
       "fastest_lap_time": "",
-      "car_number": 3
+      "car_number": 3,
+      "_id": 347482,
+      "teamuid": 385355,
+      "pitstop_count": 0
     }
   ],
   "fields": {
@@ -9288,5 +9288,6 @@
       "347548": 2,
       "347549": 1
     }
-  }
+  },
+  "mapping_version": "backend-fields-v2"
 }

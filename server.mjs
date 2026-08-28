@@ -428,7 +428,7 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
       for (const field of retryWarningFields(data)) await refreshCachedFeed(data, requestedSessionKey, field);
       await mergeDriverRoster(meetingKey, data);
       data.mapped = mapOpenF1ToBackend(data, data.mapped);
-      data.cache_version = "20260828-backend-fields-v3";
+      data.cache_version = "20260828-backend-fields-v5";
       await writeJsonAtomic(cacheFile, data);
       return { data, source: "cache" };
     }
@@ -438,7 +438,7 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
     if (local) {
       const data = normaliseSessionData(await mergeDriverRoster(meetingKey, local));
       data.mapped = mapOpenF1ToBackend(data, data.mapped);
-      data.cache_version = "20260828-backend-fields-v3";
+      data.cache_version = "20260828-backend-fields-v5";
       await writeJsonAtomic(cacheFile, data);
       return { data, source: "local" };
     }
@@ -468,7 +468,7 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
   if (!sessionCacheHealthy(data, requestedSessionKey)) throw new Error("同步返回的数据不完整，缓存未更新");
   const syncWarnings = [...feeds.unavailable.map((field) => `${field}: unavailable`), ...feeds.retained];
   if (syncWarnings.length) data.sync_warnings = syncWarnings;
-  data.cache_version = "20260828-backend-fields-v3";
+  data.cache_version = "20260828-backend-fields-v5";
   data.synced_at = new Date().toISOString();
   await writeJsonAtomic(cacheFile, data);
   return { data, source: "openf1" };
