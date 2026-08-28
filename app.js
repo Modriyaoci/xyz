@@ -57,7 +57,7 @@ const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.h
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
   || (!localServer && !window.location.pathname.startsWith("/site/"));
 const STATIC_API_BASE = "https://api.openf1.org/v1";
-const STATIC_CACHE_VERSION = "20260828-backend-fields-v1";
+const STATIC_CACHE_VERSION = "20260828-backend-fields-v2";
 const staticRequestTimeoutMs = 30000;
 const staticRequestIntervalMs = 400;
 let staticNextRequestAt = 0;
@@ -230,6 +230,25 @@ function stripTyreAgeFields(data) {
   return data;
 }
 
+function stripRaceControlTranslations(data) {
+  if (!data || typeof data !== "object") return data;
+  if (Array.isArray(data.race_control)) {
+    data.race_control = data.race_control.map((row) => {
+      if (!row || typeof row !== "object") return row;
+      const { text_zh, ...withoutTranslation } = row;
+      return withoutTranslation;
+    });
+  }
+  if (data.mapped && typeof data.mapped === "object" && Array.isArray(data.mapped.messages)) {
+    data.mapped.messages = data.mapped.messages.map((row) => {
+      if (!row || typeof row !== "object") return row;
+      const { text_zh, ...withoutTranslation } = row;
+      return withoutTranslation;
+    });
+  }
+  return data;
+}
+
 function stripIgnoredSyncWarnings(data) {
   if (!data || typeof data !== "object" || !Array.isArray(data.sync_warnings)) return data;
   data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith("starting_grid:"));
@@ -258,6 +277,7 @@ function resolveBackendDriverId(driver) {
 
 function enrichBackendMapping(data) {
   if (!data || typeof data !== "object") return data;
+  stripRaceControlTranslations(data);
   data.mapped = mapOpenF1ToBackend(data, data.mapped);
   return data;
 }

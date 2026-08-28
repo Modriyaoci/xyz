@@ -302,6 +302,25 @@ function stripTyreAgeFields(data) {
   return data;
 }
 
+function stripRaceControlTranslations(data) {
+  if (!data || typeof data !== "object") return data;
+  if (Array.isArray(data.race_control)) {
+    data.race_control = data.race_control.map((row) => {
+      if (!row || typeof row !== "object") return row;
+      const { text_zh, ...withoutTranslation } = row;
+      return withoutTranslation;
+    });
+  }
+  if (data.mapped && typeof data.mapped === "object" && Array.isArray(data.mapped.messages)) {
+    data.mapped.messages = data.mapped.messages.map((row) => {
+      if (!row || typeof row !== "object") return row;
+      const { text_zh, ...withoutTranslation } = row;
+      return withoutTranslation;
+    });
+  }
+  return data;
+}
+
 function stripStartingGridFields(data) {
   if (!data || typeof data !== "object") return data;
   delete data.starting_grid;
@@ -325,7 +344,7 @@ function normaliseSessionData(data) {
     data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith("starting_grid:"));
     if (!data.sync_warnings.length) delete data.sync_warnings;
   }
-  return stripStartingGridFields(stripTyreAgeFields(data));
+  return stripRaceControlTranslations(stripStartingGridFields(stripTyreAgeFields(data)));
 }
 
 function sessionCacheHealthy(data, sessionKey) {
@@ -428,7 +447,7 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
       for (const field of retryWarningFields(data)) await refreshCachedFeed(data, requestedSessionKey, field);
       await mergeDriverRoster(meetingKey, data);
       data.mapped = mapOpenF1ToBackend(data, data.mapped);
-      data.cache_version = "20260828-backend-fields-v1";
+      data.cache_version = "20260828-backend-fields-v2";
       await writeJsonAtomic(cacheFile, data);
       return { data, source: "cache" };
     }
@@ -438,7 +457,7 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
     if (local) {
       const data = normaliseSessionData(await mergeDriverRoster(meetingKey, local));
       data.mapped = mapOpenF1ToBackend(data, data.mapped);
-      data.cache_version = "20260828-backend-fields-v1";
+      data.cache_version = "20260828-backend-fields-v2";
       await writeJsonAtomic(cacheFile, data);
       return { data, source: "local" };
     }
@@ -468,7 +487,7 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
   if (!sessionCacheHealthy(data, requestedSessionKey)) throw new Error("同步返回的数据不完整，缓存未更新");
   const syncWarnings = [...feeds.unavailable.map((field) => `${field}: unavailable`), ...feeds.retained];
   if (syncWarnings.length) data.sync_warnings = syncWarnings;
-  data.cache_version = "20260828-backend-fields-v1";
+  data.cache_version = "20260828-backend-fields-v2";
   data.synced_at = new Date().toISOString();
   await writeJsonAtomic(cacheFile, data);
   return { data, source: "openf1" };
