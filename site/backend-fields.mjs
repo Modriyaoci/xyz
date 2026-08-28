@@ -156,8 +156,32 @@ function mapStint(stint) {
   return { compound: String(stint?.compound || "").toUpperCase(), total_laps: totalStintLaps(stint) };
 }
 
+// The upstream feed uses id/team_id/pitstop. The application contract uses the
+// backend names below, so old cached mapped rows are normalised at the boundary.
+function normalizeBackendCompetitor(row) {
+  if (!row || typeof row !== "object") return row;
+  const {
+    id: sourceDriverId,
+    team_id: sourceTeamId,
+    pitstop: sourcePitstopCount,
+    backend_driver_id: legacyBackendDriverId,
+    backend_team_id: legacyBackendTeamId,
+    grid: _sourceGrid,
+    laps_led: _sourceLapsLed,
+    ...rest
+  } = row;
+  const normalized = { ...rest };
+  const driverId = row._id ?? legacyBackendDriverId ?? sourceDriverId;
+  const teamId = row.teamuid ?? legacyBackendTeamId ?? sourceTeamId;
+  const pitstopCount = row.pitstop_count ?? sourcePitstopCount;
+  if (driverId !== null && driverId !== undefined && driverId !== "") normalized._id = driverId;
+  if (teamId !== null && teamId !== undefined && teamId !== "") normalized.teamuid = teamId;
+  if (pitstopCount !== null && pitstopCount !== undefined && pitstopCount !== "") normalized.pitstop_count = pitstopCount;
+  return normalized;
+}
+
 function mergeByCar(generated, existing) {
-  const existingByCar = new Map((Array.isArray(existing) ? existing : []).map((row) => [Number(row?.car_number), row]));
+  const existingByCar = new Map((Array.isArray(existing) ? existing : []).map((row) => [Number(row?.car_number), normalizeBackendCompetitor(row)]));
   const cars = new Set([...generated.map((row) => Number(row.car_number)), ...existingByCar.keys()]);
   return Array.from(cars).filter(Number.isFinite).sort((a, b) => {
     const left = generated.find((row) => Number(row.car_number) === a)?.position;
@@ -234,15 +258,15 @@ export function mapOpenF1ToBackend(data, existing = null) {
     const backendDriverId = resolveBackendDriverId(driver);
     const backendTeamId = resolveBackendTeamId(driver.team_name);
     const competitor = {
-      ...(backendDriverId == null ? {} : { id: backendDriverId }),
-      ...(backendTeamId == null ? {} : { team_id: backendTeamId }),
+      ...(backendDriverId == null ? {} : { _id: backendDriverId }),
+      ...(backendTeamId == null ? {} : { teamuid: backendTeamId }),
       ...(position == null ? {} : { position }),
       ...(laps == null ? {} : { laps }),
       time: { value: timeValue },
       status: statusCode(raw, sessionEnded),
       interval: formatBackendGap(intervalRow.interval, { blankZero: true }),
       gap_to_leader: gap,
-      pitstop: pitsByCar.get(car) || 0,
+      pitstop_count: pitsByCar.get(car) || 0,
       fastest_lap_time: bestLap ? formatBackendTime(bestLap.lap_duration) : "",
       car_number: car,
       position_desc: positionDesc,
@@ -336,7 +360,7 @@ export function mapOpenF1ToBackend(data, existing = null) {
     time: existing?.time ?? null,
     start_time: existing?.start_time ?? null,
     end_time: existing?.end_time ?? null,
-    winner: existing?.winner ? { ...winner, ...existing.winner } : winner,
+    winner: existing?.winner ? { ...winner, ...normalizeBackendCompetitor(existing.winner) } : winner,
     competitors,
     fields: {
       laps_completed: winnerLaps,
@@ -346,7 +370,7 @@ export function mapOpenF1ToBackend(data, existing = null) {
     },
     messages: Array.isArray(existing?.messages) && existing.messages.length ? existing.messages : messages,
     extra: Object.fromEntries(Object.entries(extra).map(([key, value]) => [key, existing?.extra?.[key] ?? value])),
-    mapping_version: "backend-fields-v1",
+    mapping_version: "backend-fields-v2",
   };
   return mapped;
 }

@@ -57,7 +57,7 @@ const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.h
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
   || (!localServer && !window.location.pathname.startsWith("/site/"));
 const STATIC_API_BASE = "https://api.openf1.org/v1";
-const STATIC_CACHE_VERSION = "20260828-backend-fields-v3";
+const STATIC_CACHE_VERSION = "20260828-backend-fields-v5";
 const staticRequestTimeoutMs = 30000;
 const staticRequestIntervalMs = 400;
 let staticNextRequestAt = 0;
@@ -331,13 +331,19 @@ async function staticLiveSessionSnapshot(meetingKey, sessionKey) {
 function enrichOfficialStandings(snapshot) {
   if (!snapshot || typeof snapshot !== "object") return null;
   const drivers = (Array.isArray(snapshot.drivers) ? snapshot.drivers : []).map((row) => ({
-    ...row,
-    backend_driver_id: resolveBackendDriverId({ name_acronym: row.code, full_name: row.name }),
-    backend_team_id: sharedResolveBackendTeamId(row.team),
+    ...(() => {
+      const { backend_driver_id: _legacyDriverId, backend_team_id: _legacyTeamId, ...rest } = row || {};
+      return rest;
+    })(),
+    _id: row._id ?? row.backend_driver_id ?? resolveBackendDriverId({ name_acronym: row.code, full_name: row.name }),
+    teamuid: row.teamuid ?? row.backend_team_id ?? sharedResolveBackendTeamId(row.team),
   }));
   const teams = (Array.isArray(snapshot.teams) ? snapshot.teams : []).map((row) => ({
-    ...row,
-    backend_team_id: sharedResolveBackendTeamId(row.name),
+    ...(() => {
+      const { backend_team_id: _legacyTeamId, ...rest } = row || {};
+      return rest;
+    })(),
+    teamuid: row.teamuid ?? row.backend_team_id ?? sharedResolveBackendTeamId(row.name),
   }));
   return { ...snapshot, drivers, teams };
 }
@@ -620,8 +626,8 @@ function renderStandings() {
   table.querySelector("thead").innerHTML = header;
   table.querySelector("tbody").innerHTML = rows.length
     ? rows.map((row) => kind === "teams"
-      ? `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td>${esc(row.backend_team_id ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`
-      : `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td><span class="acronym">${esc(row.code || "--")}</span></td><td>${esc(row.nationality || "--")}</td><td>${esc(row.team || "--")}</td><td>${esc(row.backend_driver_id ?? "--")}</td><td>${esc(row.backend_team_id ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`).join("")
+      ? `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td>${esc(row.teamuid ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`
+      : `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td><span class="acronym">${esc(row.code || "--")}</span></td><td>${esc(row.nationality || "--")}</td><td>${esc(row.team || "--")}</td><td>${esc(row._id ?? "--")}</td><td>${esc(row.teamuid ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`).join("")
     : `<tr><td colspan="${kind === "teams" ? 4 : 8}" class="empty-cell">${snapshot ? "暂无年度排名数据" : "点击加载年度排名"}</td></tr>`;
   $("standingsCapturedAt").textContent = snapshot?.captured_at ? `官网快照：${dateText(snapshot.captured_at)}` : "官网快照：--";
   $("standingsCount").textContent = snapshot ? `${rows.length} 条` : "--";
@@ -827,7 +833,7 @@ function buildLiveRows(data) {
     const pitAt = Date.parse(pit?.latest?.date || "") || 0;
     const recentPit = pitAt > 0 && pitAt >= (Date.parse(latestLap.date_start || "") || 0) && snapshotTime - pitAt < 120000;
     const status = result.dsq ? "DSQ" : result.dns ? "DNS" : result.dnf ? "DNF" : recentPit ? "进站" : data?.session?.date_end && Date.parse(data.session.date_end) < snapshotTime ? "完成" : "运行中";
-    const mappedId = mapped.id ?? resolveBackendDriverId(driver);
+    const mappedId = mapped._id ?? resolveBackendDriverId(driver);
     const gap = mapped.gap_to_leader || liveResultValue(result, "gap_to_leader") || interval.gap_to_leader || null;
     const intervalValue = mapped.interval || liveResultValue(result, "interval") || interval.interval || null;
     const mappedLastLap = mappedId != null ? mappedExtra.last_lap_time?.[String(mappedId)] : null;
@@ -853,7 +859,7 @@ function buildLiveRows(data) {
       code: driver.name_acronym || "",
       team: driver.team_name || "--",
       driverId: mappedId,
-      teamId: mapped.team_id ?? sharedResolveBackendTeamId(driver.team_name),
+      teamId: mapped.teamuid ?? sharedResolveBackendTeamId(driver.team_name),
       lap: mapped.laps ?? numeric(result.number_of_laps) ?? numeric(latestLap.lap_number),
       lastLap: mappedLastLap || result.last_lap_duration || latestLap.lap_duration,
       bestLap: mappedBestLap || result.best_lap_duration || bestLap?.lap_duration || null,
@@ -861,7 +867,7 @@ function buildLiveRows(data) {
       interval: intervalValue,
       points: result.points ?? mapped.points ?? null,
       status,
-      pitCount: mapped.pitstop ?? pit?.count ?? 0,
+      pitCount: mapped.pitstop_count ?? pit?.count ?? 0,
       mapped,
       extra: mappedId != null ? {
         lastLapColor: mappedExtra.last_lap_time_color?.[String(mappedId)] || null,
@@ -1160,10 +1166,11 @@ function startLivePolling() {
 }
 
 function setActiveView(view) {
-  state.activeView = ["schedule", "standings", "liveTiming"].includes(view) ? view : "schedule";
+  state.activeView = ["schedule", "standings", "liveTiming", "dataGuide"].includes(view) ? view : "schedule";
   $("scheduleView").hidden = state.activeView !== "schedule";
   $("standingsView").hidden = state.activeView !== "standings";
   $("liveTimingView").hidden = state.activeView !== "liveTiming";
+  $("dataGuideView").hidden = state.activeView !== "dataGuide";
   document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === state.activeView));
   if (state.activeView === "standings" && !state.standings) loadOfficialStandings();
   if (state.activeView === "liveTiming") {
@@ -1375,7 +1382,7 @@ function extensionForRow(car, mapped, fastest) {
   const lastLap = laps.at(-1);
   const viewSessionLaps = currentPhaseLaps();
   const mappedExtra = phaseMode ? {} : (state.data?.mapped?.extra || {});
-  const key = phaseMode || mapped?.id == null ? null : String(mapped.id);
+  const key = phaseMode || mapped?._id == null ? null : String(mapped._id);
   const sectors = key && mappedExtra.sectors?.[key] ? mappedExtra.sectors[key] : laps.length ? computedSectorColors(car, lastLap, laps, viewSessionLaps) : [];
   const mappedMiniSectors = key && (mappedExtra.mini_sectors?.[key] || mappedExtra.mini_sectors_data?.[key]);
   const hasMappedMiniSectors = Array.isArray(mappedMiniSectors) && mappedMiniSectors.some((sector) => (sector.mini_sectors || []).some((mini) => mini && mini.status !== null && mini.status !== undefined && mini.status !== "" && mini.color));
@@ -1554,13 +1561,13 @@ function renderResults() {
     return `<tr data-car="${row.car}" class="${state.selectedDriver === row.car ? "selected" : ""}">
       <td class="position">${esc(displayPosition)}</td><td>${esc(row.car)}</td>
       <td class="driver-cell">${esc(row.driver.full_name || `车号 ${row.car}`)} <span class="acronym">${esc(row.driver.name_acronym || "")}</span></td>
-      <td>${esc(row.driver.team_name || "--")}</td><td>${esc(row.mapped.id ?? "--")}</td><td>${esc(row.mapped.team_id ?? "--")}</td>
+      <td>${esc(row.driver.team_name || "--")}</td><td>${esc(row.mapped._id ?? "--")}</td><td>${esc(row.mapped.teamuid ?? "--")}</td>
       <td>${esc(lapsText)}</td>
       <td>${esc(displayTime(row))}</td>${race ? `<td>${esc(row.raw.points ?? row.mapped.points ?? "--")}</td>` : ""}
       <td class="${status === "Finished" ? "status-finished" : "status-dnf"}">${esc(status)}</td>
       <td>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</td><td>${esc(fastestText)} ${colorBadgeOrEmpty(extension.bestLapColor)}</td>
       <td>${esc(intervalToPrevious(row, rows.indexOf(row), rows, intervalMap))}</td><td>${esc(gapToLeaderText(row))}</td>
-      <td>${esc(row.mapped.pitstop ?? extension.pits ?? "--")}</td>${race ? `<td>${ncCell}</td>` : ""}
+      <td>${esc(row.mapped.pitstop_count ?? extension.pits ?? "--")}</td>${race ? `<td>${ncCell}</td>` : ""}
       <td>${currentTyre ? tyreChip(currentTyre, `${currentTyre} · ${currentTyreLaps ?? "--"} 圈`) : "--"}</td><td>${esc(extension.trackLimits ?? "--")}</td>
       <td><div class="row-colors">${colorText}</div></td>
       <td>${sectorSummary(extension.sectors)}</td>
@@ -1602,7 +1609,7 @@ function renderDriverDetails() {
     <div class="detail-item"><label>上一圈</label><strong>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</strong></div>
     <div class="detail-item"><label>最快圈</label><strong>${esc(fastestText)} ${colorBadgeOrEmpty(extension.bestLapColor)}</strong></div>
     <div class="detail-item"><label>当前轮胎</label><strong>${lastStint ? tyreChip(lastStint.compound, `${lastStint.compound} · L${lastStint.lap_start}-${lastStint.lap_end}`) : "--"}</strong></div>
-    <div class="detail-item"><label>进站次数</label><strong>${row.mapped.pitstop ?? extension.pits ?? "--"}</strong></div>
+    <div class="detail-item"><label>进站次数</label><strong>${row.mapped.pitstop_count ?? extension.pits ?? "--"}</strong></div>
     <div class="detail-item"><label>总圈数</label><strong>${totalStintLaps || "--"}</strong></div>
     <div class="detail-item"><label>超出赛道限制</label><strong>${extension.trackLimits ?? "--"}</strong></div>
     <div class="detail-item"><label>计时段</label><strong>${sectorSummary(extension.sectors)}</strong></div>
