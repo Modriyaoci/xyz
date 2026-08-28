@@ -224,7 +224,25 @@ async function syncOfficialStandings() {
     await execFileAsync(process.execPath, [path.join(root, "scripts", "sync-official-standings.mjs"), "2026"], { cwd: root, timeout: 120000 });
   } catch (error) {
     const detail = error?.stderr?.trim() || error?.message || "官网快照同步失败";
-    throw new Error(`年度排名同步失败：${detail}`);
+    try {
+      const current = await officialStandings();
+      const previous = current.data.sync_status?.last_success_at || current.data.captured_at || null;
+      return {
+        data: {
+          ...current.data,
+          sync_status: {
+            status: "failed",
+            attempted_at: new Date().toISOString(),
+            last_success_at: previous,
+            error: `年度排名同步失败：${detail}`,
+          },
+        },
+        source: "local",
+        sync_failed: true,
+      };
+    } catch {
+      throw new Error(`年度排名同步失败：${detail}`);
+    }
   }
   return officialStandings();
 }

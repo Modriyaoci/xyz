@@ -7,6 +7,7 @@ const state = {
   activePhase: null,
   data: null,
   standings: null,
+  standingsError: null,
   standingsKind: "drivers",
   activeView: "schedule",
   selectedDriver: null,
@@ -361,16 +362,18 @@ function enrichOfficialStandings(snapshot) {
 
 async function staticStandings({ force = false } = {}) {
   const cacheKey = `${STATIC_CACHE_VERSION}:official-standings:${state.season}`;
-  if (!force) {
-    const cached = await staticCacheGet(cacheKey);
-    if (cached && Number(cached.season) === Number(state.season)) return { data: cached, source: "cache" };
+  const cached = await staticCacheGet(cacheKey);
+  try {
+    const response = await fetch(STATIC_STANDINGS_URL, { cache: "no-store" });
+    if (!response.ok) throw new Error(`年度排名快照读取失败 ${response.status}`);
+    const data = await response.json();
+    if (!Array.isArray(data.drivers) || !Array.isArray(data.teams)) throw new Error("年度排名快照格式不完整");
+    await staticCacheSet(cacheKey, data);
+    return { data, source: "official" };
+  } catch (error) {
+    if (cached && Number(cached.season) === Number(state.season)) return { data: cached, source: "cache", error: error.message };
+    throw error;
   }
-  const response = await fetch(STATIC_STANDINGS_URL, { cache: "no-store" });
-  if (!response.ok) throw new Error(`年度排名快照读取失败 ${response.status}`);
-  const data = await response.json();
-  if (!Array.isArray(data.drivers) || !Array.isArray(data.teams)) throw new Error("年度排名快照格式不完整");
-  await staticCacheSet(cacheKey, data);
-  return { data, source: "official" };
 }
 
 const $ = (id) => document.getElementById(id);
@@ -635,6 +638,23 @@ function renderStandings() {
   $("standingsCapturedAt").textContent = snapshot?.captured_at ? `官网快照：${dateText(snapshot.captured_at)}` : "官网快照：--";
   $("standingsCount").textContent = snapshot ? `${rows.length} 条` : "--";
   $("standingsSource").textContent = snapshot ? "数据源：官网排名快照" : "数据源：--";
+  const alert = $("standingsAlert");
+  const syncStatus = snapshot?.sync_status;
+  const failed = syncStatus?.status === "failed" || Boolean(state.standingsError);
+  if (alert) {
+    if (failed) {
+      const attemptedAt = syncStatus?.attempted_at ? `（尝试时间：${dateText(syncStatus.attempted_at)}）` : "";
+      const detail = syncStatus?.error || state.standingsError || "官网排名自动同步失败，请查看同步日志";
+      const detailSuffix = /自动同步失败/.test(detail) ? "" : ` ${detail}`;
+      alert.textContent = snapshot
+        ? `年度排名自动同步失败${attemptedAt}。当前显示上次成功的排名快照。${detailSuffix}`
+        : `年度排名自动同步失败。${detail}`;
+      alert.hidden = false;
+    } else {
+      alert.hidden = true;
+      alert.textContent = "";
+    }
+  }
   document.querySelectorAll("[data-standings-kind]").forEach((button) => {
     button.classList.toggle("active", button.dataset.standingsKind === kind);
     button.setAttribute("aria-selected", button.dataset.standingsKind === kind ? "true" : "false");
@@ -649,11 +669,15 @@ async function loadOfficialStandings({ force = false } = {}) {
   try {
     const payload = await api(force ? "/api/sync-standings" : "/api/standings", force ? { method: "POST" } : {});
     state.standings = enrichOfficialStandings(payload.data);
+    state.standingsError = null;
     renderStandings();
-    if (status) status.textContent = payload.source === "cache" || payload.source === "local" ? "已读取本地快照" : "排名快照已更新";
+    if (status) status.textContent = payload.data?.sync_status?.status === "failed"
+      ? "自动同步失败，显示上次成功快照"
+      : payload.source === "cache" || payload.source === "local" ? "已读取本地快照" : "排名快照已更新";
   } catch (error) {
+    state.standingsError = error.message || "年度排名读取失败";
     if (status) status.textContent = error.message || "年度排名读取失败";
-    if (!state.standings) renderStandings();
+    renderStandings();
   } finally {
     if (button) button.disabled = false;
   }

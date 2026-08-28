@@ -91,6 +91,8 @@ h2 { margin: 2px 0 0; font-size: 17px; letter-spacing: -.015em; }
 .standings-view[hidden], .schedule-view[hidden] { display: none; }
 .standings-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px 22px; box-shadow: var(--shadow); }
 .standings-head p { color: var(--muted); margin: 0; }
+.standings-alert { margin-top: 11px; max-width: 780px; border: 1px solid #fecaca; border-left: 3px solid var(--red); border-radius: 5px; background: #fff1f2; color: #b4232d; padding: 9px 11px; font-size: 11px; line-height: 1.45; }
+.standings-alert[hidden] { display: none; }
 .standings-panel { margin-top: 14px; }
 .standings-meta { display: flex; align-items: center; gap: 18px; padding: 10px 17px; color: var(--subtle); font-size: 11px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .standings-meta span:first-child { color: var(--muted); font-weight: 650; }
