@@ -57,7 +57,7 @@ const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.h
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
   || (!localServer && !window.location.pathname.startsWith("/site/"));
 const STATIC_API_BASE = "https://api.openf1.org/v1";
-const STATIC_CACHE_VERSION = "20260828-backend-fields-v2";
+const STATIC_CACHE_VERSION = "20260828-backend-fields-v3";
 const staticRequestTimeoutMs = 30000;
 const staticRequestIntervalMs = 400;
 let staticNextRequestAt = 0;
@@ -230,25 +230,6 @@ function stripTyreAgeFields(data) {
   return data;
 }
 
-function stripRaceControlTranslations(data) {
-  if (!data || typeof data !== "object") return data;
-  if (Array.isArray(data.race_control)) {
-    data.race_control = data.race_control.map((row) => {
-      if (!row || typeof row !== "object") return row;
-      const { text_zh, ...withoutTranslation } = row;
-      return withoutTranslation;
-    });
-  }
-  if (data.mapped && typeof data.mapped === "object" && Array.isArray(data.mapped.messages)) {
-    data.mapped.messages = data.mapped.messages.map((row) => {
-      if (!row || typeof row !== "object") return row;
-      const { text_zh, ...withoutTranslation } = row;
-      return withoutTranslation;
-    });
-  }
-  return data;
-}
-
 function stripIgnoredSyncWarnings(data) {
   if (!data || typeof data !== "object" || !Array.isArray(data.sync_warnings)) return data;
   data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith("starting_grid:"));
@@ -277,7 +258,6 @@ function resolveBackendDriverId(driver) {
 
 function enrichBackendMapping(data) {
   if (!data || typeof data !== "object") return data;
-  stripRaceControlTranslations(data);
   data.mapped = mapOpenF1ToBackend(data, data.mapped);
   return data;
 }
@@ -736,7 +716,7 @@ function renderLiveMeetingMeta(data = state.liveTiming.data) {
   const meeting = data?.meeting || {};
   const session = data?.session || {};
   const country = meeting.country_name || "";
-  const title = country === "Netherlands" ? "荷兰大奖赛" : meeting.meeting_name || country || "实时推送";
+  const title = meeting.meeting_name || country || "实时推送";
   const sessionName = session.session_name || live.sessionName;
   const subtitle = [country, meeting.location, sessionName ? sessionLabel(sessionName) : ""].filter(Boolean).join(" · ") || "连接后显示当前实时会话";
   const titleNode = $("liveTimingTitle");
@@ -1258,8 +1238,8 @@ function renderSessionControls() {
 }
 
 function setMeetingMeta(meeting, session) {
-  const name = meeting?.country_name === "Netherlands" ? "荷兰大奖赛" : (meeting?.meeting_name || meeting?.country_name || "分站");
-  $("pageTitle").textContent = name === "Netherlands" ? "荷兰大奖赛" : name;
+  const name = meeting?.meeting_name || meeting?.country_name || "分站";
+  $("pageTitle").textContent = name;
   const phase = state.activePhase ? ` · ${phaseLabel(state.activePhase)}` : "";
   $("pageSubtitle").textContent = `${meeting?.country_name || ""}${meeting?.location ? ` · ${meeting.location}` : ""} · ${session ? sessionLabel(session.session_name) : "选择一个会话节点"}${phase}`;
   $("meetingKeyLabel").textContent = meeting?.meeting_key ?? "--";

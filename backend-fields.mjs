@@ -321,15 +321,9 @@ export function mapOpenF1ToBackend(data, existing = null) {
   const messages = raceControl.map((row) => ({
     lap: row.lap_number ?? row.lap ?? null,
     text_en: String(row.message || row.text_en || ""),
-    text_zh: null,
+    text_zh: row.text_zh ?? null,
     utc: row.utc ?? (Date.parse(row.date || "") ? Math.floor(Date.parse(row.date) / 1000) : null),
   })).filter((row) => row.text_en);
-  const mappedMessages = (Array.isArray(existing?.messages) && existing.messages.length ? existing.messages : messages)
-    .map((row) => {
-      if (!row || typeof row !== "object") return row;
-      const { text_zh, ...withoutTranslation } = row;
-      return { ...withoutTranslation, text_zh: null };
-    });
   const mapped = {
     id: existing?.id ?? null,
     parent_id: existing?.parent_id ?? null,
@@ -350,7 +344,7 @@ export function mapOpenF1ToBackend(data, existing = null) {
       substatus: winnerLaps !== null && competitors.length && competitors.every((row) => Number(row.laps) === winnerLaps) ? "All laps completed" : "",
       ...(existing?.fields || {}),
     },
-    messages: mappedMessages,
+    messages: Array.isArray(existing?.messages) && existing.messages.length ? existing.messages : messages,
     extra: Object.fromEntries(Object.entries(extra).map(([key, value]) => [key, existing?.extra?.[key] ?? value])),
     mapping_version: "backend-fields-v1",
   };
