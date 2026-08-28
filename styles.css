@@ -89,6 +89,26 @@ h2 { margin: 2px 0 0; font-size: 17px; letter-spacing: -.015em; }
 .ghost-button:hover { color: var(--blue); border-color: #b8cdfb; background: var(--blue-soft); }
 .panel-badge { color: var(--muted); font-size: 11px; border: 1px solid var(--line); border-radius: 5px; padding: 4px 8px; background: #fafbfc; }
 .standings-view[hidden], .schedule-view[hidden] { display: none; }
+.live-timing-view[hidden] { display: none; }
+.live-head { margin-bottom: 0; }
+.live-results-table { min-width: 1480px; }
+.live-results-table .driver-cell { white-space: nowrap; }
+.live-results-table .driver-cell strong { margin-right: 7px; }
+.live-results-table .driver-code { color: var(--subtle); font-size: 10px; }
+.live-row-status { display: inline-flex; align-items: center; border-radius: 4px; padding: 3px 7px; font-size: 10px; font-weight: 750; }
+.live-row-status.is-running { background: #ecfdf5; color: #087f5b; }
+.live-row-status.is-pit { background: #fff7ed; color: #c2410c; }
+.live-row-status.is-warning { background: #fff1f2; color: #b4232d; }
+.live-events-table { min-width: 560px; }
+.live-log-list { max-height: 390px; overflow: auto; padding: 4px 15px; }
+.live-log-item { display: grid; grid-template-columns: 8px minmax(0, 1fr) auto; align-items: start; gap: 9px; padding: 10px 0; border-bottom: 1px solid var(--line); }
+.live-log-item:last-child { border-bottom: 0; }
+.live-log-item > div { display: grid; gap: 2px; min-width: 0; }
+.live-log-item strong { font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-log-item span:not(.live-log-dot) { color: var(--muted); font-size: 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.live-log-item time { color: var(--subtle); font-size: 10px; white-space: nowrap; }
+.live-log-dot { width: 7px; height: 7px; margin-top: 4px; border-radius: 50%; background: var(--green); }
+.live-log-dot.error { background: var(--red); }
 .standings-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px 22px; box-shadow: var(--shadow); }
 .standings-head p { color: var(--muted); margin: 0; }
 .standings-alert { margin-top: 11px; max-width: 780px; border: 1px solid #fecaca; border-left: 3px solid var(--red); border-radius: 5px; background: #fff1f2; color: #b4232d; padding: 9px 11px; font-size: 11px; line-height: 1.45; }

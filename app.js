@@ -1,3 +1,10 @@
+import {
+  mapOpenF1ToBackend,
+  resolveBackendDriverId as sharedResolveBackendDriverId,
+  resolveBackendTeamId as sharedResolveBackendTeamId,
+} from "./backend-fields.mjs";
+import { openF1TelemetryStream } from "./f1telemetry.mjs";
+
 const state = {
   season: 2026,
   meetings: [],
@@ -16,6 +23,32 @@ const state = {
   messageView: "all",
   messageLanguage: "both",
   dataRequestId: 0,
+  liveTiming: {
+    meetingKey: null,
+    sessionKey: null,
+    meetingName: "",
+    sessionName: "",
+    sessions: [],
+    data: null,
+    rows: [],
+    events: [],
+    logs: [],
+    received: 0,
+    errors: 0,
+    selectedDriver: null,
+    search: "",
+    weatherView: "all",
+    messageView: "all",
+    messageLanguage: "both",
+    running: false,
+    started: false,
+    timer: null,
+    token: 0,
+    lastAt: null,
+    loading: false,
+    sequence: 0,
+    stream: null,
+  },
 };
 
 // GitHub Pages cannot run the Node proxy. In that deployment the browser talks
@@ -24,7 +57,7 @@ const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.h
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
   || (!localServer && !window.location.pathname.startsWith("/site/"));
 const STATIC_API_BASE = "https://api.openf1.org/v1";
-const STATIC_CACHE_VERSION = "20260827-sync-v8";
+const STATIC_CACHE_VERSION = "20260828-backend-fields-v1";
 const staticRequestTimeoutMs = 30000;
 const staticRequestIntervalMs = 400;
 let staticNextRequestAt = 0;
@@ -219,76 +252,13 @@ function stripStartingGridFields(data) {
   return data;
 }
 
-// Backend IDs are stable across the 2026 season; OpenF1 supplies the matching
-// driver acronym/name and team name for every session.
-const backendDriverIdByAcronym = new Map(Object.entries({
-  ALB: 347504, LIN: 347549, SAI: 347548, LEC: 347492, OCO: 347547, ALO: 347502,
-  COL: 347540, BOR: 347539, RUS: 347501, HAD: 347537, ANT: 347534, STR: 347503,
-  NOR: 347506, HAM: 347542, LAW: 347514, VER: 347482, HUL: 347544, BEA: 347520,
-  PIA: 347528, GAS: 347499, PER: 347519, BOT: 347525, CRA: 347908, FOR: 368438,
-  HER: 368439, IWA: 347538, BEG: 347535, BRO: 347536, VES: 347526, ARO: 347526,
-  HIR: 347541, TSU: 347546,
-}));
-const backendDriverIdByName = new Map(Object.entries({
-  "alexander albon": 347504, "arvid lindblad": 347549, "carlos sainz": 347548,
-  "charles leclerc": 347492, "esteban ocon": 347547, "fernando alonso": 347502,
-  "franco colapinto": 347540, "gabriel bortoleto": 347539, "george russell": 347501,
-  "isack hadjar": 347537, "kimi antonelli": 347534, "lance stroll": 347503,
-  "lando norris": 347506, "lewis hamilton": 347542, "liam lawson": 347514,
-  "max verstappen": 347482, "nico hulkenberg": 347544, "oliver bearman": 347520,
-  "oscar piastri": 347528, "pierre gasly": 347499, "sergio perez": 347519,
-  "valtteri bottas": 347525, "jak crawford": 347908, "leonardo fornaroli": 368438,
-  "colton herta": 368439, "ayumu iwasa": 347538, "dino beganovic": 347535,
-  "luke browning": 347536, "frederik vesti": 347526, "paul aron": 347526,
-  "ryo hirakawa": 347541, "yuki tsunoda": 347546,
-}));
-const backendDriverIdByCar = new Map([
-  [1, 347506], [3, 347482], [5, 347539], [10, 347499], [11, 347519], [12, 347534],
-  [14, 347502], [16, 347492], [18, 347503], [22, 347546], [23, 347504], [27, 347544],
-  [30, 347514], [31, 347547], [41, 347549], [43, 347540], [44, 347542], [55, 347548],
-  [63, 347501], [77, 347525], [81, 347528], [87, 347520],
-]);
-const backendTeamIdByName = new Map(Object.entries({
-  alpine: 385366, "aston martin": 385362, audi: 394048, cadillac: 390378,
-  ferrari: 385364, "haas f1 team": 385361, mclaren: 385367, mercedes: 385358,
-  "racing bulls": 385363, "red bull racing": 385355, williams: 385365,
-}));
-const identityKey = (value) => String(value || "").normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim().replace(/\s+/g, " ");
-
-function lookupIdentity(map, value) {
-  const key = identityKey(value);
-  if (!key) return null;
-  if (map.has(key)) return Number(map.get(key));
-  for (const [alias, id] of map) if (key.endsWith(` ${alias}`) || alias.endsWith(` ${key}`)) return Number(id);
-  return null;
-}
-
 function resolveBackendDriverId(driver) {
-  const acronym = String(driver?.name_acronym || "").trim().toUpperCase();
-  if (backendDriverIdByAcronym.has(acronym)) return Number(backendDriverIdByAcronym.get(acronym));
-  const name = lookupIdentity(backendDriverIdByName, driver?.full_name)
-    ?? lookupIdentity(backendDriverIdByName, `${driver?.first_name || ""} ${driver?.last_name || ""}`);
-  return name ?? backendDriverIdByCar.get(Number(driver?.driver_number)) ?? null;
+  return sharedResolveBackendDriverId(driver);
 }
 
 function enrichBackendMapping(data) {
   if (!data || typeof data !== "object") return data;
-  const drivers = Array.isArray(data.drivers) ? data.drivers : [];
-  const mapped = data.mapped && typeof data.mapped === "object" ? data.mapped : {};
-  const competitors = Array.isArray(mapped.competitors) ? mapped.competitors.slice() : [];
-  const byCar = new Map(competitors.map((row) => [Number(row.car_number), row]));
-  for (const driver of drivers) {
-    const car = Number(driver?.driver_number);
-    if (!Number.isFinite(car)) continue;
-    const id = resolveBackendDriverId(driver);
-    const teamId = lookupIdentity(backendTeamIdByName, driver?.team_name);
-    if (id == null && teamId == null) continue;
-    const row = byCar.get(car) || { car_number: car };
-    if (!byCar.has(car)) { byCar.set(car, row); competitors.push(row); }
-    if (id != null) row.id = id;
-    if (teamId != null) row.team_id = teamId;
-  }
-  data.mapped = { ...mapped, competitors };
+  data.mapped = mapOpenF1ToBackend(data, data.mapped);
   return data;
 }
 
@@ -318,6 +288,7 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
     await refreshStaticCachedFeed(sanitised, requestedSessionKey, "race_control");
     for (const field of retryWarningFields(sanitised)) await refreshStaticCachedFeed(sanitised, requestedSessionKey, field);
     enrichBackendMapping(sanitised);
+    sanitised.cache_version = STATIC_CACHE_VERSION;
     await staticCacheSet(cacheKey, sanitised);
     return { data: sanitised, source: "cache" };
   }
@@ -342,8 +313,19 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   data.synced_at = new Date().toISOString();
   stripTyreAgeFields(data);
   enrichBackendMapping(data);
+  data.cache_version = STATIC_CACHE_VERSION;
   await staticCacheSet(cacheKey, data);
   return { data, source: "openf1" };
+}
+
+async function staticLiveSessionSnapshot(meetingKey, sessionKey) {
+  const requestedMeetingKey = Number(meetingKey);
+  const requestedSessionKey = Number(sessionKey);
+  if (!Number.isInteger(requestedMeetingKey) || !Number.isInteger(requestedSessionKey)) throw new Error("请选择有效的分站和节点");
+  const data = await fetchF1TelemetryState({ requestedMeetingKey, requestedSessionKey, timeoutMs: staticRequestTimeoutMs });
+  stripStartingGridFields(stripTyreAgeFields(data));
+  enrichBackendMapping(data);
+  return { data, source: "f1telemetry-live", live: true };
 }
 
 function enrichOfficialStandings(snapshot) {
@@ -351,11 +333,11 @@ function enrichOfficialStandings(snapshot) {
   const drivers = (Array.isArray(snapshot.drivers) ? snapshot.drivers : []).map((row) => ({
     ...row,
     backend_driver_id: resolveBackendDriverId({ name_acronym: row.code, full_name: row.name }),
-    backend_team_id: lookupIdentity(backendTeamIdByName, row.team),
+    backend_team_id: sharedResolveBackendTeamId(row.team),
   }));
   const teams = (Array.isArray(snapshot.teams) ? snapshot.teams : []).map((row) => ({
     ...row,
-    backend_team_id: lookupIdentity(backendTeamIdByName, row.name),
+    backend_team_id: sharedResolveBackendTeamId(row.name),
   }));
   return { ...snapshot, drivers, teams };
 }
@@ -384,7 +366,7 @@ const fixed = (value, digits = 3) => numeric(value) == null ? "--" : numeric(val
 const dateText = (value) => value ? String(value).replace("T", " ").replace("+00:00", " UTC").replace("Z", " UTC") : "--";
 const syncWarningText = (warnings) => {
   if (!Array.isArray(warnings) || !warnings.length) return "";
-  const labels = { drivers: "车手", session_result: "赛果", laps: "圈次", pit: "进站", position: "位置", intervals: "间隔", stints: "轮胎", race_control: "赛会消息", weather: "天气" };
+  const labels = { drivers: "车手", session_result: "赛果", laps: "圈数", pit: "进站", position: "位置", intervals: "间隔", stints: "轮胎历史", race_control: "赛会消息", weather: "天气记录" };
   const fields = [...new Set(warnings.map((warning) => String(warning).split(":")[0]).map((field) => labels[field] || field))];
   return fields.length ? ` · 部分字段未更新：${fields.join("、")}` : "";
 };
@@ -592,6 +574,7 @@ async function api(path, options = {}) {
     const url = new URL(path, window.location.href);
     if (url.pathname === "/api/meetings") return { data: await staticCatalog(), source: "catalog" };
     if (url.pathname === "/api/sessions") return staticSessionList(url.searchParams.get("meeting_key"));
+    if (url.pathname === "/api/live-session-data") return staticLiveSessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"));
     if (url.pathname === "/api/session-data") return staticSessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"));
     if (url.pathname === "/api/sync-session-data") {
       const body = JSON.parse(options.body || "{}");
@@ -683,12 +666,507 @@ async function loadOfficialStandings({ force = false } = {}) {
   }
 }
 
+function renderLiveTimingSelectors() {
+  const live = state.liveTiming;
+  const seasonSelect = $("liveSeasonSelect");
+  const meetingSelect = $("liveMeetingSelect");
+  const sessionSelect = $("liveSessionSelect");
+  if (!seasonSelect || !meetingSelect || !sessionSelect) return;
+  seasonSelect.value = String(state.season);
+  const meetings = state.meetings.length ? state.meetings : [{ meeting_key: 1292, round: 14, meeting_name: "Dutch Grand Prix", country_name: "Netherlands" }];
+  meetingSelect.innerHTML = meetings.map((meeting) => {
+    const label = meeting.meeting_name || meeting.country_name || "未命名分站";
+    const round = meeting.round ? `第 ${meeting.round} 站 · ` : "测试 · ";
+    return `<option value="${esc(meeting.meeting_key)}">${esc(round + label)}</option>`;
+  }).join("");
+  meetingSelect.value = String(live.meetingKey);
+  const sessions = live.sessions.length
+    ? live.sessions
+    : state.sessions.length && Number(state.activeMeeting?.meeting_key) === Number(live.meetingKey)
+      ? state.sessions
+      : [];
+  sessionSelect.innerHTML = sessions.length
+    ? sessions.map((session) => `<option value="${esc(session.session_key ?? "")}">${esc(sessionLabel(session.session_name))}${session.session_key == null ? " · 待获取" : ""}</option>`).join("")
+    : `<option value="">选择分站后获取节点</option>`;
+  sessionSelect.value = live.sessionKey == null ? "" : String(live.sessionKey);
+  const sessionTabs = $("liveSessionTabs");
+  if (sessionTabs) {
+    sessionTabs.innerHTML = sessions.map((session) => `<button class="session-tab${Number(session.session_key) === Number(live.sessionKey) ? " active" : ""}" data-live-session-key="${esc(session.session_key ?? "")}" type="button">${esc(sessionLabel(session.session_name))}${session.session_key == null ? " · 待获取" : ""}</button>`).join("");
+    sessionTabs.querySelectorAll("button[data-live-session-key]").forEach((button) => button.addEventListener("click", () => {
+      const selectedSession = live.sessions.find((session) => String(session.session_key) === button.dataset.liveSessionKey);
+      if (!selectedSession) return;
+      stopLivePolling();
+      live.sessionKey = selectedSession.session_key;
+      live.sessionName = selectedSession.session_name || "Race";
+      resetLiveTiming();
+      renderLiveTimingSelectors();
+    }));
+  }
+  $("liveStreamId").textContent = live.meetingKey ?? "--";
+  $("liveSessionLabel").textContent = `${sessionLabel(live.sessionName)} · ${live.sessionKey ?? "--"}`;
+}
+
+function renderLiveMeetingMeta(data = state.liveTiming.data) {
+  const live = state.liveTiming;
+  const meeting = data?.meeting || {};
+  const session = data?.session || {};
+  const country = meeting.country_name || "";
+  const title = country === "Netherlands" ? "荷兰大奖赛" : meeting.meeting_name || country || "实时推送";
+  const sessionName = session.session_name || live.sessionName;
+  const subtitle = [country, meeting.location, sessionName ? sessionLabel(sessionName) : ""].filter(Boolean).join(" · ") || "连接后显示当前实时会话";
+  const titleNode = $("liveTimingTitle");
+  const subtitleNode = $("liveTimingSubtitle");
+  if (titleNode) titleNode.textContent = title;
+  if (subtitleNode) subtitleNode.textContent = subtitle;
+  live.meetingKey = numeric(meeting.meeting_key) ?? live.meetingKey;
+  live.sessionKey = numeric(session.session_key) ?? live.sessionKey;
+  live.meetingName = meeting.meeting_name || live.meetingName;
+  live.sessionName = sessionName || live.sessionName;
+}
+
+async function loadLiveTimingSessions(meetingKey) {
+  const live = state.liveTiming;
+  live.meetingKey = Number(meetingKey);
+  // Live Timing uses the preloaded season catalog for node selection. The
+  // selected node's data is fetched only from the F1 Telemetry WebSocket.
+  const meeting = state.meetings.find((item) => Number(item.meeting_key) === live.meetingKey);
+  live.sessions = Array.isArray(meeting?.sessions) ? meeting.sessions.slice() : [];
+  const selected = live.sessions.find((session) => session.session_name === live.sessionName) || live.sessions.find((session) => session.session_key != null) || null;
+  live.sessionKey = selected?.session_key ?? null;
+  live.sessionName = selected?.session_name || "Race";
+  renderLiveTimingSelectors();
+}
+
+function liveClock(value) {
+  if (!value) return "--";
+  return new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false }).format(new Date(value));
+}
+
+function displayLapTime(value) {
+  if (value === null || value === undefined || value === "") return "--";
+  if (typeof value === "string" && /:/.test(value.trim())) return value.trim();
+  return formatTime(value);
+}
+
+const liveFeedLabels = Object.freeze({
+  drivers: "车手",
+  session_result: "赛果",
+  laps: "圈数",
+  pit: "进站",
+  position: "位置",
+  intervals: "间隔",
+  stints: "轮胎历史",
+  race_control: "赛会消息",
+  weather: "天气记录",
+});
+
+function latestLiveRows(rows, key = "driver_number") {
+  const latest = new Map();
+  for (const row of Array.isArray(rows) ? rows : []) {
+    const driver = Number(row?.[key]);
+    if (!Number.isFinite(driver)) continue;
+    const previous = latest.get(driver);
+    const currentTime = Date.parse(row?.date || row?.date_start || "") || 0;
+    const previousTime = Date.parse(previous?.date || previous?.date_start || "") || 0;
+    if (!previous || currentTime >= previousTime) latest.set(driver, row);
+  }
+  return latest;
+}
+
+function liveResultValue(row, key) {
+  const value = row?.[key];
+  if (!Array.isArray(value)) return value;
+  return value.slice().reverse().find((item) => item !== null && item !== undefined && item !== "") ?? null;
+}
+
+function buildLiveRows(data) {
+  const drivers = new Map((data?.drivers || []).map((driver) => [Number(driver.driver_number), driver]));
+  const results = new Map((data?.session_result || []).map((result) => [Number(result.driver_number), result]));
+  const mappedRows = new Map((data?.mapped?.competitors || []).map((row) => [Number(row.car_number), row]));
+  const mappedExtra = data?.mapped?.extra || {};
+  const positions = latestLiveRows(data?.position);
+  const intervals = latestLiveRows(data?.intervals);
+  const laps = latestLiveRows(data?.laps);
+  const pits = (data?.pit || []).reduce((map, row) => {
+    const car = Number(row?.driver_number);
+    if (!Number.isFinite(car)) return map;
+    const current = map.get(car) || { count: 0, latest: null };
+    current.count += 1;
+    if (!current.latest || (Date.parse(row?.date || "") || 0) >= (Date.parse(current.latest?.date || "") || 0)) current.latest = row;
+    map.set(car, current);
+    return map;
+  }, new Map());
+  const lapHistory = new Map();
+  for (const lap of Array.isArray(data?.laps) ? data.laps : []) {
+    const car = Number(lap?.driver_number);
+    const duration = numeric(lap?.lap_duration);
+    if (!Number.isFinite(car) || duration == null) continue;
+    if (!lapHistory.has(car)) lapHistory.set(car, []);
+    lapHistory.get(car).push(lap);
+  }
+  const cars = new Set([...drivers.keys(), ...results.keys(), ...mappedRows.keys(), ...positions.keys(), ...intervals.keys(), ...laps.keys()]);
+  const snapshotTime = Date.parse(data?.fetched_at || "") || Date.now();
+  const rows = Array.from(cars).map((car) => {
+    const driver = drivers.get(car) || {};
+    const result = results.get(car) || {};
+    const position = positions.get(car) || {};
+    const interval = intervals.get(car) || {};
+    const latestLap = laps.get(car) || {};
+    const mapped = mappedRows.get(car) || {};
+    const history = lapHistory.get(car) || [];
+    const bestLap = history.slice().sort((a, b) => Number(a.lap_duration) - Number(b.lap_duration))[0];
+    const pit = pits.get(car);
+    const lastActivity = [latestLap.date_start, interval.date, position.date, pit?.latest?.date].map((value) => Date.parse(value || "") || 0).sort((a, b) => b - a)[0] || null;
+    const resultPosition = numeric(result.position);
+    const livePosition = numeric(position.position);
+    const pitAt = Date.parse(pit?.latest?.date || "") || 0;
+    const recentPit = pitAt > 0 && pitAt >= (Date.parse(latestLap.date_start || "") || 0) && snapshotTime - pitAt < 120000;
+    const status = result.dsq ? "DSQ" : result.dns ? "DNS" : result.dnf ? "DNF" : recentPit ? "进站" : data?.session?.date_end && Date.parse(data.session.date_end) < snapshotTime ? "完成" : "运行中";
+    const mappedId = mapped.id ?? resolveBackendDriverId(driver);
+    const gap = mapped.gap_to_leader || liveResultValue(result, "gap_to_leader") || interval.gap_to_leader || null;
+    const intervalValue = mapped.interval || liveResultValue(result, "interval") || interval.interval || null;
+    const mappedLastLap = mappedId != null ? mappedExtra.last_lap_time?.[String(mappedId)] : null;
+    const mappedBestLap = mapped.fastest_lap_time || null;
+    const directSectors = [1, 2, 3].map((sector) => ({
+      sector,
+      time: result[`duration_sector_${sector}`] == null ? "" : Number(result[`duration_sector_${sector}`]).toFixed(3),
+      best_time: "",
+      time_color: "",
+      best_time_color: "",
+    }));
+    const directMiniSectors = [1, 2, 3].map((sector) => ({
+      sector,
+      mini_sectors: (Array.isArray(result[`segments_sector_${sector}`]) ? result[`segments_sector_${sector}`] : []).map((status, index) => ({ mini_sector: index + 1, status, color: colorFromStatus(status) })),
+    }));
+    const directTyreHistory = (data?.stints || []).filter((stint) => Number(stint.driver_number) === car).slice().sort((a, b) => Number(a.stint_number) - Number(b.stint_number));
+    const directTyreInfo = directTyreHistory.at(-1) || null;
+    const name = driver.full_name || `${driver.first_name || ""} ${driver.last_name || ""}`.trim() || `车手 ${car}`;
+    return {
+      position: resultPosition ?? livePosition ?? null,
+      car,
+      name,
+      code: driver.name_acronym || "",
+      team: driver.team_name || "--",
+      driverId: mappedId,
+      teamId: mapped.team_id ?? sharedResolveBackendTeamId(driver.team_name),
+      lap: mapped.laps ?? numeric(result.number_of_laps) ?? numeric(latestLap.lap_number),
+      lastLap: mappedLastLap || result.last_lap_duration || latestLap.lap_duration,
+      bestLap: mappedBestLap || result.best_lap_duration || bestLap?.lap_duration || null,
+      gap,
+      interval: intervalValue,
+      points: result.points ?? mapped.points ?? null,
+      status,
+      pitCount: mapped.pitstop ?? pit?.count ?? 0,
+      mapped,
+      extra: mappedId != null ? {
+        lastLapColor: mappedExtra.last_lap_time_color?.[String(mappedId)] || null,
+        bestLapColor: mappedExtra.best_lap_time_color?.[String(mappedId)] || null,
+        sectors: mappedExtra.sectors?.[String(mappedId)] || directSectors,
+        miniSectors: mappedExtra.mini_sectors_data?.[String(mappedId)] || directMiniSectors,
+        tyreInfo: mappedExtra.tire_info?.[String(mappedId)] || directTyreInfo,
+        tyreHistory: mappedExtra.tire_history?.[String(mappedId)] || directTyreHistory,
+        trackLimits: mappedExtra.track_limits?.[String(mappedId)] ?? null,
+      } : null,
+      updatedAt: lastActivity ? new Date(lastActivity).toISOString() : data?.fetched_at,
+    };
+  });
+  rows.sort((a, b) => {
+    const aPosition = a.position == null ? Infinity : a.position;
+    const bPosition = b.position == null ? Infinity : b.position;
+    if (aPosition !== bPosition) return aPosition - bPosition;
+    const aGap = numeric(a.gap);
+    const bGap = numeric(b.gap);
+    return (aGap ?? Infinity) - (bGap ?? Infinity) || a.car - b.car;
+  });
+  rows.forEach((row, index) => { if (row.position == null) row.position = index + 1; });
+  return rows;
+}
+
+function buildLiveEvents(data) {
+  return (Array.isArray(data?.race_control) ? data.race_control : [])
+    .slice()
+    .sort((a, b) => (Date.parse(b.date || "") || 0) - (Date.parse(a.date || "") || 0))
+    .map((row, index) => {
+      const { english, chinese } = raceControlMessageParts(row);
+      return { sequence: index + 1, receivedAt: row.date, lap: row.lap_number ?? row.lap ?? "--", typeLabel: row.category || "赛会消息", english, chinese, message: english };
+    });
+}
+
+function buildLiveLogs(data) {
+  const errors = new Set((data?.live_errors || []).map((value) => String(value).split(":")[0]));
+  return Object.keys(liveFeedLabels).map((key, index) => ({
+    sequence: index + 1,
+    title: errors.has(key) ? "读取失败" : "已更新",
+    detail: `${liveFeedLabels[key]} · ${errors.has(key) ? "本次更新无数据" : "已替换为最新数据"}`,
+    ok: !errors.has(key),
+    at: data?.fetched_at,
+  }));
+}
+
+const liveIsRaceSession = () => raceSessionNames.has(state.liveTiming.sessionName);
+const liveResultColumnCount = () => liveIsRaceSession() ? 20 : 18;
+const liveResultHeaderHtml = () => {
+  const race = liveIsRaceSession();
+  return `<tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>圈数</th><th>总时间 / 差距</th>${race ? "<th>积分</th>" : ""}<th>状态</th><th>上一圈</th><th>最快圈</th><th>与上一名间距</th><th>与第一名间距</th><th>进站</th>${race ? "<th>NC（计算）</th>" : ""}<th>当前轮胎</th><th>超出赛道限制</th><th>小计时段</th><th>计时段</th></tr>`;
+};
+
+function renderLiveTiming() {
+  const live = state.liveTiming;
+  const table = $("liveTimingTable");
+  if (!table) return;
+  renderLiveMeetingMeta();
+  const race = liveIsRaceSession();
+  table.querySelector("thead").innerHTML = liveResultHeaderHtml();
+  const query = String(live.search || "").trim().toLowerCase();
+  const filteredRows = live.rows.filter((row) => !query || [row.car, row.name, row.team, row.code].some((value) => String(value ?? "").toLowerCase().includes(query)));
+  table.querySelector("tbody").innerHTML = filteredRows.length
+    ? filteredRows.map((row) => {
+      const rowIndex = live.rows.indexOf(row);
+      const previous = live.rows[rowIndex - 1];
+      const currentTyre = row.extra?.tyreInfo?.compound;
+      const currentTyreLaps = row.extra?.tyreInfo?.total_laps;
+      const previousGap = rowIndex === 0 ? "--" : row.interval || (numeric(row.gap) != null && numeric(previous?.gap) != null ? displayGap(Math.max(0, numeric(row.gap) - numeric(previous.gap))) : "--");
+      const statusClass = row.status === "进站" ? "is-pit" : row.status === "运行中" ? "is-running" : "is-warning";
+      return `<tr data-live-car="${esc(row.car)}" class="${live.selectedDriver === row.car ? "selected" : ""}">
+        <td class="position">${esc(row.position ?? "--")}</td><td>${esc(row.car)}</td><td class="driver-cell"><strong>${esc(row.name)}</strong><span class="driver-code">${esc(row.code)}</span></td><td>${esc(row.team)}</td><td>${esc(row.driverId ?? "--")}</td><td>${esc(row.teamId ?? "--")}</td><td>${esc(row.lap ?? "--")}</td>
+        <td>${esc(rowIndex === 0 && row.duration != null ? formatTime(row.duration) : displayGap(row.gap))}</td>${race ? `<td>${esc(row.points ?? "--")}</td>` : ""}<td><span class="live-row-status ${statusClass}">${esc(row.status)}</span></td>
+        <td>${displayLapTime(row.lastLap)} ${colorBadgeOrEmpty(row.extra?.lastLapColor)}</td><td>${displayLapTime(row.bestLap)} ${colorBadgeOrEmpty(row.extra?.bestLapColor)}</td>
+        <td>${esc(previousGap)}</td><td>${esc(displayGap(row.gap))}</td><td>${esc(row.pitCount ?? "--")}</td>${race ? "<td>--</td>" : ""}
+        <td>${currentTyre ? tyreChip(currentTyre, `${currentTyre} · ${currentTyreLaps ?? "--"} 圈`) : "--"}</td><td>${esc(row.extra?.trackLimits ?? "--")}</td>
+        <td><div class="row-colors">${miniSectorSummary(row.extra?.miniSectors)}</div></td><td>${sectorSummary(row.extra?.sectors)}</td>
+      </tr>`;
+    }).join("")
+    : `<tr><td colspan="${liveResultColumnCount()}" class="empty-cell">${live.rows.length ? "没有匹配的车手" : "点击开始推送"}</td></tr>`;
+  table.querySelectorAll("tr[data-live-car]").forEach((tr) => tr.addEventListener("click", () => {
+    live.selectedDriver = Number(tr.dataset.liveCar);
+    renderLiveTiming();
+  }));
+  const data = live.data || {};
+  $("liveMetricDrivers").textContent = number((data.drivers || []).length);
+  $("liveMetricLaps").textContent = number(Math.max(0, ...(data.laps || []).map((lap) => Number(lap.lap_number) || 0)));
+  $("liveMetricWeather").textContent = number((data.weather || []).length);
+  $("liveMetricMessages").textContent = number((data.race_control || []).length);
+  $("liveRowsBadge").textContent = `${filteredRows.length} / ${live.rows.length} 条`;
+  $("liveSequenceBadge").textContent = `更新 ${live.sequence ? `#${String(live.sequence).padStart(3, "0")}` : "--"}`;
+  $("liveEventsBadge").textContent = `${live.events.length} 条`;
+  const messageLimit = live.messageView === "all" ? live.events.length : Number(live.messageView);
+  const visibleEvents = live.events.slice(0, Number.isFinite(messageLimit) ? messageLimit : live.events.length);
+  const language = live.messageLanguage || "both";
+  $("liveEventTable").querySelector("tbody").innerHTML = visibleEvents.length
+    ? visibleEvents.map((event) => {
+      const messageHtml = language === "en"
+        ? `<div class="message-line message-line-en">${esc(event.english)}</div>`
+        : language === "zh"
+          ? `<div class="message-line message-line-zh">${esc(event.chinese)}</div>`
+          : `<div class="message-lines"><div class="message-line message-line-en">${esc(event.english)}</div><div class="message-line message-line-zh">${esc(event.chinese)}</div></div>`;
+      return `<tr><td>${liveClock(event.receivedAt)}</td><td>${esc(event.lap ?? "--")}</td><td class="wrap-cell">${messageHtml}</td></tr>`;
+    }).join("")
+    : `<tr><td colspan="3" class="empty-cell">暂无赛会消息</td></tr>`;
+  renderLiveDriverDetails();
+  renderLiveWeather();
+  renderLiveTyres();
+  $("liveStatusTitle").textContent = live.loading ? "正在更新" : live.running ? "实时更新中" : live.received ? "已停止" : "等待加载";
+  $("liveStatusPulse").classList.toggle("connected", live.running);
+  $("liveStatusMeta").textContent = live.lastAt ? `最后更新 ${liveClock(live.lastAt)} · WebSocket 持续连接${live.errors ? ` · ${live.errors} 个字段失败` : ""}` : "尚未接收到消息";
+  $("liveLoadBtn").innerHTML = `<span>${live.running ? "实时更新中" : "开始实时"}</span><span aria-hidden="true">${live.running ? "●" : "▶"}</span>`;
+  $("liveLoadBtn").disabled = live.loading;
+  $("liveSyncBtn").disabled = live.loading;
+  $("liveCacheLabel").textContent = live.lastAt ? `实时状态：${live.running ? "连接中" : "已停止"}` : "实时状态：等待数据";
+}
+
+function renderLiveDriverDetails() {
+  const container = $("liveDriverDetails");
+  if (!container) return;
+  const row = state.liveTiming.rows.find((item) => item.car === state.liveTiming.selectedDriver);
+  if (!row) {
+    container.innerHTML = `<span class="placeholder-icon">＋</span><span>点击上方赛果中的车手行</span><small>查看上一圈、计时段、轮胎和超出赛道限制</small>`;
+    return;
+  }
+  const extension = row.extra || {};
+  const tyre = extension.tyreInfo;
+  const tyreLaps = tyre?.total_laps ?? "--";
+  const historyLaps = (extension.tyreHistory || []).reduce((sum, item) => sum + (Number(item.total_laps) || 0), 0);
+  container.innerHTML = `<div class="detail-content"><div class="detail-name"><strong>${esc(row.name)}</strong><span>#${esc(row.car)} · ${esc(row.team)}</span></div><div class="detail-grid">
+    <div class="detail-item"><label>上一圈</label><strong>${displayLapTime(row.lastLap)} ${colorBadgeOrEmpty(extension.lastLapColor)}</strong></div>
+    <div class="detail-item"><label>最快圈</label><strong>${displayLapTime(row.bestLap)} ${colorBadgeOrEmpty(extension.bestLapColor)}</strong></div>
+    <div class="detail-item"><label>当前轮胎</label><strong>${tyre ? tyreChip(tyre.compound, `${tyre.compound} · ${tyreLaps} 圈`) : "--"}</strong></div>
+    <div class="detail-item"><label>进站次数</label><strong>${esc(row.pitCount ?? "--")}</strong></div>
+    <div class="detail-item"><label>总圈数</label><strong>${esc(row.lap ?? "--")}</strong></div>
+    <div class="detail-item"><label>超出赛道限制</label><strong>${esc(extension.trackLimits ?? "--")}</strong></div>
+    <div class="detail-item"><label>轮胎历史圈数</label><strong>${esc(historyLaps || "--")}</strong></div>
+    <div class="detail-item"><label>计时段</label><strong>${sectorSummary(extension.sectors)}</strong></div>
+  </div><div class="detail-color-block"><label>Mini-sector 颜色</label>${miniSectorSummary(extension.miniSectors)}</div></div>`;
+}
+
+function renderLiveWeather() {
+  const data = state.liveTiming.data || {};
+  const weather = (data.weather || []).slice().sort((a, b) => (Date.parse(a.date || "") || 0) - (Date.parse(b.date || "") || 0));
+  const latest = weather.at(-1);
+  const badge = $("liveWeatherBadge");
+  if (badge) badge.textContent = weather.length ? `${weather.length} 条` : "--";
+  if (!latest) {
+    $("liveWeatherSnapshot").innerHTML = `<div class="empty-cell">暂无天气记录</div>`;
+    $("liveWeatherTable").querySelector("tbody").innerHTML = `<tr><td colspan="8" class="empty-cell">暂无天气记录</td></tr>`;
+    return;
+  }
+  $("liveWeatherSnapshot").innerHTML = [["气温", `${fixed(latest.air_temperature, 1)} °C`], ["赛道", `${fixed(latest.track_temperature, 1)} °C`], ["湿度", `${fixed(latest.humidity, 1)} %`], ["风速", `${fixed(latest.wind_speed, 1)} m/s`], ["风向", `${fixed(latest.wind_direction, 0)}°`]].map(([label, value]) => `<div class="weather-item"><label>${label}</label><strong>${esc(value)}</strong></div>`).join("");
+  const limit = state.liveTiming.weatherView === "all" ? weather.length : Number(state.liveTiming.weatherView);
+  const visible = weather.slice(Math.max(0, weather.length - (Number.isFinite(limit) ? limit : weather.length))).reverse();
+  $("liveWeatherTable").querySelector("tbody").innerHTML = visible.map((row) => `<tr><td>${esc(dateText(row.date))}</td><td>${esc(fixed(row.air_temperature, 1))} °C</td><td>${esc(fixed(row.track_temperature, 1))} °C</td><td>${esc(fixed(row.humidity, 1))} %</td><td>${esc(fixed(row.pressure, 1))} hPa</td><td>${esc(fixed(row.wind_speed, 1))} m/s</td><td>${esc(fixed(row.wind_direction, 0))}°</td><td>${row.rainfall ? "是" : "否"}</td></tr>`).join("");
+}
+
+function renderLiveTyres() {
+  const table = $("liveTyreTable");
+  if (!table) return;
+  const data = state.liveTiming.data || {};
+  const drivers = new Map((data.drivers || []).map((driver) => [Number(driver.driver_number), driver]));
+  const pitCounts = (data.pit || []).reduce((map, pit) => map.set(Number(pit.driver_number), (map.get(Number(pit.driver_number)) || 0) + 1), new Map());
+  const grouped = new Map();
+  for (const stint of data.stints || []) {
+    const car = Number(stint.driver_number);
+    if (!Number.isFinite(car)) continue;
+    if (!grouped.has(car)) grouped.set(car, []);
+    grouped.get(car).push(stint);
+  }
+  const liveRows = new Map(state.liveTiming.rows.map((row) => [row.car, row]));
+  const rows = Array.from(grouped.entries()).sort((a, b) => a[0] - b[0]);
+  $("liveTyreBadge").textContent = rows.length ? `${rows.length} 位车手` : "--";
+  table.querySelector("tbody").innerHTML = rows.length
+    ? rows.map(([car, stints]) => {
+      stints.sort((a, b) => Number(a.stint_number) - Number(b.stint_number));
+      const strategy = stints.map((stint) => `<span class="tyre-strategy-item">${tyreChip(stint.compound, stint.compound || "--")} <span>L${esc(stint.lap_start ?? "--")}-${esc(stint.lap_end ?? "--")}</span></span>`).join(`<span class="strategy-arrow" aria-hidden="true">→</span>`);
+      const last = stints.at(-1);
+      const totalLaps = stints.reduce((sum, stint) => sum + (Number(stint.total_laps) || 0), 0);
+      const liveTyre = liveRows.get(car)?.extra?.tyreInfo || last;
+      return `<tr><td>${esc(drivers.get(car)?.full_name || `车号 ${car}`)} <span class="acronym">${esc(drivers.get(car)?.name_acronym || "")}</span></td><td>${esc(car)}</td><td class="wrap-cell tyre-strategy">${strategy}</td><td>${esc(pitCounts.get(car) || 0)}</td><td>${esc(totalLaps || "--")}</td><td>${liveTyre ? tyreChip(liveTyre.compound, liveTyre.compound) : "--"}</td></tr>`;
+    }).join("")
+    : `<tr><td colspan="6" class="empty-cell">暂无轮胎记录</td></tr>`;
+}
+
+function resetLiveTiming() {
+  const live = state.liveTiming;
+  stopLivePolling();
+  live.token += 1;
+  live.data = null;
+  live.rows = [];
+  live.events = [];
+  live.logs = [];
+  live.selectedDriver = null;
+  live.search = "";
+  live.received = 0;
+  live.errors = 0;
+  live.sequence = 0;
+  live.running = false;
+  live.started = false;
+  live.lastAt = null;
+  live.loading = false;
+  renderLiveTiming();
+}
+
+async function loadLiveTimingData() {
+  const live = state.liveTiming;
+  if (live.stream) {
+    live.loading = true;
+    live.stream.requestState();
+    renderLiveTiming();
+    return true;
+  }
+  if (live.loading) return false;
+  const token = live.token;
+  live.loading = true;
+  setConnection(false, "正在连接实时接口");
+  renderLiveTiming();
+  try {
+    live.stream = openF1TelemetryStream({
+      requestedMeetingKey: null,
+      requestedSessionKey: null,
+      timeoutMs: 30000,
+      onState: (data) => {
+        if (token !== live.token || state.activeView !== "liveTiming") return;
+        live.data = enrichBackendMapping(data || {});
+        renderLiveMeetingMeta(live.data);
+        setConnection(true, "实时接口已连接");
+        live.rows = buildLiveRows(live.data);
+        live.events = buildLiveEvents(live.data);
+        live.logs = buildLiveLogs(live.data);
+        live.received += 1;
+        live.errors = Array.isArray(live.data.live_errors) ? live.data.live_errors.length : 0;
+        live.sequence += 1;
+        live.lastAt = live.data.fetched_at || new Date().toISOString();
+        live.loading = false;
+        renderLiveTiming();
+      },
+      onError: (error) => {
+        if (token !== live.token) return;
+        setConnection(false, "实时接口连接失败");
+        live.errors = 1;
+        live.loading = false;
+        live.logs = [{ sequence: 1, title: "更新失败", detail: error.message || "数据源请求失败", ok: false, at: new Date().toISOString() }];
+        renderLiveTiming();
+      },
+      onClose: () => {
+        if (token !== live.token) return;
+        setConnection(false, "实时接口已断开");
+        live.stream = null;
+        live.running = false;
+        live.loading = false;
+        renderLiveTiming();
+      },
+    });
+    live.running = true;
+    live.started = true;
+    renderLiveTiming();
+    return true;
+  } catch (error) {
+    if (token === live.token) {
+      live.errors = 1;
+      setConnection(false, "实时接口连接失败");
+      live.logs = [{ sequence: 1, title: "更新失败", detail: error.message || "数据源请求失败", ok: false, at: new Date().toISOString() }];
+      renderLiveTiming();
+    }
+    return false;
+  } finally {
+    if (token === live.token && !live.stream) {
+      live.loading = false;
+      renderLiveTiming();
+    }
+  }
+}
+
+function stopLivePolling() {
+  const live = state.liveTiming;
+  if (live.timer) window.clearInterval(live.timer);
+  live.timer = null;
+  live.stream?.close();
+  live.stream = null;
+  live.running = false;
+  live.token += 1;
+}
+
+function startLivePolling() {
+  const live = state.liveTiming;
+  if (live.stream) return;
+  live.running = true;
+  live.started = true;
+  live.token += 1;
+  if (live.timer) window.clearInterval(live.timer);
+  loadLiveTimingData();
+  renderLiveTiming();
+}
+
 function setActiveView(view) {
-  state.activeView = view === "standings" ? "standings" : "schedule";
+  state.activeView = ["schedule", "standings", "liveTiming"].includes(view) ? view : "schedule";
   $("scheduleView").hidden = state.activeView !== "schedule";
   $("standingsView").hidden = state.activeView !== "standings";
+  $("liveTimingView").hidden = state.activeView !== "liveTiming";
   document.querySelectorAll("[data-view]").forEach((button) => button.classList.toggle("active", button.dataset.view === state.activeView));
   if (state.activeView === "standings" && !state.standings) loadOfficialStandings();
+  if (state.activeView === "liveTiming") {
+    renderLiveTimingSelectors();
+    renderLiveTiming();
+  } else {
+    stopLivePolling();
+  }
 }
 
 function resultHeaderHtml() {
@@ -776,6 +1254,7 @@ async function loadMeetings() {
   }
   state.activeMeeting = state.meetings.find((meeting) => Number(meeting.meeting_key) === 1292) || state.meetings[0];
   renderMeetings();
+  renderLiveTimingSelectors();
   await loadSessions(state.activeMeeting?.meeting_key);
 }
 
@@ -1277,6 +1756,39 @@ document.querySelectorAll("[data-standings-kind]").forEach((button) => button.ad
   renderStandings();
 }));
 $("standingsSyncBtn")?.addEventListener("click", () => loadOfficialStandings({ force: true }));
+$("liveSeasonSelect")?.addEventListener("change", async (event) => {
+  state.season = Number(event.target.value) || 2026;
+  await loadMeetings();
+  renderLiveTimingSelectors();
+});
+$("liveMeetingSelect")?.addEventListener("change", async (event) => {
+  stopLivePolling();
+  resetLiveTiming();
+  await loadLiveTimingSessions(event.target.value);
+});
+$("liveSessionSelect")?.addEventListener("change", (event) => {
+  stopLivePolling();
+  const session = state.liveTiming.sessions.find((item) => String(item.session_key) === event.target.value);
+  state.liveTiming.sessionKey = session?.session_key ?? null;
+  state.liveTiming.sessionName = session?.session_name || "Race";
+  resetLiveTiming();
+  renderLiveTimingSelectors();
+});
+$("liveLoadBtn")?.addEventListener("click", () => {
+  if (state.liveTiming.running) {
+    stopLivePolling();
+    renderLiveTiming();
+  } else {
+    startLivePolling();
+  }
+});
+$("liveSyncBtn")?.addEventListener("click", () => loadLiveTimingData());
+$("liveDriverSearch")?.addEventListener("input", (event) => { state.liveTiming.search = event.target.value; renderLiveTiming(); });
+$("liveClearSearch")?.addEventListener("click", () => { $("liveDriverSearch").value = ""; state.liveTiming.search = ""; renderLiveTiming(); });
+$("liveWeatherView")?.addEventListener("change", (event) => { state.liveTiming.weatherView = event.target.value; renderLiveWeather(); });
+$("liveMessageView")?.addEventListener("change", (event) => { state.liveTiming.messageView = event.target.value; renderLiveTiming(); });
+$("liveMessageLanguage")?.addEventListener("change", (event) => { state.liveTiming.messageLanguage = event.target.value; renderLiveTiming(); });
 
+resetLiveTiming();
 resetDataPanels();
 loadMeetings();

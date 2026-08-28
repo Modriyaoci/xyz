@@ -5,6 +5,8 @@ import crypto from "node:crypto";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { mapOpenF1ToBackend } from "./backend-fields.mjs";
+import { fetchF1TelemetryState } from "./f1telemetry.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.F1_PORT || 4173);
@@ -425,6 +427,8 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
       await refreshCachedFeed(data, requestedSessionKey, "race_control");
       for (const field of retryWarningFields(data)) await refreshCachedFeed(data, requestedSessionKey, field);
       await mergeDriverRoster(meetingKey, data);
+      data.mapped = mapOpenF1ToBackend(data, data.mapped);
+      data.cache_version = "20260828-backend-fields-v1";
       await writeJsonAtomic(cacheFile, data);
       return { data, source: "cache" };
     }
@@ -433,6 +437,8 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
     const local = await localSessionData(meetingKey, sessionKey);
     if (local) {
       const data = normaliseSessionData(await mergeDriverRoster(meetingKey, local));
+      data.mapped = mapOpenF1ToBackend(data, data.mapped);
+      data.cache_version = "20260828-backend-fields-v1";
       await writeJsonAtomic(cacheFile, data);
       return { data, source: "local" };
     }
@@ -458,13 +464,26 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
   if (feeds.failures.length) throw new Error(`同步失败，缓存未更新（${feeds.failures.join("；")}）`);
   normaliseSessionData(data);
   await mergeDriverRoster(meetingKey, data);
+  data.mapped = mapOpenF1ToBackend(data, data.mapped);
   if (!sessionCacheHealthy(data, requestedSessionKey)) throw new Error("同步返回的数据不完整，缓存未更新");
   const syncWarnings = [...feeds.unavailable.map((field) => `${field}: unavailable`), ...feeds.retained];
   if (syncWarnings.length) data.sync_warnings = syncWarnings;
-  data.cache_version = "20260827-sync-v2";
+  data.cache_version = "20260828-backend-fields-v1";
   data.synced_at = new Date().toISOString();
   await writeJsonAtomic(cacheFile, data);
   return { data, source: "openf1" };
+}
+
+async function liveSessionData(meetingKey, sessionKey) {
+  const requestedMeetingKey = Number(meetingKey);
+  const requestedSessionKey = Number(sessionKey);
+  if (!Number.isInteger(requestedMeetingKey) || !Number.isInteger(requestedSessionKey)) {
+    throw new Error("请选择有效的分站和节点");
+  }
+  const data = await fetchF1TelemetryState({ requestedMeetingKey, requestedSessionKey, timeoutMs: upstreamTimeoutMs });
+  normaliseSessionData(data);
+  data.mapped = mapOpenF1ToBackend(data, data.mapped);
+  return { data, source: "f1telemetry-live", live: true };
 }
 
 async function serveStatic(req, res, pathname) {
@@ -484,7 +503,7 @@ async function serveStatic(req, res, pathname) {
     try {
       const body = await fs.readFile(candidate);
       const ext = path.extname(candidate);
-      const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8" }[ext] || "application/octet-stream";
+      const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8" }[ext] || "application/octet-stream";
       res.writeHead(200, { "content-type": type }); res.end(body); return;
     } catch { /* try the root or site fallback */ }
   }
@@ -512,6 +531,7 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/sessions") return json(res, 200, await sessions(url.searchParams.get("meeting_key")));
     if (url.pathname === "/api/standings" && req.method === "GET") return json(res, 200, await officialStandings());
     if (url.pathname === "/api/sync-standings" && req.method === "POST") return json(res, 200, await syncOfficialStandings());
+    if (url.pathname === "/api/live-session-data" && req.method === "GET") return json(res, 200, await liveSessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")));
     if (url.pathname === "/api/session-data") return json(res, 200, await sessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")));
     if (url.pathname === "/api/sync-session-data" && req.method === "POST") {
       const body = await readBody(req);
