@@ -36,7 +36,7 @@
           <button class="side-item" data-view="standings" type="button"><span class="side-icon">▤</span><span>年度排名</span></button>
           <button class="side-item" data-view="liveTiming" type="button"><span class="side-icon">◉</span><span>实时推送</span></button>
           <div class="side-item"><span class="side-icon">◌</span><span>数据说明</span></div>
-          <div class="sidebar-note">数据缓存<br />按需加载</div>
+          <div class="sidebar-note">数据缓存<br />按需同步</div>
         </aside>
 
         <main class="main-content">
@@ -55,8 +55,8 @@
                 <div><div class="section-kicker">官方快照</div><h2 id="standingsTableTitle">车手排名</h2></div>
                 <div class="panel-tools"><div class="segmented-control" role="tablist" aria-label="排名类型"><button type="button" role="tab" class="segment active" data-standings-kind="drivers" aria-selected="true" aria-controls="standingsTable">车手排名</button><button type="button" role="tab" class="segment" data-standings-kind="teams" aria-selected="false" aria-controls="standingsTable">车队排名</button></div><span class="panel-badge" id="standingsCount">--</span></div>
               </div>
-              <div class="standings-meta"><span id="standingsStatus">选择年度排名后加载</span><span id="standingsCapturedAt">官网快照：--</span><span id="standingsSource">数据源：--</span></div>
-              <div class="table-wrap"><table class="data-table standings-table" id="standingsTable"><thead><tr><th>名次</th><th>车手</th><th>缩写</th><th>国籍</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>积分</th></tr></thead><tbody><tr><td colspan="8" class="empty-cell">点击加载年度排名</td></tr></tbody></table></div>
+              <div class="standings-meta"><span id="standingsStatus">选择年度排名后读取</span><span id="standingsCapturedAt">官网快照：--</span><span id="standingsSource">数据源：--</span></div>
+              <div class="table-wrap"><table class="data-table standings-table" id="standingsTable"><thead><tr><th>名次</th><th>车手</th><th>缩写</th><th>国籍</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>积分</th></tr></thead><tbody><tr><td colspan="8" class="empty-cell">等待排名数据</td></tr></tbody></table></div>
             </section>
           </section>
 
@@ -137,7 +137,7 @@
             <div>
               <div class="eyebrow">赛后数据节点</div>
               <h1 id="pageTitle">Dutch Grand Prix</h1>
-              <p id="pageSubtitle">选择分站和会话节点，按需加载并缓存。</p>
+              <p id="pageSubtitle">选择分站和会话节点，按需同步并缓存。</p>
             </div>
             <div class="meeting-id-block">
               <span>Meeting</span><strong id="meetingKeyLabel">1292</strong>
@@ -150,8 +150,7 @@
               <label>赛季<select id="seasonSelect"></select></label>
               <label>分站<select id="meetingSelect"></select></label>
               <label>节点<select id="sessionSelect"></select></label>
-              <button class="primary-button" id="loadBtn"><span>加载数据</span><span aria-hidden="true">→</span></button>
-              <button class="ghost-button sync-button" id="syncBtn" title="从数据源重新同步当前节点">↻ <span>同步数据源</span></button>
+              <button class="primary-button sync-button" id="syncBtn" title="从数据源重新同步当前节点"><span>同步数据源</span><span aria-hidden="true">↻</span></button>
             </div>
             <div class="selector-hint" id="selectorHint">2026 每站的 Meeting / Session 已预置；首次选择节点时请求数据源，成功后保存在本地缓存。</div>
           </section>
@@ -159,7 +158,7 @@
           <nav class="session-nav" id="sessionTabs" aria-label="会话节点"></nav>
 
           <section class="status-strip" id="dataStatus" aria-live="polite">
-            <div class="status-title"><span class="status-pulse"></span><span id="statusTitle">等待加载</span></div>
+            <div class="status-title"><span class="status-pulse"></span><span id="statusTitle">等待同步</span></div>
             <div class="status-meta" id="statusMeta">请选择一个会话节点</div>
           </section>
 
@@ -178,10 +177,10 @@
             <div class="table-wrap">
               <table class="data-table results-table" id="resultsTable">
                 <thead><tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>圈数</th><th id="resultTimeHeader">总时间 / 差距</th><th>积分</th><th>状态</th><th>上一圈</th><th id="resultFastestHeader">最快圈</th><th>与上一名间距</th><th>与第一名间距</th><th>进站</th><th>NC（计算）</th><th>当前轮胎</th><th>超出赛道限制</th><th>小计时段</th><th>计时段</th></tr></thead>
-                <tbody><tr><td colspan="20" class="empty-cell">选择节点后加载数据</td></tr></tbody>
+                <tbody><tr><td colspan="20" class="empty-cell">选择节点后自动同步</td></tr></tbody>
               </table>
             </div>
-            <div class="table-footer" id="resultsFooter">数据行将在加载后显示。点击车手行可查看扩展字段。</div>
+            <div class="table-footer" id="resultsFooter">数据行将在同步后显示。点击车手行可查看扩展字段。</div>
           </section>
 
           <section class="split-grid">

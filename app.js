@@ -970,7 +970,7 @@ function renderLiveTiming() {
   renderLiveDriverDetails();
   renderLiveWeather();
   renderLiveTyres();
-  $("liveStatusTitle").textContent = live.loading ? "正在更新" : live.running ? "实时更新中" : live.received ? "已停止" : "等待加载";
+  $("liveStatusTitle").textContent = live.loading ? "正在更新" : live.running ? "实时更新中" : live.received ? "已停止" : "等待连接";
   $("liveStatusPulse").classList.toggle("connected", live.running);
   $("liveStatusMeta").textContent = live.lastAt ? `最后更新 ${liveClock(live.lastAt)} · WebSocket 持续连接${live.errors ? ` · ${live.errors} 个字段失败` : ""}` : "尚未接收到消息";
   $("liveLoadBtn").innerHTML = `<span>${live.running ? "实时更新中" : "开始实时"}</span><span aria-hidden="true">${live.running ? "●" : "▶"}</span>`;
@@ -1185,7 +1185,7 @@ function renderResultHeader() {
   $("resultsTable").querySelector("thead").innerHTML = resultHeaderHtml();
 }
 
-function resetDataPanels(message = "选择节点后加载数据") {
+function resetDataPanels(message = "选择节点后自动同步") {
   ["metricDrivers", "metricLaps", "metricWeather", "metricMessages"].forEach((id) => $(id).textContent = "--");
   renderResultHeader();
   $("resultsTable").querySelector("tbody").innerHTML = `<tr><td colspan="${resultColumnCount()}" class="empty-cell">${esc(message)}</td></tr>`;
@@ -1411,8 +1411,13 @@ function sectorSummary(sectors) {
 
 function miniSectorSummary(miniSectors) {
   if (!Array.isArray(miniSectors) || !miniSectors.length) return "--";
-  const dots = miniSectors.flatMap((sector) => (sector.mini_sectors || []).filter((mini) => mini && ((mini.status !== null && mini.status !== undefined && mini.status !== "") || (mini.color && mini.color !== "gray")) && mini.color).map((mini) => `<i class="mini-dot color-${colorKey(mini.color)}" aria-hidden="true"></i>`));
-  return dots.length ? `<div class="mini-sector-summary">${dots.join("")}</div>` : "--";
+  const groups = miniSectors.map((sector) => {
+    const dots = (sector?.mini_sectors || [])
+      .filter((mini) => mini && ((mini.status !== null && mini.status !== undefined && mini.status !== "") || (mini.color && mini.color !== "gray")) && mini.color)
+      .map((mini) => '<i class="mini-dot color-' + colorKey(mini.color) + '" aria-hidden="true"></i>');
+    return dots.length ? '<span class="mini-sector-group">' + dots.join("") + '</span>' : "";
+  }).filter(Boolean);
+  return groups.length ? '<div class="mini-sector-summary">' + groups.join("") + '</div>' : "--";
 }
 
 function ncContext(rawResults) {
@@ -1673,7 +1678,7 @@ async function loadCurrentData() {
   const meetingKey = state.activeMeeting?.meeting_key;
   const sessionKey = state.activeSession?.session_key;
   if (!state.activeSession) { resetDataPanels(); return; }
-  setStatus("正在加载数据", `${sessionLabel(state.activeSession.session_name)} · ${sessionKey}`, true);
+  setStatus("正在同步数据", `${sessionLabel(state.activeSession.session_name)} · ${sessionKey}`, true);
   resetDataPanels("正在从本地缓存或数据源获取数据…");
   if (sessionKey == null) {
     const message = "该节点已写入 Meeting 目录，数据源尚未返回 session_key；接口可用后重新选择分站即可自动补齐。";
@@ -1699,7 +1704,7 @@ async function loadCurrentData() {
     if (requestId !== state.dataRequestId || meetingKey !== state.activeMeeting?.meeting_key || sessionKey !== state.activeSession?.session_key) return;
     state.data = null;
     resetDataPanels(error.message || "暂无数据");
-    setStatus("数据加载失败", "请检查本地服务或稍后重试", false);
+    setStatus("数据同步失败", "请检查本地服务或稍后重试", false);
     $("cachePathLabel").textContent = "缓存状态：未获取";
   }
 }
@@ -1709,7 +1714,6 @@ $("meetingSelect").addEventListener("change", async (event) => {
   await loadSessions(state.activeMeeting?.meeting_key);
 });
 $("sessionSelect").addEventListener("change", (event) => selectSessionNode(event.target.value));
-$("loadBtn").addEventListener("click", loadCurrentData);
 $("refreshBtn").addEventListener("click", loadCurrentData);
 $("syncBtn").addEventListener("click", async () => {
   const meetingKey = state.activeMeeting?.meeting_key;
