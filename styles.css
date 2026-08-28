@@ -124,7 +124,7 @@ h2 { margin: 2px 0 0; font-size: 17px; letter-spacing: -.015em; }
 .table-wrap, .mini-table-wrap { overflow-x: auto; }
 .data-table, .mini-table { width: 100%; border-collapse: collapse; min-width: 860px; }
 .results-table { min-width: 2100px; }
-.data-table th, .data-table td, .mini-table th, .mini-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; }
+.data-table th, .data-table td, .mini-table th, .mini-table td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; white-space: nowrap; vertical-align: middle; }
 .data-table th, .mini-table th { color: var(--muted); background: #fafbfc; font-size: 10px; font-weight: 750; text-transform: uppercase; letter-spacing: .06em; }
 .data-table td, .mini-table td { font-size: 12px; font-variant-numeric: tabular-nums; }
 .data-table tbody tr { transition: background .15s ease; }
@@ -132,7 +132,7 @@ h2 { margin: 2px 0 0; font-size: 17px; letter-spacing: -.015em; }
 .data-table tbody tr.selected { background: #eff6ff; box-shadow: inset 3px 0 0 var(--blue); }
 .data-table tbody tr { cursor: pointer; }
 .data-table .position { font-weight: 800; color: var(--ink); }
-.data-table .driver-cell { font-weight: 700; }
+.data-table .driver-cell { display: table-cell; vertical-align: middle; font-weight: 700; }
 .data-table .acronym { color: var(--subtle); font-size: 10px; margin-left: 6px; }
 .data-table .status-finished { color: var(--green); }
 .data-table .status-dnf { color: var(--red); }
