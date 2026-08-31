@@ -5,12 +5,17 @@ import { fileURLToPath } from "node:url";
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const cliArgs = typeof process === "undefined" ? [] : process.argv;
 const year = Number(cliArgs[2] || new Date().getUTCFullYear());
+const requestedTrigger = String(cliArgs[3] || "manual").toLowerCase();
+const trigger = requestedTrigger === "automatic" ? "automatic" : "manual";
 const output = path.join(root, `official-standings-${year}.json`);
 const baseUrl = "https://www.formula1.com";
 const pages = {
   drivers: `${baseUrl}/en/results/${year}/drivers`,
   teams: `${baseUrl}/en/results/${year}/team`,
 };
+const requestTimeoutMs = 30000;
+const maxAttempts = 3;
+const retryDelayMs = 1000;
 
 function decodeEntities(value) {
   return String(value || "")
@@ -65,16 +70,60 @@ function parseTeams(html) {
   }));
 }
 
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
 async function fetchPage(url) {
-  const response = await fetch(url, { headers: { accept: "text/html", "user-agent": "f1-postrace-data/1.0" } });
-  if (!response.ok) throw new Error(`官网请求失败 ${response.status}: ${url}`);
-  return response.text();
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
+    let response;
+    try {
+      response = await fetch(url, {
+        cache: "no-store",
+        headers: { accept: "text/html", "user-agent": "f1-postrace-data/1.0" },
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (attempt === maxAttempts - 1) {
+        if (error?.name === "AbortError") throw new Error(`官网请求超时（${requestTimeoutMs / 1000}秒）: ${url}`);
+        throw error;
+      }
+      await sleep(retryDelayMs * (attempt + 1));
+      continue;
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (response.ok) return response.text();
+    const retryable = response.status === 408 || response.status === 425 || response.status === 429 || response.status >= 500;
+    if (!retryable || attempt === maxAttempts - 1) throw new Error(`官网请求失败 ${response.status}: ${url}`);
+    const retryAfter = Number(response.headers.get("retry-after"));
+    const serverDelay = Number.isFinite(retryAfter) ? retryAfter * 1000 : 0;
+    await sleep(Math.min(10000, Math.max(retryDelayMs * (attempt + 1), serverDelay)));
+  }
+  throw new Error(`官网请求失败: ${url}`);
 }
 
-const [driverHtml, teamHtml] = await Promise.all([fetchPage(pages.drivers), fetchPage(pages.teams)]);
+const driverHtml = await fetchPage(pages.drivers);
+await sleep(retryDelayMs);
+const teamHtml = await fetchPage(pages.teams);
+const capturedAt = new Date().toISOString();
+let previousSnapshot = {};
+try {
+  previousSnapshot = JSON.parse(await fs.readFile(output, "utf8"));
+} catch { /* the first snapshot has no history to preserve */ }
+const previousStatus = previousSnapshot.sync_status || {};
 const snapshot = {
   season: year,
-  captured_at: new Date().toISOString(),
+  captured_at: capturedAt,
+  sync_status: {
+    status: "success",
+    trigger,
+    attempted_at: capturedAt,
+    last_success_at: capturedAt,
+    last_automatic_at: trigger === "automatic" ? capturedAt : previousStatus.last_automatic_at || null,
+    last_manual_at: trigger === "manual" ? capturedAt : previousStatus.last_manual_at || null,
+  },
   source: pages,
   drivers: parseDrivers(driverHtml),
   teams: parseTeams(teamHtml),
