@@ -16,6 +16,7 @@ const state = {
   standings: null,
   standingsError: null,
   standingsKind: "drivers",
+  standingsManualSyncAt: null,
   activeView: "schedule",
   selectedDriver: null,
   search: "",
@@ -629,11 +630,14 @@ function renderStandings() {
       ? `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td>${esc(row.teamuid ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`
       : `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td><span class="acronym">${esc(row.code || "--")}</span></td><td>${esc(row.nationality || "--")}</td><td>${esc(row.team || "--")}</td><td>${esc(row._id ?? "--")}</td><td>${esc(row.teamuid ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`).join("")
     : `<tr><td colspan="${kind === "teams" ? 4 : 8}" class="empty-cell">${snapshot ? "暂无年度排名数据" : "点击加载年度排名"}</td></tr>`;
-  $("standingsCapturedAt").textContent = snapshot?.captured_at ? `官网快照：${dateText(snapshot.captured_at)}` : "官网快照：--";
+  const syncStatus = snapshot?.sync_status || {};
+  const automaticAt = syncStatus.last_automatic_at || (syncStatus.trigger === "automatic" ? syncStatus.last_success_at : null) || snapshot?.captured_at;
+  const manualAt = syncStatus.last_manual_at || state.standingsManualSyncAt;
+  $("standingsAutomaticAt").textContent = automaticAt ? `自动同步：${dateText(automaticAt)}` : "自动同步：--";
+  $("standingsManualAt").textContent = manualAt ? `人工同步：${dateText(manualAt)}` : "人工同步：--";
   $("standingsCount").textContent = snapshot ? `${rows.length} 条` : "--";
   $("standingsSource").textContent = snapshot ? "数据源：官网排名快照" : "数据源：--";
   const alert = $("standingsAlert");
-  const syncStatus = snapshot?.sync_status;
   const failed = syncStatus?.status === "failed" || Boolean(state.standingsError);
   if (alert) {
     if (failed) {
@@ -658,10 +662,20 @@ function renderStandings() {
 async function loadOfficialStandings({ force = false } = {}) {
   const button = $("standingsSyncBtn");
   const status = $("standingsStatus");
+  if (force) {
+    state.standingsManualSyncAt = new Date().toISOString();
+    window.localStorage.setItem(`f1-standings-manual-sync-${state.season}`, state.standingsManualSyncAt);
+  } else if (!state.standingsManualSyncAt) {
+    state.standingsManualSyncAt = window.localStorage.getItem(`f1-standings-manual-sync-${state.season}`);
+  }
   if (button) button.disabled = true;
   if (status) status.textContent = force ? "正在刷新官网快照…" : "正在读取官网快照…";
   try {
     const payload = await api(force ? "/api/sync-standings" : "/api/standings", force ? { method: "POST" } : {});
+    if (force && payload.data?.sync_status?.last_manual_at) {
+      state.standingsManualSyncAt = payload.data.sync_status.last_manual_at;
+      window.localStorage.setItem(`f1-standings-manual-sync-${state.season}`, state.standingsManualSyncAt);
+    }
     state.standings = enrichOfficialStandings(payload.data);
     state.standingsError = null;
     renderStandings();
