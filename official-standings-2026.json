@@ -1,13 +1,13 @@
 {
   "season": 2026,
-  "captured_at": "2026-08-31T00:05:14.788Z",
+  "captured_at": "2026-08-31T02:20:31.474Z",
   "sync_status": {
     "status": "success",
-    "trigger": "automatic",
-    "attempted_at": "2026-08-31T00:05:14.788Z",
-    "last_success_at": "2026-08-31T00:05:14.788Z",
+    "trigger": "manual",
+    "attempted_at": "2026-08-31T02:20:31.474Z",
+    "last_success_at": "2026-08-31T02:20:31.474Z",
     "last_automatic_at": "2026-08-31T00:05:14.788Z",
-    "last_manual_at": null
+    "last_manual_at": "2026-08-31T02:20:31.474Z"
   },
   "source": {
     "drivers": "https://www.formula1.com/en/results/2026/drivers",
