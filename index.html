@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#111827" />
     <title>F1 赛后数据</title>
-    <link rel="stylesheet" href="./styles.css?v=20260828-ui-v2" />
+    <link rel="stylesheet" href="./styles.css?v=20260831-identity-v2" />
     <script>
       const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
       const staticPages = new URLSearchParams(window.location.search).get("static") === "1" || (!localServer && !window.location.pathname.startsWith("/site/"));
@@ -24,9 +24,9 @@
         </div>
         <div class="topbar-actions">
           <span class="connection-state"><span class="state-dot"></span><span id="connectionText">正在连接</span></span>
-          <span class="account-name">nana</span>
+          <span class="account-name">用户</span>
           <button class="ghost-button top-logout" id="logoutBtn">退出</button>
-          <button class="icon-button" id="refreshBtn" title="刷新当前节点" aria-label="刷新当前节点">↻</button>
+          <button class="icon-button" id="refreshBtn" title="刷新当前节点" aria-label="刷新当前节点" disabled>↻</button>
         </div>
       </header>
 
@@ -236,10 +236,10 @@
               <div class="metric"><span class="metric-label">赛会消息</span><strong id="liveMetricMessages">--</strong><span class="metric-note">当前快照</span></div>
             </section>
 
-            <section class="panel" aria-labelledby="liveResultsTitle">
+            <section class="panel result-panel" aria-labelledby="liveResultsTitle">
               <div class="panel-header">
                 <div><div class="section-kicker">结果表</div><h2 id="liveResultsTitle">赛果</h2></div>
-                <div class="panel-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="liveDriverSearch" type="search" placeholder="搜索车手、车号或车队" /></label><button class="ghost-button" id="liveClearSearch">清除</button><span class="panel-badge" id="liveRowsBadge">0 条</span><span class="panel-badge" id="liveSequenceBadge">序号 --</span></div>
+                <div class="panel-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="liveDriverSearch" type="search" placeholder="搜索车手、车号或车队" /></label><button class="ghost-button" id="liveClearSearch">清除</button><div class="column-picker" id="liveColumnPicker"><button class="ghost-button" type="button" data-column-picker-toggle aria-expanded="false" aria-controls="liveColumnPickerMenu" title="筛选显示字段">筛选</button><div class="column-picker-menu" id="liveColumnPickerMenu" hidden><div class="column-picker-head"><strong>显示字段</strong><button class="column-picker-reset" id="liveColumnPickerReset" type="button">恢复默认</button></div><div class="column-picker-options"></div></div></div><span class="panel-badge" id="liveRowsBadge">0 条</span><span class="panel-badge" id="liveSequenceBadge">序号 --</span></div>
               </div>
               <div class="table-wrap">
                 <table class="data-table results-table live-results-table" id="liveTimingTable">
@@ -281,21 +281,21 @@
           <section class="meeting-head" aria-labelledby="pageTitle">
             <div>
               <div class="eyebrow">赛后数据节点</div>
-              <h1 id="pageTitle">Dutch Grand Prix</h1>
-              <p id="pageSubtitle">选择分站和会话节点，按需同步并缓存。</p>
+              <h1 id="pageTitle">请选择分站</h1>
+              <p id="pageSubtitle">选择分站后再选择会话节点</p>
             </div>
             <div class="meeting-id-block">
-              <span>Meeting</span><strong id="meetingKeyLabel">1292</strong>
-              <span>Session</span><strong id="sessionKeyLabel">11353</strong>
+              <span>Meeting</span><strong id="meetingKeyLabel">--</strong>
+              <span>Session</span><strong id="sessionKeyLabel">--</strong>
             </div>
           </section>
 
           <section class="selector-panel" aria-label="分站和节点选择">
             <div class="selector-row">
               <label>赛季<select id="seasonSelect"></select></label>
-              <label>分站<select id="meetingSelect"></select></label>
-              <label>节点<select id="sessionSelect"></select></label>
-              <button class="primary-button sync-button" id="syncBtn" title="从数据源重新同步当前节点"><span>同步数据源</span><span aria-hidden="true">↻</span></button>
+              <label>分站<select id="meetingSelect"><option value="">请选择分站</option></select></label>
+              <label>节点<select id="sessionSelect" disabled><option value="">请先选择分站</option></select></label>
+              <button class="primary-button sync-button" id="syncBtn" title="从数据源重新同步当前节点" disabled><span>同步数据源</span><span aria-hidden="true">↻</span></button>
             </div>
             <div class="selector-hint" id="selectorHint">2026 每站的 Meeting / Session 已预置；首次选择节点时请求数据源，成功后保存在本地缓存。</div>
           </section>
@@ -303,8 +303,8 @@
           <nav class="session-nav" id="sessionTabs" aria-label="会话节点"></nav>
 
           <section class="status-strip" id="dataStatus" aria-live="polite">
-            <div class="status-title"><span class="status-pulse"></span><span id="statusTitle">等待同步</span></div>
-            <div class="status-meta" id="statusMeta">请选择一个会话节点</div>
+            <div class="status-title"><span class="status-pulse"></span><span id="statusTitle">等待选择分站</span></div>
+            <div class="status-meta" id="statusMeta">请选择一个分站</div>
           </section>
 
           <section class="metric-row" id="metrics">
@@ -314,18 +314,18 @@
             <div class="metric"><span class="metric-label">赛会消息</span><strong id="metricMessages">--</strong><span class="metric-note">控制记录</span></div>
           </section>
 
-          <section class="panel" aria-labelledby="resultsTitle">
+          <section class="panel result-panel" aria-labelledby="resultsTitle">
             <div class="panel-header">
               <div><div class="section-kicker">结果表</div><h2 id="resultsTitle">赛果</h2></div>
-              <div class="panel-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="driverSearch" type="search" placeholder="搜索车手、车号或车队" /></label><button class="ghost-button" id="clearSearch">清除</button></div>
+              <div class="panel-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="driverSearch" type="search" placeholder="搜索车手、车号或车队" /></label><button class="ghost-button" id="clearSearch">清除</button><div class="column-picker" id="resultColumnPicker"><button class="ghost-button" type="button" data-column-picker-toggle aria-expanded="false" aria-controls="resultColumnPickerMenu" title="筛选显示字段">筛选</button><div class="column-picker-menu" id="resultColumnPickerMenu" hidden><div class="column-picker-head"><strong>显示字段</strong><button class="column-picker-reset" id="resultColumnPickerReset" type="button">恢复默认</button></div><div class="column-picker-options"></div></div></div></div>
             </div>
             <div class="table-wrap">
               <table class="data-table results-table" id="resultsTable">
                 <thead><tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>圈数</th><th id="resultTimeHeader">总时间 / 差距</th><th>积分</th><th>状态</th><th>上一圈</th><th id="resultFastestHeader">最快圈</th><th>与上一名间距</th><th>与第一名间距</th><th>进站</th><th>NC（计算）</th><th>当前轮胎</th><th>超出赛道限制</th><th>小计时段</th><th>计时段</th></tr></thead>
-                <tbody><tr><td colspan="20" class="empty-cell">选择节点后自动同步</td></tr></tbody>
+                <tbody><tr><td colspan="20" class="empty-cell">请选择分站</td></tr></tbody>
               </table>
             </div>
-            <div class="table-footer" id="resultsFooter">数据行将在同步后显示。点击车手行可查看扩展字段。</div>
+            <div class="table-footer" id="resultsFooter">请选择分站</div>
           </section>
 
           <section class="split-grid">
@@ -355,6 +355,6 @@
         </main>
       </div>
     </div>
-    <script type="module" src="./app.js?v=20260831-time-precision-v4"></script>
+    <script type="module" src="./app.js?v=20260831-identity-v2"></script>
   </body>
 </html>

@@ -16,6 +16,7 @@ const state = {
   standings: null,
   standingsError: null,
   standingsKind: "drivers",
+  resultColumnVisibility: null,
   activeView: "schedule",
   selectedDriver: null,
   search: "",
@@ -368,6 +369,33 @@ const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;"}[char]));
 const number = (value, fallback = "--") => value === null || value === undefined || value === "" ? fallback : Number(value).toLocaleString("en-US");
 const numeric = (value) => value === null || value === undefined || value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
+const backendDriverImageIds = new Set([
+  347482, 347492, 347499, 347501, 347502, 347503, 347504, 347506, 347514,
+  347519, 347520, 347525, 347526, 347528, 347534, 347535, 347536, 347537,
+  347538, 347539, 347540, 347541, 347542, 347544, 347546, 347547, 347548,
+  347549, 347908, 368438, 368439,
+]);
+const backendTeamImageIds = new Set([
+  385355, 385358, 385361, 385362, 385363, 385364, 385365, 385366, 385367,
+  390378, 394048,
+]);
+const backendIdentityAsset = (kind, id) => new URL(`./assets/f1/${kind}/${Number(id)}.png`, import.meta.url).href;
+const identityInitials = (name) => String(name || "?").trim().split(/\s+/).map((part) => part[0] || "").slice(0, 2).join("").toUpperCase() || "?";
+function driverImageHtml(id, name, className = "") {
+  const resolvedId = numeric(id);
+  if (resolvedId != null && backendDriverImageIds.has(resolvedId)) {
+    return `<img class="identity-image driver-identity-image ${className}" src="${esc(backendIdentityAsset("drivers", resolvedId))}" alt="${esc(name || "车手")}" loading="lazy" decoding="async">`;
+  }
+  return `<span class="identity-image identity-image-fallback driver-identity-image ${className}" aria-label="${esc(name || "车手")}">${esc(identityInitials(name))}</span>`;
+}
+function teamImageHtml(id, name, className = "") {
+  const resolvedId = numeric(id);
+  if (resolvedId == null || !backendTeamImageIds.has(resolvedId)) return "";
+  return `<img class="identity-image team-identity-image ${className}" src="${esc(backendIdentityAsset("teams", resolvedId))}" alt="${esc(name || "车队")} Logo" loading="lazy" decoding="async">`;
+}
+function detailIdentityHtml({ driverId, teamId, name, car, team }) {
+  return `<div class="detail-identity"><div class="detail-driver-identity">${driverImageHtml(driverId, name, "detail-driver-image")}<div><strong>${esc(name || "--")}</strong><span>#${esc(car ?? "--")}</span></div></div><div class="detail-team-identity">${teamImageHtml(teamId, team, "detail-team-image")}<span>${esc(team || "--")}</span></div></div>`;
+}
 const fixed = (value, digits = 3) => numeric(value) == null ? "--" : numeric(value).toFixed(digits);
 const dateText = (value) => value
   ? String(value).replace(/(\.\d{3})\d+/, "$1").replace("T", " ").replace("+00:00", " UTC").replace("Z", " UTC")
@@ -583,7 +611,103 @@ const colorBadgeOrEmpty = (value, prefix = "") => value == null || value === "" 
 const phaseLabel = (phase) => phase ? phase.toUpperCase() : "";
 const isRaceSession = () => raceSessionNames.has(state.activeSession?.session_name);
 const isQualifyingSession = () => qualifyingSessionNames.has(state.activeSession?.session_name);
-const resultColumnCount = () => isRaceSession() ? 20 : 18;
+const RESULT_COLUMN_STORAGE_KEY = "f1-result-columns-v1";
+const resultColumnDefinitions = Object.freeze([
+  { key: "position", label: "名次" },
+  { key: "car", label: "车号" },
+  { key: "driver", label: "车手" },
+  { key: "team", label: "车队" },
+  { key: "driverId", label: "后台车手ID" },
+  { key: "teamId", label: "后台车队ID" },
+  { key: "laps", label: "圈数" },
+  { key: "time", label: "总时间 / 差距" },
+  { key: "points", label: "积分", raceOnly: true },
+  { key: "status", label: "状态" },
+  { key: "lastLap", label: "上一圈" },
+  { key: "fastestLap", label: "最快圈" },
+  { key: "interval", label: "与上一名间距" },
+  { key: "gap", label: "与第一名间距" },
+  { key: "pit", label: "进站" },
+  { key: "nc", label: "NC（计算）", raceOnly: true },
+  { key: "tyre", label: "当前轮胎" },
+  { key: "trackLimits", label: "超出赛道限制" },
+  { key: "miniSectors", label: "小计时段" },
+  { key: "sectors", label: "计时段" },
+]);
+function ensureResultColumnVisibility() {
+  if (state.resultColumnVisibility) return state.resultColumnVisibility;
+  let saved = {};
+  try { saved = JSON.parse(window.localStorage.getItem(RESULT_COLUMN_STORAGE_KEY) || "{}"); } catch { saved = {}; }
+  state.resultColumnVisibility = Object.fromEntries(resultColumnDefinitions.map(({ key }) => [key, saved[key] !== false]));
+  return state.resultColumnVisibility;
+}
+function availableResultColumns(live = false) {
+  const race = live ? liveIsRaceSession() : isRaceSession();
+  return resultColumnDefinitions.filter((column) => !column.raceOnly || race);
+}
+function visibleResultColumns(live = false) {
+  const visibility = ensureResultColumnVisibility();
+  return availableResultColumns(live).filter((column) => visibility[column.key] !== false);
+}
+function orderedResultPickerColumns(live = false) {
+  const visibility = ensureResultColumnVisibility();
+  return availableResultColumns(live)
+    .map((column, index) => ({ column, index }))
+    .sort((a, b) => Number(visibility[a.column.key] === false) - Number(visibility[b.column.key] === false) || a.index - b.index)
+    .map(({ column }) => column);
+}
+function resultColumnLabel(column, live = false) {
+  if (live || !state.activePhase) return column.label;
+  if (column.key === "time") return `${phaseLabel(state.activePhase)} 总时间 / 差距`;
+  if (column.key === "lastLap") return `上一圈（${phaseLabel(state.activePhase)}）`;
+  if (column.key === "fastestLap") return `最快圈（${phaseLabel(state.activePhase)}）`;
+  return column.label;
+}
+function persistResultColumnVisibility() {
+  try { window.localStorage.setItem(RESULT_COLUMN_STORAGE_KEY, JSON.stringify(ensureResultColumnVisibility())); } catch { /* private mode or quota */ }
+}
+function renderResultColumnPicker(live = false) {
+  const root = $(live ? "liveColumnPicker" : "resultColumnPicker");
+  if (!root) return;
+  const menu = root.querySelector(".column-picker-menu");
+  const options = root.querySelector(".column-picker-options");
+  if (!menu || !options) return;
+  const wasOpen = !menu.hidden;
+  options.innerHTML = orderedResultPickerColumns(live).map((column) => `<label class="column-option"><input type="checkbox" data-result-column="${esc(column.key)}" ${ensureResultColumnVisibility()[column.key] !== false ? "checked" : ""}><span>${esc(resultColumnLabel(column, live))}</span></label>`).join("");
+  menu.hidden = !wasOpen;
+  root.querySelector("[data-column-picker-toggle]")?.setAttribute("aria-expanded", wasOpen ? "true" : "false");
+  options.querySelectorAll("input[data-result-column]").forEach((input) => input.addEventListener("change", () => {
+    ensureResultColumnVisibility()[input.dataset.resultColumn] = input.checked;
+    persistResultColumnVisibility();
+    renderResults();
+    renderLiveTiming();
+  }));
+}
+function resetResultColumnVisibility() {
+  state.resultColumnVisibility = Object.fromEntries(resultColumnDefinitions.map(({ key }) => [key, true]));
+  persistResultColumnVisibility();
+  renderResults();
+  renderLiveTiming();
+}
+function bindResultColumnPicker(rootId, resetId) {
+  const root = $(rootId);
+  if (!root) return;
+  const toggle = root.querySelector("[data-column-picker-toggle]");
+  const menu = root.querySelector(".column-picker-menu");
+  const reset = $(resetId);
+  if (!toggle || !menu) return;
+  toggle.addEventListener("click", (event) => {
+    event.stopPropagation();
+    const open = menu.hidden;
+    menu.hidden = !open;
+    toggle.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+  reset?.addEventListener("click", (event) => {
+    event.stopPropagation();
+    resetResultColumnVisibility();
+  });
+}
+const resultColumnCount = () => visibleResultColumns(false).length;
 const formatTime = (value) => {
   const total = numeric(value);
   if (total == null) return "--";
@@ -604,7 +728,7 @@ async function api(path, options = {}) {
     }
     if (url.pathname === "/api/standings") return staticStandings();
     if (url.pathname === "/api/sync-standings") return staticStandings({ force: true });
-    return { authenticated: true, username: "nana" };
+    return { authenticated: true, username: "用户" };
   }
   const response = await fetch(path, options);
   const payload = await response.json().catch(() => ({}));
@@ -637,8 +761,8 @@ function renderStandings() {
   table.querySelector("thead").innerHTML = header;
   table.querySelector("tbody").innerHTML = rows.length
     ? rows.map((row) => kind === "teams"
-      ? `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td>${esc(row.teamuid ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`
-      : `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td><span class="acronym">${esc(row.code || "--")}</span></td><td>${esc(row.nationality || "--")}</td><td>${esc(row.team || "--")}</td><td>${esc(row._id ?? "--")}</td><td>${esc(row.teamuid ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`).join("")
+      ? `<tr><td class="position">${esc(row.position ?? "--")}</td><td><div class="standings-identity">${teamImageHtml(row.teamuid, row.name, "standings-team-image")}<strong>${esc(row.name || "--")}</strong></div></td><td>${esc(row.teamuid ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`
+      : `<tr><td class="position">${esc(row.position ?? "--")}</td><td><div class="standings-identity">${driverImageHtml(row._id, row.name, "standings-driver-image")}<strong>${esc(row.name || "--")}</strong></div></td><td><span class="acronym">${esc(row.code || "--")}</span></td><td>${esc(row.nationality || "--")}</td><td><div class="standings-identity standings-team">${teamImageHtml(row.teamuid, row.team, "standings-team-image")}<span>${esc(row.team || "--")}</span></div></td><td>${esc(row._id ?? "--")}</td><td>${esc(row.teamuid ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`).join("")
     : `<tr><td colspan="${kind === "teams" ? 4 : 8}" class="empty-cell">${snapshot ? "暂无年度排名数据" : "点击加载年度排名"}</td></tr>`;
   const syncStatus = snapshot?.sync_status || {};
   const syncAt = latestTimestamp(
@@ -937,10 +1061,10 @@ function buildLiveLogs(data) {
 }
 
 const liveIsRaceSession = () => raceSessionNames.has(state.liveTiming.sessionName);
-const liveResultColumnCount = () => liveIsRaceSession() ? 20 : 18;
+const liveResultColumnCount = () => visibleResultColumns(true).length;
 const liveResultHeaderHtml = () => {
-  const race = liveIsRaceSession();
-  return `<tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>圈数</th><th>总时间 / 差距</th>${race ? "<th>积分</th>" : ""}<th>状态</th><th>上一圈</th><th>最快圈</th><th>与上一名间距</th><th>与第一名间距</th><th>进站</th>${race ? "<th>NC（计算）</th>" : ""}<th>当前轮胎</th><th>超出赛道限制</th><th>小计时段</th><th>计时段</th></tr>`;
+  renderResultColumnPicker(true);
+  return `<tr>${visibleResultColumns(true).map((column) => `<th>${esc(resultColumnLabel(column, true))}</th>`).join("")}</tr>`;
 };
 
 function renderLiveTiming() {
@@ -960,14 +1084,29 @@ function renderLiveTiming() {
       const currentTyreLaps = row.extra?.tyreInfo?.total_laps;
       const previousGap = rowIndex === 0 ? "--" : row.interval || (numeric(row.gap) != null && numeric(previous?.gap) != null ? displayGap(Math.max(0, numeric(row.gap) - numeric(previous.gap))) : "--");
       const statusClass = row.status === "进站" ? "is-pit" : row.status === "运行中" ? "is-running" : "is-warning";
-      return `<tr data-live-car="${esc(row.car)}" class="${live.selectedDriver === row.car ? "selected" : ""}">
-        <td class="position">${esc(row.position ?? "--")}</td><td>${esc(row.car)}</td><td class="driver-cell"><strong>${esc(row.name)}</strong><span class="driver-code">${esc(row.code)}</span></td><td>${esc(row.team)}</td><td>${esc(row.driverId ?? "--")}</td><td>${esc(row.teamId ?? "--")}</td><td>${esc(row.lap ?? "--")}</td>
-        <td>${esc(rowIndex === 0 && row.duration != null ? formatTime(row.duration) : displayGap(row.gap))}</td>${race ? `<td>${esc(row.points ?? "--")}</td>` : ""}<td><span class="live-row-status ${statusClass}">${esc(row.status)}</span></td>
-        <td>${displayLapTime(row.lastLap)} ${colorBadgeOrEmpty(row.extra?.lastLapColor)}</td><td>${displayLapTime(row.bestLap)} ${colorBadgeOrEmpty(row.extra?.bestLapColor)}</td>
-        <td>${esc(previousGap)}</td><td>${esc(displayGap(row.gap))}</td><td>${esc(row.pitCount ?? "--")}</td>${race ? "<td>--</td>" : ""}
-        <td>${currentTyre ? tyreChip(currentTyre, `${currentTyre} · ${currentTyreLaps ?? "--"} 圈`) : "--"}</td><td>${esc(row.extra?.trackLimits ?? "--")}</td>
-        <td><div class="row-colors">${miniSectorSummary(row.extra?.miniSectors)}</div></td><td>${sectorSummary(row.extra?.sectors)}</td>
-      </tr>`;
+      const cells = {
+        position: `<td class="position">${esc(row.position ?? "--")}</td>`,
+        car: `<td>${esc(row.car)}</td>`,
+        driver: `<td class="driver-cell"><strong>${esc(row.name)}</strong><span class="driver-code">${esc(row.code)}</span></td>`,
+        team: `<td>${esc(row.team)}</td>`,
+        driverId: `<td>${esc(row.driverId ?? "--")}</td>`,
+        teamId: `<td>${esc(row.teamId ?? "--")}</td>`,
+        laps: `<td>${esc(row.lap ?? "--")}</td>`,
+        time: `<td>${esc(rowIndex === 0 && row.duration != null ? formatTime(row.duration) : displayGap(row.gap))}</td>`,
+        points: `<td>${esc(row.points ?? "--")}</td>`,
+        status: `<td><span class="live-row-status ${statusClass}">${esc(row.status)}</span></td>`,
+        lastLap: `<td>${displayLapTime(row.lastLap)} ${colorBadgeOrEmpty(row.extra?.lastLapColor)}</td>`,
+        fastestLap: `<td>${displayLapTime(row.bestLap)} ${colorBadgeOrEmpty(row.extra?.bestLapColor)}</td>`,
+        interval: `<td>${esc(previousGap)}</td>`,
+        gap: `<td>${esc(displayGap(row.gap))}</td>`,
+        pit: `<td>${esc(row.pitCount ?? "--")}</td>`,
+        nc: "<td>--</td>",
+        tyre: `<td>${currentTyre ? tyreChip(currentTyre, `${currentTyre} · ${currentTyreLaps ?? "--"} 圈`) : "--"}</td>`,
+        trackLimits: `<td>${esc(row.extra?.trackLimits ?? "--")}</td>`,
+        miniSectors: `<td><div class="row-colors">${miniSectorSummary(row.extra?.miniSectors)}</div></td>`,
+        sectors: `<td>${sectorSummary(row.extra?.sectors)}</td>`,
+      };
+      return `<tr data-live-car="${esc(row.car)}" class="${live.selectedDriver === row.car ? "selected" : ""}">${visibleResultColumns(true).map((column) => cells[column.key]).join("")}</tr>`;
     }).join("")
     : `<tr><td colspan="${liveResultColumnCount()}" class="empty-cell">${live.rows.length ? "没有匹配的车手" : "点击开始推送"}</td></tr>`;
   table.querySelectorAll("tr[data-live-car]").forEach((tr) => tr.addEventListener("click", () => {
@@ -1019,7 +1158,7 @@ function renderLiveDriverDetails() {
   const tyre = extension.tyreInfo;
   const tyreLaps = tyre?.total_laps ?? "--";
   const historyLaps = (extension.tyreHistory || []).reduce((sum, item) => sum + (Number(item.total_laps) || 0), 0);
-  container.innerHTML = `<div class="detail-content"><div class="detail-name"><strong>${esc(row.name)}</strong><span>#${esc(row.car)} · ${esc(row.team)}</span></div><div class="detail-grid">
+  container.innerHTML = `<div class="detail-content">${detailIdentityHtml({ driverId: row.driverId, teamId: row.teamId, name: row.name, car: row.car, team: row.team })}<div class="detail-grid">
     <div class="detail-item"><label>上一圈</label><strong>${displayLapTime(row.lastLap)} ${colorBadgeOrEmpty(extension.lastLapColor)}</strong></div>
     <div class="detail-item"><label>最快圈</label><strong>${displayLapTime(row.bestLap)} ${colorBadgeOrEmpty(extension.bestLapColor)}</strong></div>
     <div class="detail-item"><label>当前轮胎</label><strong>${tyre ? tyreChip(tyre.compound, `${tyre.compound} · ${tyreLaps} 圈`) : "--"}</strong></div>
@@ -1204,10 +1343,8 @@ function setActiveView(view) {
 }
 
 function resultHeaderHtml() {
-  const phase = phaseLabel(state.activePhase);
-  const suffix = phase ? `（${phase}）` : "";
-  const race = isRaceSession();
-  return `<tr><th>名次</th><th>车号</th><th>车手</th><th>车队</th><th>后台车手ID</th><th>后台车队ID</th><th>圈数</th><th id="resultTimeHeader">${phase ? `${phase} 总时间 / 差距` : "总时间 / 差距"}</th>${race ? "<th>积分</th>" : ""}<th>状态</th><th id="resultLastLapHeader">上一圈${suffix}</th><th id="resultFastestHeader">最快圈${suffix}</th><th>与上一名间距</th><th id="resultGapHeader">与第一名间距</th><th>进站</th>${race ? "<th>NC（计算）</th>" : ""}<th>当前轮胎</th><th>超出赛道限制</th><th>小计时段</th><th>计时段</th></tr>`;
+  renderResultColumnPicker(false);
+  return `<tr>${visibleResultColumns(false).map((column) => `<th>${esc(resultColumnLabel(column))}</th>`).join("")}</tr>`;
 }
 
 function renderResultHeader() {
@@ -1229,14 +1366,15 @@ function resetDataPanels(message = "选择节点后自动同步") {
 
 function renderMeetings() {
   const select = $("meetingSelect");
-  select.innerHTML = state.meetings.map((meeting) => {
+  const options = state.meetings.map((meeting) => {
     const testing = meeting.meeting_name === "Pre-Season Testing";
     const label = testing ? `${meeting.meeting_name} · ${meeting.location || meeting.country_name || ""}` : (meeting.meeting_name || meeting.country_name || "未命名分站");
     const round = meeting.round ? `第 ${meeting.round} 站 · ` : "测试 · ";
     const cancelled = meeting.is_cancelled ? " · 已取消" : "";
     return `<option value="${esc(meeting.meeting_key)}">${esc(round + label + cancelled)}</option>`;
   }).join("");
-  if (state.activeMeeting) select.value = String(state.activeMeeting.meeting_key);
+  select.innerHTML = `<option value="">请选择分站</option>${options}`;
+  select.value = state.activeMeeting ? String(state.activeMeeting.meeting_key) : "";
 }
 
 function sessionNodeKey(session, index, phase = null) {
@@ -1258,15 +1396,33 @@ function sessionNodes() {
 function renderSessionControls() {
   const select = $("sessionSelect");
   const nodes = sessionNodes();
+  if (!nodes.length) {
+    select.innerHTML = `<option value="">${state.activeMeeting ? "暂无可用节点" : "请先选择分站"}</option>`;
+    select.disabled = true;
+    $("sessionTabs").innerHTML = "";
+    $("syncBtn").disabled = true;
+    $("refreshBtn").disabled = true;
+    return;
+  }
+  select.disabled = false;
   select.innerHTML = nodes.map((node) => `<option value="${esc(node.key)}">${esc(node.label)}${node.session.is_catalog_placeholder ? " · 待获取" : ""}</option>`).join("");
   const activeNode = nodes.find((node) => node.session === state.activeSession && node.phase === state.activePhase);
   const activeKey = activeNode?.key || nodes[0]?.key;
   if (activeKey) select.value = activeKey;
+  $("syncBtn").disabled = state.activeSession?.session_key == null;
+  $("refreshBtn").disabled = false;
   $("sessionTabs").innerHTML = nodes.map((node) => `<button class="session-tab${node.phase ? " phase" : ""}${node.key === activeKey ? " active" : ""}" data-session-node="${esc(node.key)}">${esc(node.label)}</button>`).join("");
   $("sessionTabs").querySelectorAll("button").forEach((button) => button.addEventListener("click", () => selectSessionNode(button.dataset.sessionNode)));
 }
 
 function setMeetingMeta(meeting, session) {
+  if (!meeting) {
+    $("pageTitle").textContent = "请选择分站";
+    $("pageSubtitle").textContent = "选择分站后再选择会话节点";
+    $("meetingKeyLabel").textContent = "--";
+    $("sessionKeyLabel").textContent = "--";
+    return;
+  }
   const name = meeting?.meeting_name || meeting?.country_name || "分站";
   $("pageTitle").textContent = name;
   const phase = state.activePhase ? ` · ${phaseLabel(state.activePhase)}` : "";
@@ -1275,25 +1431,48 @@ function setMeetingMeta(meeting, session) {
   $("sessionKeyLabel").textContent = session?.session_key ?? "--";
 }
 
+function clearMeetingSelection() {
+  state.dataRequestId += 1;
+  state.activeMeeting = null;
+  state.sessions = [];
+  state.activeSession = null;
+  state.activePhase = null;
+  state.data = null;
+  state.selectedDriver = null;
+  renderSessionControls();
+  setMeetingMeta(null, null);
+  setStatus("等待选择分站", "请选择一个分站", false);
+  resetDataPanels("请选择分站");
+  $("cachePathLabel").textContent = "缓存状态：--";
+}
+
 async function loadMeetings() {
   $("seasonSelect").innerHTML = `<option value="2026">2026</option>`;
+  let meetingError = null;
   try {
     const payload = await api(`/api/meetings?year=${state.season}`);
     state.meetings = (payload.data || []).slice().sort((a, b) => (a.round ?? 999) - (b.round ?? 999) || Date.parse(a.date_start || 0) - Date.parse(b.date_start || 0));
     setConnection(payload.source === "openf1" || payload.source === "cache", payload.source === "openf1" ? "数据源已连接" : payload.source === "catalog" ? "本地赛季目录" : "本地缓存");
   } catch (error) {
     state.meetings = [];
+    meetingError = error;
     setConnection(false, "离线演示数据");
-    setStatus("无法读取分站列表", "请检查本地目录文件", false);
   }
-  state.activeMeeting = state.meetings.find((meeting) => Number(meeting.meeting_key) === 1292) || state.meetings[0];
+  clearMeetingSelection();
   renderMeetings();
   renderLiveTimingSelectors();
-  await loadSessions(state.activeMeeting?.meeting_key);
+  if (meetingError) {
+    setStatus("无法读取分站列表", "请检查本地目录文件", false);
+    resetDataPanels(meetingError.message || "无法读取分站列表");
+  }
 }
 
 async function loadSessions(meetingKey) {
-  if (!meetingKey) return;
+  if (!meetingKey) {
+    clearMeetingSelection();
+    renderMeetings();
+    return;
+  }
   try {
     const payload = await api(`/api/sessions?meeting_key=${meetingKey}`);
     state.sessions = payload.data || [];
@@ -1580,20 +1759,29 @@ function renderResults() {
     const fastestText = !state.activePhase && row.mapped.fastest_lap_time ? row.mapped.fastest_lap_time : (row.fastest ? formatTime(row.fastest.lap_duration) : "--");
     const lapsText = state.activePhase ? (extension.phaseLapCount || "--") : (row.raw.number_of_laps ?? row.mapped.laps ?? "--");
     const colorText = miniSectorSummary(extension.miniSectors);
-    return `<tr data-car="${row.car}" class="${state.selectedDriver === row.car ? "selected" : ""}">
-      <td class="position">${esc(displayPosition)}</td><td>${esc(row.car)}</td>
-      <td class="driver-cell">${esc(row.driver.full_name || `车号 ${row.car}`)} <span class="acronym">${esc(row.driver.name_acronym || "")}</span></td>
-      <td>${esc(row.driver.team_name || "--")}</td><td>${esc(row.mapped._id ?? "--")}</td><td>${esc(row.mapped.teamuid ?? "--")}</td>
-      <td>${esc(lapsText)}</td>
-      <td>${esc(displayTime(row))}</td>${race ? `<td>${esc(row.raw.points ?? row.mapped.points ?? "--")}</td>` : ""}
-      <td class="${status === "Finished" ? "status-finished" : "status-dnf"}">${esc(status)}</td>
-      <td>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</td><td>${esc(fastestText)} ${colorBadgeOrEmpty(extension.bestLapColor)}</td>
-      <td>${esc(intervalToPrevious(row, rows.indexOf(row), rows, intervalMap))}</td><td>${esc(gapToLeaderText(row))}</td>
-      <td>${esc(row.mapped.pitstop_count ?? extension.pits ?? "--")}</td>${race ? `<td>${ncCell}</td>` : ""}
-      <td>${currentTyre ? tyreChip(currentTyre, `${currentTyre} · ${currentTyreLaps ?? "--"} 圈`) : "--"}</td><td>${esc(extension.trackLimits ?? "--")}</td>
-      <td><div class="row-colors">${colorText}</div></td>
-      <td>${sectorSummary(extension.sectors)}</td>
-    </tr>`;
+    const cells = {
+      position: `<td class="position">${esc(displayPosition)}</td>`,
+      car: `<td>${esc(row.car)}</td>`,
+      driver: `<td class="driver-cell">${esc(row.driver.full_name || `车号 ${row.car}`)} <span class="acronym">${esc(row.driver.name_acronym || "")}</span></td>`,
+      team: `<td>${esc(row.driver.team_name || "--")}</td>`,
+      driverId: `<td>${esc(row.mapped._id ?? "--")}</td>`,
+      teamId: `<td>${esc(row.mapped.teamuid ?? "--")}</td>`,
+      laps: `<td>${esc(lapsText)}</td>`,
+      time: `<td>${esc(displayTime(row))}</td>`,
+      points: `<td>${esc(row.raw.points ?? row.mapped.points ?? "--")}</td>`,
+      status: `<td class="${status === "Finished" ? "status-finished" : "status-dnf"}">${esc(status)}</td>`,
+      lastLap: `<td>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</td>`,
+      fastestLap: `<td>${esc(fastestText)} ${colorBadgeOrEmpty(extension.bestLapColor)}</td>`,
+      interval: `<td>${esc(intervalToPrevious(row, rows.indexOf(row), rows, intervalMap))}</td>`,
+      gap: `<td>${esc(gapToLeaderText(row))}</td>`,
+      pit: `<td>${esc(row.mapped.pitstop_count ?? extension.pits ?? "--")}</td>`,
+      nc: `<td>${ncCell}</td>`,
+      tyre: `<td>${currentTyre ? tyreChip(currentTyre, `${currentTyre} · ${currentTyreLaps ?? "--"} 圈`) : "--"}</td>`,
+      trackLimits: `<td>${esc(extension.trackLimits ?? "--")}</td>`,
+      miniSectors: `<td><div class="row-colors">${colorText}</div></td>`,
+      sectors: `<td>${sectorSummary(extension.sectors)}</td>`,
+    };
+    return `<tr data-car="${row.car}" class="${state.selectedDriver === row.car ? "selected" : ""}">${visibleResultColumns(false).map((column) => cells[column.key]).join("")}</tr>`;
   }).join("");
   body.querySelectorAll("tr[data-car]").forEach((tr) => tr.addEventListener("click", () => { state.selectedDriver = Number(tr.dataset.car); renderResults(); renderDriverDetails(); }));
   const classification = rows[0]?.classification;
@@ -1627,7 +1815,7 @@ function renderDriverDetails() {
   const race = isRaceSession();
   const totalStintLaps = extension.stints.reduce((sum, stint) => sum + (Number(stint.lap_end) - Number(stint.lap_start) + 1), 0);
   const fastestText = state.activePhase ? (row.fastest ? formatTime(row.fastest.lap_duration) : "--") : (row.mapped.fastest_lap_time || (row.fastest ? formatTime(row.fastest.lap_duration) : "--"));
-  $("driverDetails").innerHTML = `<div class="detail-content"><div class="detail-name"><strong>${esc(row.driver.full_name || `车号 ${car}`)}</strong><span>#${esc(car)} · ${esc(row.driver.team_name || "--")}</span></div><div class="detail-grid">
+  $("driverDetails").innerHTML = `<div class="detail-content">${detailIdentityHtml({ driverId: row.mapped._id, teamId: row.mapped.teamuid, name: row.driver.full_name || `车号 ${car}`, car, team: row.driver.team_name })}<div class="detail-grid">
     <div class="detail-item"><label>上一圈</label><strong>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</strong></div>
     <div class="detail-item"><label>最快圈</label><strong>${esc(fastestText)} ${colorBadgeOrEmpty(extension.bestLapColor)}</strong></div>
     <div class="detail-item"><label>当前轮胎</label><strong>${lastStint ? tyreChip(lastStint.compound, `${lastStint.compound} · L${lastStint.lap_start}-${lastStint.lap_end}`) : "--"}</strong></div>
@@ -1826,6 +2014,22 @@ $("liveClearSearch")?.addEventListener("click", () => { $("liveDriverSearch").va
 $("liveWeatherView")?.addEventListener("change", (event) => { state.liveTiming.weatherView = event.target.value; renderLiveWeather(); });
 $("liveMessageView")?.addEventListener("change", (event) => { state.liveTiming.messageView = event.target.value; renderLiveTiming(); });
 $("liveMessageLanguage")?.addEventListener("change", (event) => { state.liveTiming.messageLanguage = event.target.value; renderLiveTiming(); });
+bindResultColumnPicker("resultColumnPicker", "resultColumnPickerReset");
+bindResultColumnPicker("liveColumnPicker", "liveColumnPickerReset");
+document.addEventListener("click", (event) => {
+  if (event.target.closest(".column-picker")) return;
+  document.querySelectorAll(".column-picker-menu:not([hidden])").forEach((menu) => {
+    menu.hidden = true;
+    menu.closest(".column-picker")?.querySelector("[data-column-picker-toggle]")?.setAttribute("aria-expanded", "false");
+  });
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  document.querySelectorAll(".column-picker-menu:not([hidden])").forEach((menu) => {
+    menu.hidden = true;
+    menu.closest(".column-picker")?.querySelector("[data-column-picker-toggle]")?.setAttribute("aria-expanded", "false");
+  });
+});
 
 resetLiveTiming();
 resetDataPanels();
