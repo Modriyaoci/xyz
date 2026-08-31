@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#111827" />
     <title>F1 赛后数据</title>
-    <link rel="stylesheet" href="./styles.css?v=20260831-identity-v2" />
+    <link rel="stylesheet" href="./styles.css?v=20260831-labels-v1" />
     <script>
       const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
       const staticPages = new URLSearchParams(window.location.search).get("static") === "1" || (!localServer && !window.location.pathname.startsWith("/site/"));
@@ -238,7 +238,7 @@
 
             <section class="panel result-panel" aria-labelledby="liveResultsTitle">
               <div class="panel-header">
-                <div><div class="section-kicker">结果表</div><h2 id="liveResultsTitle">赛果</h2></div>
+                <div><h2 id="liveResultsTitle">赛果</h2></div>
                 <div class="panel-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="liveDriverSearch" type="search" placeholder="搜索车手、车号或车队" /></label><button class="ghost-button" id="liveClearSearch">清除</button><div class="column-picker" id="liveColumnPicker"><button class="ghost-button" type="button" data-column-picker-toggle aria-expanded="false" aria-controls="liveColumnPickerMenu" title="筛选显示字段">筛选</button><div class="column-picker-menu" id="liveColumnPickerMenu" hidden><div class="column-picker-head"><strong>显示字段</strong><button class="column-picker-reset" id="liveColumnPickerReset" type="button">恢复默认</button></div><div class="column-picker-options"></div></div></div><span class="panel-badge" id="liveRowsBadge">0 条</span><span class="panel-badge" id="liveSequenceBadge">序号 --</span></div>
               </div>
               <div class="table-wrap">
@@ -247,16 +247,16 @@
                   <tbody><tr><td colspan="20" class="empty-cell">点击开始推送</td></tr></tbody>
                 </table>
               </div>
-              <div class="table-footer" id="liveResultsFooter">实时字段将在接收到数据后显示。点击车手行可查看扩展字段。</div>
+              <div class="table-footer" id="liveResultsFooter">实时字段将在接收到数据后显示。点击车手行可查看车手详情。</div>
             </section>
 
             <section class="split-grid live-detail-grid">
               <div class="panel" aria-labelledby="liveDriverDetailsTitle">
-                <div class="panel-header compact"><div><div class="section-kicker">扩展字段</div><h2 id="liveDriverDetailsTitle">车手详情</h2></div><span class="panel-badge">数据源</span></div>
+                <div class="panel-header compact"><div><h2 id="liveDriverDetailsTitle">车手详情</h2></div><span class="panel-badge">数据源</span></div>
                 <div class="detail-placeholder" id="liveDriverDetails"><span class="placeholder-icon">＋</span><span>点击上方赛果中的车手行</span><small>查看上一圈、计时段、轮胎和超出赛道限制</small></div>
               </div>
               <div class="panel" aria-labelledby="liveWeatherTitle">
-                <div class="panel-header compact"><div><div class="section-kicker">环境</div><h2 id="liveWeatherTitle">天气记录</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="liveWeatherView"><option value="all">全部</option><option value="50">最近 50 条</option><option value="20">最近 20 条</option></select></label><span class="panel-badge" id="liveWeatherBadge">--</span></div></div>
+                <div class="panel-header compact"><div><h2 id="liveWeatherTitle">天气记录</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="liveWeatherView"><option value="all">全部</option><option value="50">最近 50 条</option><option value="20">最近 20 条</option></select></label><span class="panel-badge" id="liveWeatherBadge">--</span></div></div>
                 <div class="weather-grid" id="liveWeatherSnapshot"><div class="empty-cell">暂无天气记录</div></div>
                 <div class="mini-table-wrap record-scroll"><table class="mini-table" id="liveWeatherTable"><thead><tr><th>时间</th><th>气温</th><th>赛道</th><th>湿度</th><th>气压</th><th>风速</th><th>风向</th><th>降雨</th></tr></thead><tbody><tr><td colspan="8" class="empty-cell">--</td></tr></tbody></table></div>
               </div>
@@ -268,7 +268,7 @@
             </section>
 
             <section class="panel" aria-labelledby="liveEventsTitle">
-              <div class="panel-header compact"><div><div class="section-kicker">控制记录</div><h2 id="liveEventsTitle">赛会消息</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="liveMessageLanguage"><option value="both">英文和中文</option><option value="en">英文</option><option value="zh">中文</option></select></label><label class="inline-select">条数<select id="liveMessageView"><option value="all">全部</option><option value="100">最近 100 条</option><option value="30">最近 30 条</option></select></label><span class="panel-badge" id="liveEventsBadge">0 条</span></div></div>
+              <div class="panel-header compact"><div><h2 id="liveEventsTitle">赛会消息</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="liveMessageLanguage"><option value="both">英文和中文</option><option value="en">英文</option><option value="zh">中文</option></select></label><label class="inline-select">条数<select id="liveMessageView"><option value="all">全部</option><option value="100">最近 100 条</option><option value="30">最近 30 条</option></select></label><span class="panel-badge" id="liveEventsBadge">0 条</span></div></div>
               <div class="table-wrap record-scroll"><table class="data-table dense live-events-table" id="liveEventTable"><thead><tr><th>时间</th><th>圈次</th><th>消息</th></tr></thead><tbody><tr><td colspan="3" class="empty-cell">暂无赛会消息</td></tr></tbody></table></div>
             </section>
 
@@ -280,7 +280,6 @@
 
           <section class="meeting-head" aria-labelledby="pageTitle">
             <div>
-              <div class="eyebrow">赛后数据节点</div>
               <h1 id="pageTitle">请选择分站</h1>
               <p id="pageSubtitle">选择分站后再选择会话节点</p>
             </div>
@@ -316,7 +315,7 @@
 
           <section class="panel result-panel" aria-labelledby="resultsTitle">
             <div class="panel-header">
-              <div><div class="section-kicker">结果表</div><h2 id="resultsTitle">赛果</h2></div>
+              <div><h2 id="resultsTitle">赛果</h2></div>
               <div class="panel-tools"><label class="search-box"><span aria-hidden="true">⌕</span><input id="driverSearch" type="search" placeholder="搜索车手、车号或车队" /></label><button class="ghost-button" id="clearSearch">清除</button><div class="column-picker" id="resultColumnPicker"><button class="ghost-button" type="button" data-column-picker-toggle aria-expanded="false" aria-controls="resultColumnPickerMenu" title="筛选显示字段">筛选</button><div class="column-picker-menu" id="resultColumnPickerMenu" hidden><div class="column-picker-head"><strong>显示字段</strong><button class="column-picker-reset" id="resultColumnPickerReset" type="button">恢复默认</button></div><div class="column-picker-options"></div></div></div></div>
             </div>
             <div class="table-wrap">
@@ -330,11 +329,11 @@
 
           <section class="split-grid">
             <div class="panel" aria-labelledby="driverDetailsTitle">
-              <div class="panel-header compact"><div><div class="section-kicker">扩展字段</div><h2 id="driverDetailsTitle">车手详情</h2></div><span class="panel-badge">数据源</span></div>
+              <div class="panel-header compact"><div><h2 id="driverDetailsTitle">车手详情</h2></div><span class="panel-badge">数据源</span></div>
               <div class="detail-placeholder" id="driverDetails"><span class="placeholder-icon">＋</span><span>点击上方赛果中的车手行</span><small>查看上一圈、计时段、轮胎和超出赛道限制</small></div>
             </div>
             <div class="panel" aria-labelledby="weatherTitle">
-            <div class="panel-header compact"><div><div class="section-kicker">环境</div><h2 id="weatherTitle">天气记录</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="weatherView"><option value="all">全部</option><option value="50">最近 50 条</option><option value="20">最近 20 条</option></select></label><span class="panel-badge" id="weatherBadge">--</span></div></div>
+            <div class="panel-header compact"><div><h2 id="weatherTitle">天气记录</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="weatherView"><option value="all">全部</option><option value="50">最近 50 条</option><option value="20">最近 20 条</option></select></label><span class="panel-badge" id="weatherBadge">--</span></div></div>
               <div class="weather-grid" id="weatherSnapshot"><div class="empty-cell">暂无天气记录</div></div>
               <div class="mini-table-wrap record-scroll"><table class="mini-table" id="weatherTable"><thead><tr><th>时间</th><th>气温</th><th>赛道</th><th>湿度</th><th>气压</th><th>风速</th><th>风向</th><th>降雨</th></tr></thead><tbody><tr><td colspan="8" class="empty-cell">--</td></tr></tbody></table></div>
             </div>
@@ -346,7 +345,7 @@
           </section>
 
           <section class="panel" aria-labelledby="messagesTitle">
-            <div class="panel-header compact"><div><div class="section-kicker">控制记录</div><h2 id="messagesTitle">赛会消息</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="messageLanguage"><option value="both">英文和中文</option><option value="en">英文</option><option value="zh">中文</option></select></label><label class="inline-select">条数<select id="messageView"><option value="all">全部</option><option value="100">最近 100 条</option><option value="30">最近 30 条</option></select></label><span class="panel-badge" id="messageBadge">--</span></div></div>
+            <div class="panel-header compact"><div><h2 id="messagesTitle">赛会消息</h2></div><div class="panel-tools"><label class="inline-select">查看<select id="messageLanguage"><option value="both">英文和中文</option><option value="en">英文</option><option value="zh">中文</option></select></label><label class="inline-select">条数<select id="messageView"><option value="all">全部</option><option value="100">最近 100 条</option><option value="30">最近 30 条</option></select></label><span class="panel-badge" id="messageBadge">--</span></div></div>
             <div class="table-wrap record-scroll"><table class="data-table dense" id="messageTable"><thead><tr><th>时间</th><th>圈次</th><th>消息</th></tr></thead><tbody><tr><td colspan="3" class="empty-cell">暂无赛会消息</td></tr></tbody></table></div>
           </section>
 
@@ -355,6 +354,6 @@
         </main>
       </div>
     </div>
-    <script type="module" src="./app.js?v=20260831-identity-v2"></script>
+    <script type="module" src="./app.js?v=20260831-labels-v1"></script>
   </body>
 </html>
