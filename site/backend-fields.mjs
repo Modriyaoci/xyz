@@ -1,3 +1,5 @@
+import { isCompleteLapRecord } from "./session-feed-rules.mjs";
+
 const DRIVER_IDS = {
   ALB: 347504, LIN: 347549, SAI: 347548, LEC: 347492, OCO: 347547, ALO: 347502,
   COL: 347540, BOR: 347539, RUS: 347501, HAD: 347537, ANT: 347534, STR: 347503,
@@ -118,7 +120,7 @@ function sortedLaps(rows) {
 }
 
 function validLaps(rows) {
-  return sortedLaps(rows).filter((lap) => numeric(lap.lap_duration) !== null && !lap.is_pit_out_lap);
+  return sortedLaps(rows).filter((lap) => isCompleteLapRecord(lap) && !lap.is_pit_out_lap);
 }
 
 function colorForStatus(status) {

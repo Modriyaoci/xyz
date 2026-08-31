@@ -4,6 +4,7 @@ import {
   resolveBackendTeamId as sharedResolveBackendTeamId,
 } from "./backend-fields.mjs";
 import { openF1TelemetryStream } from "./f1telemetry.mjs";
+import { collectSessionFeedRows, isCompleteLapRecord } from "./session-feed-rules.mjs";
 
 const state = {
   season: 2026,
@@ -154,7 +155,7 @@ async function refreshStaticCachedFeed(data, sessionKey, field) {
   try {
     const rows = await staticFetchJson(`/${field}?session_key=${encodeURIComponent(key)}`);
     if (Array.isArray(rows)) {
-      data[field] = rows;
+      data[field] = collectSessionFeedRows(field, rows);
       if (Array.isArray(data.sync_warnings)) {
         data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith(`${field}:`));
         if (!data.sync_warnings.length) delete data.sync_warnings;
@@ -197,10 +198,10 @@ async function fetchStaticSessionFeeds(sessionKey, cached, sessionName) {
       cursor += 1;
       const [key, endpointFactory] = definitions[index];
       try {
-        values[key] = await staticFetchJson(endpointFactory(sessionKey));
+        values[key] = collectSessionFeedRows(key, await staticFetchJson(endpointFactory(sessionKey)));
       } catch (error) {
         if (error.status === 404) { values[key] = []; unavailable.push(key); }
-        else if (Array.isArray(cached?.[key])) { values[key] = cached[key]; retained.push(`${key}: ${error.message}`); }
+        else if (Array.isArray(cached?.[key])) { values[key] = collectSessionFeedRows(key, cached[key]); retained.push(`${key}: ${error.message}`); }
         else if (requiredFields.has(key)) failures.push(`${key}: ${error.message}`);
         else { values[key] = []; retained.push(`${key}: ${error.message}`); }
       }
@@ -620,7 +621,7 @@ const resultColumnDefinitions = Object.freeze([
   { key: "driverId", label: "后台车手ID" },
   { key: "teamId", label: "后台车队ID" },
   { key: "laps", label: "圈数" },
-  { key: "time", label: "总时间 / 差距" },
+  { key: "time", label: "总时间 / 差距", raceOnly: true },
   { key: "points", label: "积分", raceOnly: true },
   { key: "status", label: "状态" },
   { key: "lastLap", label: "上一圈" },
@@ -1515,22 +1516,53 @@ function phaseNumber() {
   return state.activePhase ? Number(String(state.activePhase).replace(/^q/i, "")) : null;
 }
 
+function explicitQualifyingPhase(event) {
+  const phase = Number(event?.qualifying_phase);
+  return [1, 2, 3].includes(phase) ? phase : null;
+}
+
 function qualifyingPhaseWindows() {
   const events = (state.data?.race_control || [])
-    .filter((event) => [1, 2, 3].includes(Number(event.qualifying_phase)) && event.date)
+    .filter((event) => event.date)
     .map((event) => ({ ...event, time: Date.parse(event.date) }))
     .filter((event) => Number.isFinite(event.time))
     .sort((a, b) => a.time - b.time);
   const windows = new Map();
   for (const phase of [1, 2, 3]) {
-    const phaseEvents = events.filter((event) => Number(event.qualifying_phase) === phase);
+    const phaseEvents = events.filter((event) => explicitQualifyingPhase(event) === phase);
     const start = phaseEvents.find((event) => /SESSION STARTED/i.test(event.message || ""));
     if (!start) continue;
     const finish = phaseEvents.find((event) => event.time >= start.time && /SESSION FINISHED/i.test(event.message || ""))
       || phaseEvents.find((event) => event.time >= start.time && /CHEQUERED FLAG/i.test(event.message || ""));
     windows.set(phase, { start: start.time, end: finish?.time ?? null });
   }
+  if (!windows.has(1)) {
+    const q2Start = windows.get(2)?.start ?? null;
+    const start = events.find((event) => explicitQualifyingPhase(event) == null && /SESSION STARTED/i.test(event.message || ""));
+    const fallbackStart = Date.parse(state.data?.session?.date_start || "");
+    const startTime = start?.time ?? (Number.isFinite(fallbackStart) ? fallbackStart : null);
+    if (startTime != null) {
+      const finish = events.find((event) => event.time >= startTime
+        && (q2Start == null || event.time < q2Start)
+        && (/SESSION FINISHED/i.test(event.message || "") || /CHEQUERED FLAG/i.test(event.message || "")));
+      windows.set(1, { start: startTime, end: finish?.time ?? (q2Start == null ? null : q2Start - 1) });
+    }
+  }
   return windows;
+}
+
+function qualifyingPhaseForEvent(event, windows = qualifyingPhaseWindows()) {
+  const explicit = explicitQualifyingPhase(event);
+  if (explicit != null) return explicit;
+  const messagePhase = String(event?.message || "").match(/\bS?Q([123])\b/i);
+  if (messagePhase) return Number(messagePhase[1]);
+  const time = Date.parse(event?.date || "");
+  if (!Number.isFinite(time)) return null;
+  for (const phase of [1, 2, 3]) {
+    const window = windows.get(phase);
+    if (window && time >= window.start && (window.end == null || time <= window.end)) return phase;
+  }
+  return null;
 }
 
 function currentPhaseLaps() {
@@ -1549,8 +1581,8 @@ function driverLapsForView(car) {
 }
 
 function computedSectorColors(car, lastLap, laps, sessionLaps = laps) {
-  const valid = laps.filter((lap) => lap.lap_duration != null && !lap.is_pit_out_lap);
-  const validSessionLaps = sessionLaps.filter((lap) => lap.lap_duration != null && !lap.is_pit_out_lap);
+  const valid = laps.filter((lap) => isCompleteLapRecord(lap) && !lap.is_pit_out_lap);
+  const validSessionLaps = sessionLaps.filter((lap) => isCompleteLapRecord(lap) && !lap.is_pit_out_lap);
   const minimum = (rows, index) => {
     const values = rows.map((lap) => numeric(lap[`duration_sector_${index + 1}`])).filter((value) => value != null);
     return values.length ? Math.min(...values) : null;
@@ -1579,7 +1611,7 @@ function computedMiniSectors(lastLap) {
 function extensionForRow(car, mapped, fastest) {
   const phaseMode = Boolean(state.activePhase);
   const viewLaps = driverLapsForView(car);
-  const laps = viewLaps.filter((lap) => lap.lap_duration != null).sort((a, b) => a.lap_number - b.lap_number);
+  const laps = viewLaps.filter(isCompleteLapRecord).sort((a, b) => a.lap_number - b.lap_number);
   const lastLap = laps.at(-1);
   const viewSessionLaps = currentPhaseLaps();
   const mappedExtra = phaseMode ? {} : (state.data?.mapped?.extra || {});
@@ -1591,11 +1623,12 @@ function extensionForRow(car, mapped, fastest) {
   const stints = driverStints(car, viewLaps);
   const finalStint = stints.at(-1);
   const pits = driverPits(car, viewLaps).length;
-  const control = (state.data?.race_control || []).filter((message) => (Number(message.driver_number) === Number(car) || String(message.message || "").includes(`CAR ${car}`)) && (!phaseMode || Number(message.qualifying_phase) === phaseNumber()));
+  const phaseWindows = phaseMode ? qualifyingPhaseWindows() : null;
+  const control = (state.data?.race_control || []).filter((message) => (Number(message.driver_number) === Number(car) || String(message.message || "").includes(`CAR ${car}`)) && (!phaseMode || qualifyingPhaseForEvent(message, phaseWindows) === phaseNumber()));
   const trackLimits = key && mappedExtra.track_limits?.[key] != null ? mappedExtra.track_limits[key] : control.filter((item) => /TRACK LIMITS/i.test(item.message || "")).length;
   const phaseFastest = laps.slice().sort((a, b) => Number(a.lap_duration) - Number(b.lap_duration))[0] || null;
   const effectiveFastest = phaseMode ? phaseFastest : fastest;
-  const sessionLapTimes = viewSessionLaps.map((lap) => numeric(lap.lap_duration)).filter((value) => value != null);
+  const sessionLapTimes = viewSessionLaps.filter(isCompleteLapRecord).map((lap) => numeric(lap.lap_duration));
   const sessionFastest = sessionLapTimes.length ? Math.min(...sessionLapTimes) : null;
   const lastLapTime = key && mappedExtra.last_lap_time?.[key] ? mappedExtra.last_lap_time[key] : lastLap ? formatTime(lastLap.lap_duration) : null;
   const lastLapColor = key && mappedExtra.last_lap_time_color?.[key] ? mappedExtra.last_lap_time_color[key] : !lastLap ? null : lastLap.lap_duration === sessionFastest ? "purple" : lastLap === effectiveFastest ? "green" : "yellow";
@@ -1666,7 +1699,7 @@ function getResultRows() {
     const resultIndex = phaseIndex ?? (Array.isArray(raw.duration) ? 2 : null);
     const duration = resultIndex !== null && Array.isArray(raw.duration) ? (raw.duration[resultIndex] ?? null) : raw.duration;
     const gap = resultIndex !== null && Array.isArray(raw.gap_to_leader) ? (raw.gap_to_leader[resultIndex] ?? null) : raw.gap_to_leader;
-    const fastest = viewLaps.filter((lap) => Number(lap.driver_number) === car && lap.lap_duration != null).sort((a, b) => a.lap_duration - b.lap_duration)[0] || null;
+    const fastest = viewLaps.filter((lap) => Number(lap.driver_number) === car && isCompleteLapRecord(lap)).sort((a, b) => a.lap_duration - b.lap_duration)[0] || null;
     return { raw, car, driver, mapped, duration, gap, fastest, classification, isNc: isNotClassified(raw, classification), extension: extensionForRow(car, mapped, fastest) };
   });
   if (state.activePhase) {
@@ -1872,7 +1905,8 @@ function renderTyres() {
 
 function renderMessages() {
   const phase = phaseNumber();
-  const messages = (state.data?.race_control || []).filter((message) => phase == null || Number(message.qualifying_phase) === phase).slice().sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+  const phaseWindows = phase == null ? null : qualifyingPhaseWindows();
+  const messages = (state.data?.race_control || []).filter((message) => phase == null || qualifyingPhaseForEvent(message, phaseWindows) === phase).slice().sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
   $("metricMessages").textContent = number(messages.length);
   $("messageBadge").textContent = `${messages.length} 条`;
   if (!messages.length) return;
