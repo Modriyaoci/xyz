@@ -24,8 +24,52 @@ jobs:
         with:
           node-version: 20
       - name: Fetch official standings snapshot
-        run: node scripts/sync-official-standings.mjs 2026
+        id: fetch_standings
+        continue-on-error: true
+        run: node scripts/sync-official-standings.mjs 2026 automatic
+
+      - name: Record sync status
+        if: always()
+        env:
+          FETCH_OUTCOME: ${{ steps.fetch_standings.outcome }}
+        run: |
+          node --input-type=module - <<'NODE'
+          import fs from "node:fs";
+
+          const file = "official-standings-2026.json";
+          const now = new Date().toISOString();
+          const failed = process.env.FETCH_OUTCOME !== "success";
+          let snapshot = {};
+          try {
+            snapshot = JSON.parse(fs.readFileSync(file, "utf8"));
+          } catch {
+            snapshot = { season: 2026, drivers: [], teams: [] };
+          }
+          const previousSuccess = snapshot.sync_status?.last_success_at || snapshot.captured_at || null;
+          const previousAutomatic = snapshot.sync_status?.last_automatic_at || snapshot.captured_at || null;
+          const previousManual = snapshot.sync_status?.last_manual_at || null;
+          snapshot.sync_status = failed
+            ? {
+                status: "failed",
+                trigger: "automatic",
+                attempted_at: now,
+                last_success_at: previousSuccess,
+                last_automatic_at: previousAutomatic,
+                last_manual_at: previousManual,
+                error: "官网排名自动同步失败，请查看 GitHub Actions 日志",
+              }
+            : {
+                status: "success",
+                trigger: "automatic",
+                attempted_at: snapshot.captured_at || now,
+                last_success_at: snapshot.captured_at || now,
+                last_automatic_at: snapshot.captured_at || now,
+                last_manual_at: previousManual,
+              };
+          fs.writeFileSync(file, `${JSON.stringify(snapshot, null, 2)}\n`);
+          NODE
       - name: Commit changed snapshot
+        if: always()
         run: |
           if git diff --quiet -- official-standings-2026.json; then
             echo "Official standings snapshot is unchanged"
@@ -36,3 +80,7 @@ jobs:
           git add official-standings-2026.json
           git commit -m "Update official F1 standings snapshot"
           git push
+
+      - name: Fail workflow after recording the alarm
+        if: steps.fetch_standings.outcome == 'failure'
+        run: exit 1
