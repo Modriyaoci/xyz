@@ -1,10 +1,6 @@
 {
   "season": 2026,
-  "captured_at": "2026-08-27T10:30:42.699Z",
-  "sync_status": {
-    "status": "success",
-    "last_success_at": "2026-08-27T10:30:42.699Z"
-  },
+  "captured_at": "2026-08-31T00:05:14.788Z",
   "source": {
     "drivers": "https://www.formula1.com/en/results/2026/drivers",
     "teams": "https://www.formula1.com/en/results/2026/team"
