@@ -369,7 +369,18 @@ const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({"&": 
 const number = (value, fallback = "--") => value === null || value === undefined || value === "" ? fallback : Number(value).toLocaleString("en-US");
 const numeric = (value) => value === null || value === undefined || value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
 const fixed = (value, digits = 3) => numeric(value) == null ? "--" : numeric(value).toFixed(digits);
-const dateText = (value) => value ? String(value).replace("T", " ").replace("+00:00", " UTC").replace("Z", " UTC") : "--";
+const dateText = (value) => value
+  ? String(value).replace(/(\.\d{3})\d+/, "$1").replace("T", " ").replace("+00:00", " UTC").replace("Z", " UTC")
+  : "--";
+const chinaDateText = (value) => {
+  if (!value) return "--";
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return String(value);
+  return new Date(timestamp + 8 * 60 * 60 * 1000).toISOString().replace("T", " ").replace("Z", " UTC+8");
+};
+const latestTimestamp = (...values) => values
+  .filter(Boolean)
+  .sort((left, right) => (Date.parse(right) || 0) - (Date.parse(left) || 0))[0] || null;
 const syncWarningText = (warnings) => {
   if (!Array.isArray(warnings) || !warnings.length) return "";
   const labels = { drivers: "车手", session_result: "赛果", laps: "圈数", pit: "进站", position: "位置", intervals: "间隔", stints: "轮胎历史", race_control: "赛会消息", weather: "天气记录" };
@@ -629,20 +640,28 @@ function renderStandings() {
       ? `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td>${esc(row.teamuid ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`
       : `<tr><td class="position">${esc(row.position ?? "--")}</td><td class="driver-cell">${esc(row.name || "--")}</td><td><span class="acronym">${esc(row.code || "--")}</span></td><td>${esc(row.nationality || "--")}</td><td>${esc(row.team || "--")}</td><td>${esc(row._id ?? "--")}</td><td>${esc(row.teamuid ?? "--")}</td><td>${esc(row.points ?? "--")}</td></tr>`).join("")
     : `<tr><td colspan="${kind === "teams" ? 4 : 8}" class="empty-cell">${snapshot ? "暂无年度排名数据" : "点击加载年度排名"}</td></tr>`;
-  $("standingsCapturedAt").textContent = snapshot?.captured_at ? `官网快照：${dateText(snapshot.captured_at)}` : "官网快照：--";
+  const syncStatus = snapshot?.sync_status || {};
+  const syncAt = latestTimestamp(
+    syncStatus.last_success_at,
+    syncStatus.last_automatic_at,
+    syncStatus.last_manual_at,
+    snapshot?.captured_at,
+  );
+  $("standingsSyncedAt").textContent = syncAt ? `最近同步：${chinaDateText(syncAt)}` : "最近同步：--";
   $("standingsCount").textContent = snapshot ? `${rows.length} 条` : "--";
   $("standingsSource").textContent = snapshot ? "数据源：官网排名快照" : "数据源：--";
   const alert = $("standingsAlert");
-  const syncStatus = snapshot?.sync_status;
   const failed = syncStatus?.status === "failed" || Boolean(state.standingsError);
   if (alert) {
     if (failed) {
-      const attemptedAt = syncStatus?.attempted_at ? `（尝试时间：${dateText(syncStatus.attempted_at)}）` : "";
-      const detail = syncStatus?.error || state.standingsError || "官网排名自动同步失败，请查看同步日志";
-      const detailSuffix = /自动同步失败/.test(detail) ? "" : ` ${detail}`;
+      const attemptedAt = syncStatus?.attempted_at ? `（尝试时间：${chinaDateText(syncStatus.attempted_at)}）` : "";
+      const manualFailure = syncStatus?.trigger === "manual";
+      const failureTitle = manualFailure ? "年度排名人工同步失败" : "年度排名自动同步失败";
+      const detail = syncStatus?.error || state.standingsError || "官网排名同步失败，请查看同步日志";
+      const detailSuffix = detail.includes(failureTitle) ? "" : ` ${detail}`;
       alert.textContent = snapshot
-        ? `年度排名自动同步失败${attemptedAt}。当前显示上次成功的排名快照。${detailSuffix}`
-        : `年度排名自动同步失败。${detail}`;
+        ? `${failureTitle}${attemptedAt}。当前显示上次成功的排名快照。${detailSuffix}`
+        : `${failureTitle}。${detail}`;
       alert.hidden = false;
     } else {
       alert.hidden = true;
@@ -665,9 +684,12 @@ async function loadOfficialStandings({ force = false } = {}) {
     state.standings = enrichOfficialStandings(payload.data);
     state.standingsError = null;
     renderStandings();
-    if (status) status.textContent = payload.data?.sync_status?.status === "failed"
-      ? "自动同步失败，显示上次成功快照"
-      : payload.source === "cache" || payload.source === "local" ? "已读取本地快照" : "排名快照已更新";
+    if (status) {
+      if (payload.data?.sync_status?.status === "failed") status.textContent = "同步失败，显示上次成功快照";
+      else if (force && STATIC_MODE) status.textContent = "已读取最新发布快照";
+      else if (force) status.textContent = "排名同步成功";
+      else status.textContent = payload.source === "cache" || payload.source === "local" ? "已读取本地快照" : "排名快照已更新";
+    }
   } catch (error) {
     state.standingsError = error.message || "年度排名读取失败";
     if (status) status.textContent = error.message || "年度排名读取失败";
