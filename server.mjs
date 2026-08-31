@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { mapOpenF1ToBackend } from "./backend-fields.mjs";
 import { fetchF1TelemetryState } from "./f1telemetry.mjs";
+import { collectSessionFeedRows } from "./session-feed-rules.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.F1_PORT || 4173);
@@ -356,7 +357,7 @@ async function refreshCachedFeed(data, sessionKey, field) {
   try {
     const rows = await fetchOpenF1(`/${field}?session_key=${encodeURIComponent(key)}`);
     if (!Array.isArray(rows)) return false;
-    data[field] = rows;
+    data[field] = collectSessionFeedRows(field, rows);
     if (Array.isArray(data.sync_warnings)) {
       data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith(`${field}:`));
       if (!data.sync_warnings.length) delete data.sync_warnings;
@@ -401,10 +402,10 @@ async function fetchSessionFeeds(sessionKey, cached, sessionName) {
       cursor += 1;
       const [key, endpointFactory] = definitions[index];
       try {
-        values[key] = await fetchOpenF1(endpointFactory(sessionKey));
+        values[key] = collectSessionFeedRows(key, await fetchOpenF1(endpointFactory(sessionKey)));
       } catch (error) {
         if (error.status === 404) { values[key] = []; unavailable.push(key); }
-        else if (Array.isArray(cached?.[key])) { values[key] = cached[key]; retained.push(`${key}: ${error.message}`); }
+        else if (Array.isArray(cached?.[key])) { values[key] = collectSessionFeedRows(key, cached[key]); retained.push(`${key}: ${error.message}`); }
         else if (requiredFields.has(key)) failures.push(`${key}: ${error.message}`);
         else { values[key] = []; retained.push(`${key}: ${error.message}`); }
       }
@@ -506,7 +507,7 @@ async function serveStatic(req, res, pathname) {
     try {
       const body = await fs.readFile(candidate);
       const ext = path.extname(candidate);
-      const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8" }[ext] || "application/octet-stream";
+      const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".png": "image/png" }[ext] || "application/octet-stream";
       res.writeHead(200, { "content-type": type }); res.end(body); return;
     } catch { /* try the root or site fallback */ }
   }
