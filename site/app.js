@@ -1167,7 +1167,7 @@ function renderLiveDriverDetails() {
     <div class="detail-item"><label>超出赛道限制</label><strong>${esc(extension.trackLimits ?? "--")}</strong></div>
     <div class="detail-item"><label>轮胎历史圈数</label><strong>${esc(historyLaps || "--")}</strong></div>
     <div class="detail-item"><label>计时段</label><strong>${sectorSummary(extension.sectors)}</strong></div>
-  </div><div class="detail-color-block"><label>Mini-sector 颜色</label>${miniSectorSummary(extension.miniSectors)}</div></div>`;
+  </div><div class="detail-color-block"><label>小计时段</label>${miniSectorSummary(extension.miniSectors)}</div></div>`;
 }
 
 function renderLiveWeather() {
@@ -1788,7 +1788,7 @@ function renderResults() {
   const ncSummary = classification?.enabled
     ? ` · NC 本地计算：冠军 ${classification.winnerLaps} 圈，90% 向下取整阈值 ${classification.threshold} 圈，${rows.filter((row) => row.isNc).length} 位 NC`
     : "";
-  $("resultsFooter").textContent = `${filtered.length} / ${rows.length} 位车手 · 数据字段来自数据源${ncSummary} · 点击车手行查看扩展字段`;
+  $("resultsFooter").textContent = `${filtered.length} / ${rows.length} 位车手 · 数据字段来自数据源${ncSummary} · 点击车手行查看车手详情`;
 }
 
 function driverStints(car, viewLaps = null) {
@@ -1823,7 +1823,7 @@ function renderDriverDetails() {
     <div class="detail-item"><label>总圈数</label><strong>${totalStintLaps || "--"}</strong></div>
     <div class="detail-item"><label>超出赛道限制</label><strong>${extension.trackLimits ?? "--"}</strong></div>
     <div class="detail-item"><label>计时段</label><strong>${sectorSummary(extension.sectors)}</strong></div>
-  </div><div class="detail-color-block"><label>Mini-sector 颜色</label>${miniSectorSummary(extension.miniSectors)}</div></div>`;
+  </div><div class="detail-color-block"><label>小计时段</label>${miniSectorSummary(extension.miniSectors)}</div></div>`;
 }
 
 function renderWeather() {
