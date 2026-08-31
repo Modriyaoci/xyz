@@ -369,7 +369,9 @@ const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({"&": 
 const number = (value, fallback = "--") => value === null || value === undefined || value === "" ? fallback : Number(value).toLocaleString("en-US");
 const numeric = (value) => value === null || value === undefined || value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
 const fixed = (value, digits = 3) => numeric(value) == null ? "--" : numeric(value).toFixed(digits);
-const dateText = (value) => value ? String(value).replace("T", " ").replace("+00:00", " UTC").replace("Z", " UTC") : "--";
+const dateText = (value) => value
+  ? String(value).replace(/(\.\d{3})\d+/, "$1").replace("T", " ").replace("+00:00", " UTC").replace("Z", " UTC")
+  : "--";
 const chinaDateText = (value) => {
   if (!value) return "--";
   const timestamp = Date.parse(value);
