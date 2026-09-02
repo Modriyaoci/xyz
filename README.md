@@ -26,7 +26,9 @@ npm start
 
 ### nana 实时入口
 
-另一套后台向 Node 服务的 `/api/live-timing/ingest` 发送最新实时快照；页面选择 `nana` 并点击“开始实时”后通过 SSE 接收。实时状态只保存在内存，每次推送覆盖上一份。
+登录 Node 服务后访问 `/api/live-timing/entry`，会返回一组带令牌的入口地址。把其中的 `ingest.url` 交给另一套后台，它用 `POST` 逐条推送实时数据；本站的“实时推送”选择数据源 `nana` 并点击“开始实时”后，会通过 SSE 自动接收当前状态。同一赛事按 `id` 在内存中增量更新：本次携带的普通字段覆盖旧值，车手按 `id` 或车号合并，消息去重追加，扩展字段按车手 ID 覆盖；赛事 `id` 变化时才清空上一场。实时数据只保存在内存，不写入历史文件。
+
+推送请求也可以把令牌放在 `X-Live-Timing-Token` 请求头中，地址使用 `/api/live-timing/ingest`。请求体支持标准 JSON、`{ "data": <数据> }`、直接发送“日志前缀 + Python 字典”的原始 TXT，或用 `multipart/form-data` 上传该文件；没有 `session`、`meeting`、`mapped` 等前置字段要求。另一后台已经生成的 `winner`、`competitors`、`fields`、`messages`、`extra` 会按原字段和值保存，页面只做读取适配，不再次经过 OpenF1 转换。`/api/live-timing` 返回当前状态，`/api/live-timing/stream` 提供持续 SSE 数据流。
 
 GitHub Pages 只能托管静态页面，不能接收这个 POST 入口。需要把 `server.mjs` 部署到公网 Node 主机，并设置 `F1_HOST=0.0.0.0` 与随机的 `LIVE_TIMING_BRIDGE_TOKEN`。服务会优先读取云平台提供的 `PORT`，同时兼容 `F1_PORT`。
 

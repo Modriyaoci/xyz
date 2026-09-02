@@ -152,25 +152,225 @@ function openLiveBridgeStream(req, res) {
   });
 }
 
+function isPlainObject(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function liveCompetitorKey(row) {
+  const id = row?.id ?? row?._id;
+  if (id !== null && id !== undefined && id !== "") return `id:${id}`;
+  const car = row?.car_number;
+  return car === null || car === undefined || car === "" ? null : `car:${car}`;
+}
+
+function mergeLiveCompetitors(previous, incoming) {
+  const rows = (Array.isArray(previous) ? previous : []).slice();
+  const idIndexes = new Map();
+  const carIndexes = new Map();
+  const indexRow = (row, index) => {
+    const id = row?.id ?? row?._id;
+    const car = row?.car_number;
+    if (id !== null && id !== undefined && id !== "") idIndexes.set(String(id), index);
+    if (car !== null && car !== undefined && car !== "") carIndexes.set(String(car), index);
+  };
+  rows.forEach(indexRow);
+  for (const row of Array.isArray(incoming) ? incoming : []) {
+    const id = row?.id ?? row?._id;
+    const car = row?.car_number;
+    const index = id !== null && id !== undefined && id !== ""
+      ? idIndexes.get(String(id))
+      : car !== null && car !== undefined && car !== "" ? carIndexes.get(String(car)) : undefined;
+    if (index === undefined) {
+      rows.push(row);
+      indexRow(row, rows.length - 1);
+      continue;
+    }
+    rows[index] = isPlainObject(row) ? mergeLiveValue(rows[index], row) : row;
+    indexRow(rows[index], index);
+  }
+  return rows.sort((left, right) => {
+    const leftPosition = Number(left?.position);
+    const rightPosition = Number(right?.position);
+    return (Number.isFinite(leftPosition) ? leftPosition : 999) - (Number.isFinite(rightPosition) ? rightPosition : 999)
+      || Number(left?.car_number || 0) - Number(right?.car_number || 0);
+  });
+}
+
+function liveMessageKey(row) {
+  if (!isPlainObject(row)) return JSON.stringify(row);
+  return [row.utc ?? row.date ?? "", row.lap ?? row.lap_number ?? "", row.text_en ?? row.message ?? "", row.text_zh ?? ""].join("|");
+}
+
+function mergeLiveMessages(previous, incoming) {
+  const merged = new Map();
+  for (const row of [...(Array.isArray(previous) ? previous : []), ...(Array.isArray(incoming) ? incoming : [])]) {
+    merged.set(liveMessageKey(row), row);
+  }
+  return [...merged.values()];
+}
+
+function mergeLiveValue(previous, incoming, key = "") {
+  if (Array.isArray(incoming)) {
+    if (key === "competitors") return mergeLiveCompetitors(previous, incoming);
+    if (key === "messages" || key === "race_control") return mergeLiveMessages(previous, incoming);
+    return incoming;
+  }
+  if (!isPlainObject(incoming)) return incoming;
+  const base = isPlainObject(previous) ? previous : {};
+  const merged = { ...base };
+  for (const [childKey, value] of Object.entries(incoming)) {
+    merged[childKey] = mergeLiveValue(base[childKey], value, childKey);
+  }
+  return merged;
+}
+
+function mergeLiveBridgeSnapshot(previous, incoming) {
+  if (!isPlainObject(previous)) return incoming;
+  const previousId = previous.id;
+  const incomingId = incoming.id;
+  if (previousId !== null && previousId !== undefined && incomingId !== null && incomingId !== undefined && String(previousId) !== String(incomingId)) {
+    return incoming;
+  }
+  return mergeLiveValue(previous, incoming);
+}
+
+function parsePythonLiteral(source) {
+  const text = String(source || "");
+  let index = text.indexOf("{");
+  if (index < 0) throw new Error("文件中没有找到实时数据对象");
+  const skipSpace = () => { while (/\s/.test(text[index] || "")) index += 1; };
+  const parseString = () => {
+    const quote = text[index++];
+    let value = "";
+    while (index < text.length) {
+      const char = text[index++];
+      if (char === quote) return value;
+      if (char !== "\\") {
+        value += char;
+        continue;
+      }
+      if (index >= text.length) throw new Error("字符串转义不完整");
+      const escaped = text[index++];
+      const simple = { n: "\n", r: "\r", t: "\t", b: "\b", f: "\f", v: "\v", "\\": "\\", "'": "'", '"': '"' };
+      if (Object.prototype.hasOwnProperty.call(simple, escaped)) value += simple[escaped];
+      else if (escaped === "u" || escaped === "x") {
+        const length = escaped === "u" ? 4 : 2;
+        const hex = text.slice(index, index + length);
+        if (!new RegExp(`^[0-9a-fA-F]{${length}}$`).test(hex)) throw new Error("字符串编码无效");
+        value += String.fromCodePoint(Number.parseInt(hex, 16));
+        index += length;
+      } else value += escaped;
+    }
+    throw new Error("字符串没有结束引号");
+  };
+  const parseNumber = () => {
+    const match = text.slice(index).match(/^[+-]?(?:(?:\d+(?:\.\d*)?)|(?:\.\d+))(?:[eE][+-]?\d+)?/);
+    if (!match) throw new Error(`无法解析数字（位置 ${index}）`);
+    index += match[0].length;
+    const value = Number(match[0]);
+    if (!Number.isFinite(value)) throw new Error("数字超出可用范围");
+    return value;
+  };
+  const parseValue = () => {
+    skipSpace();
+    const char = text[index];
+    if (char === "'" || char === '"') return parseString();
+    if (char === "{") {
+      index += 1;
+      const value = {};
+      skipSpace();
+      if (text[index] === "}") { index += 1; return value; }
+      while (index < text.length) {
+        const key = parseValue();
+        skipSpace();
+        if (text[index++] !== ":") throw new Error(`字典字段缺少冒号（位置 ${index - 1}）`);
+        value[String(key)] = parseValue();
+        skipSpace();
+        if (text[index] === "}") { index += 1; return value; }
+        if (text[index++] !== ",") throw new Error(`字典字段缺少逗号（位置 ${index - 1}）`);
+      }
+      throw new Error("字典没有结束括号");
+    }
+    if (char === "[") {
+      index += 1;
+      const value = [];
+      skipSpace();
+      if (text[index] === "]") { index += 1; return value; }
+      while (index < text.length) {
+        value.push(parseValue());
+        skipSpace();
+        if (text[index] === "]") { index += 1; return value; }
+        if (text[index++] !== ",") throw new Error(`列表字段缺少逗号（位置 ${index - 1}）`);
+      }
+      throw new Error("列表没有结束括号");
+    }
+    for (const [literal, value] of [["None", null], ["True", true], ["False", false]]) {
+      if (text.startsWith(literal, index)) { index += literal.length; return value; }
+    }
+    return parseNumber();
+  };
+  const value = parseValue();
+  if (!isPlainObject(value)) throw new Error("文件中的实时数据必须是对象");
+  return value;
+}
+
+function multipartFileText(text, contentType) {
+  const boundary = String(contentType || "").match(/boundary=(?:"([^"]+)"|([^;]+))/i)?.slice(1).find(Boolean);
+  if (!boundary) throw new Error("文件上传缺少 multipart boundary");
+  const parts = text.split(`--${boundary}`);
+  const part = parts.find((value) => /content-disposition:[^\r\n]*(?:filename=|name="(?:file|data|payload)")/i.test(value));
+  if (!part) throw new Error("文件上传中没有找到数据文件");
+  const separator = part.search(/\r?\n\r?\n/);
+  if (separator < 0) throw new Error("文件上传内容格式无效");
+  const headerLength = part.slice(separator).match(/^\r?\n\r?\n/)?.[0].length || 0;
+  return part.slice(separator + headerLength).replace(/\r?\n$/, "");
+}
+
+async function readLiveBridgeBody(req) {
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of req) {
+    size += chunk.length;
+    if (size > 8 * 1024 * 1024) {
+      const error = new Error("实时快照超过 8 MB 限制");
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(chunk);
+  }
+  const contentType = String(req.headers["content-type"] || "");
+  let text = Buffer.concat(chunks).toString("utf8");
+  if (/multipart\/form-data/i.test(contentType)) text = multipartFileText(text, contentType);
+  try { return JSON.parse(text); } catch { return parsePythonLiteral(text); }
+}
+
 async function ingestLiveBridgeState(req, res) {
   const contentLength = Number(req.headers["content-length"]);
   if (Number.isFinite(contentLength) && contentLength > 8 * 1024 * 1024) return json(res, 413, { error: "实时快照超过 8 MB 限制" });
-  const body = await readBody(req);
+  let body;
+  try {
+    body = await readLiveBridgeBody(req);
+  } catch (error) {
+    return json(res, error.status || 400, { error: error.message || "实时数据文件格式无效" });
+  }
   const incoming = body?.data && typeof body.data === "object" && !Array.isArray(body.data) ? body.data : body;
   if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) return json(res, 400, { error: "请求体必须是实时快照 JSON" });
-  if (!incoming.session && !incoming.meeting && !incoming.mapped) return json(res, 400, { error: "实时快照至少需要 session、meeting 或 mapped 字段" });
   const receivedAt = new Date().toISOString();
-  const data = { ...incoming, live: true, fetched_at: incoming.fetched_at || receivedAt };
-  normaliseSessionData(data);
-  data.mapped = mapOpenF1ToBackend(data, data.mapped);
+  const data = { ...incoming, live: true, fetched_at: receivedAt };
+  const legacySessionEnvelope = Boolean(data.session || data.meeting || data.mapped)
+    || sessionArrayFields.some((field) => Array.isArray(data[field]));
+  if (legacySessionEnvelope) {
+    normaliseSessionData(data);
+    data.mapped = mapOpenF1ToBackend(data, data.mapped);
+  }
   liveBridgeSequence += 1;
-  liveBridgeState = {
+  liveBridgeState = mergeLiveBridgeSnapshot(liveBridgeState, {
     ...data,
     source_name: "nana",
     data_source: "external-live-timing",
     source_session: "external-live-timing",
     live_bridge: { sequence: liveBridgeSequence, received_at: receivedAt, source: "external-live-timing" },
-  };
+  });
   broadcastLiveBridgeState();
   return json(res, 200, { ok: true, source_name: "nana", source: "external-live-timing", sequence: liveBridgeSequence, received_at: receivedAt });
 }
