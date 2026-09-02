@@ -28,7 +28,9 @@ npm start
 
 另一套后台向 Node 服务的 `/api/live-timing/ingest` 发送最新实时快照；页面选择 `nana` 并点击“开始实时”后通过 SSE 接收。实时状态只保存在内存，每次推送覆盖上一份。
 
-GitHub Pages 只能托管静态页面，不能接收这个 POST 入口。需要把 `server.mjs` 部署到公网 Node 主机，并设置 `F1_HOST=0.0.0.0` 与随机的 `LIVE_TIMING_BRIDGE_TOKEN`。
+GitHub Pages 只能托管静态页面，不能接收这个 POST 入口。需要把 `server.mjs` 部署到公网 Node 主机，并设置 `F1_HOST=0.0.0.0` 与随机的 `LIVE_TIMING_BRIDGE_TOKEN`。服务会优先读取云平台提供的 `PORT`，同时兼容 `F1_PORT`。
+
+公网部署还应在平台的环境变量中设置 `F1_AUTH_USERNAME` 和 `F1_AUTH_PASSWORD`，不要把登录凭据写入仓库。
 
 仓库内的 `.github/workflows/pages.yml` 会发布仓库根目录。根目录静态入口与 `site/` 本地服务入口保持同步；发布后的页面在浏览器中直接读取数据源，并将每个会话的完整响应保存到 IndexedDB；点击“同步数据源”会强制重新拉取，失败时不会覆盖已有缓存。
 

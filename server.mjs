@@ -10,7 +10,8 @@ import { fetchF1TelemetryState } from "./f1telemetry.mjs";
 import { collectSessionFeedRows, completeSessionResultRows } from "./session-feed-rules.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
-const port = Number(process.env.F1_PORT || 4173);
+// Cloud hosts provide PORT; keep F1_PORT for local and existing deployments.
+const port = Number(process.env.PORT || process.env.F1_PORT || 4173);
 const host = String(process.env.F1_HOST || "127.0.0.1");
 const apiBase = "https://api.openf1.org/v1";
 const upstreamTimeoutMs = 30000;
@@ -25,9 +26,10 @@ const standingsSeasons = new Set([2023, 2024, 2025, currentStandingsSeason]);
 const standingsSeason = (value) => standingsSeasons.has(Number(value)) ? Number(value) : currentStandingsSeason;
 const officialStandingsFile = (year = currentStandingsSeason) => path.join(root, `official-standings-${standingsSeason(year)}.json`);
 const execFileAsync = promisify(execFile);
-const authUsername = "nana";
+const authUsername = String(process.env.F1_AUTH_USERNAME || "nana");
 const authSalt = "f1-openf1-local-auth";
-const authPasswordHash = crypto.scryptSync("123456", authSalt, 32);
+const authPassword = String(process.env.F1_AUTH_PASSWORD || "123456");
+const authPasswordHash = crypto.scryptSync(authPassword, authSalt, 32);
 const authSessions = new Map();
 const sessionSyncInFlight = new Map();
 const sessionMaxAgeMs = 8 * 60 * 60 * 1000;
