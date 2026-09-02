@@ -4,10 +4,11 @@ import {
   resolveBackendTeamId as sharedResolveBackendTeamId,
 } from "./backend-fields.mjs";
 import { openF1TelemetryStream } from "./f1telemetry.mjs";
-import { collectSessionFeedRows, isCompleteLapRecord } from "./session-feed-rules.mjs";
+import { collectSessionFeedRows, completeSessionResultRows, isCompleteLapRecord } from "./session-feed-rules.mjs";
 
 const state = {
   season: 2026,
+  seasons: [],
   meetings: [],
   sessions: [],
   activeMeeting: null,
@@ -17,6 +18,7 @@ const state = {
   standings: null,
   standingsError: null,
   standingsKind: "drivers",
+  standingsSeason: 2026,
   resultColumnVisibility: null,
   activeView: "schedule",
   selectedDriver: null,
@@ -63,13 +65,14 @@ const STATIC_CACHE_VERSION = "20260828-backend-fields-v5";
 const staticRequestTimeoutMs = 30000;
 const staticRequestIntervalMs = 400;
 let staticNextRequestAt = 0;
-const STATIC_CATALOG_URL = new URL("./meetings-2026.json", import.meta.url).href;
+const STATIC_CATALOG_URL = new URL("./meetings-all.json", import.meta.url).href;
 const STATIC_MAPPED_URL = new URL("./netherlands-race-mapped.json", import.meta.url).href;
-const STATIC_STANDINGS_URL = new URL(
-  window.location.pathname.startsWith("/site/") ? "../official-standings-2026.json" : "./official-standings-2026.json",
+const staticStandingsUrl = (year) => new URL(
+  window.location.pathname.startsWith("/site/") ? `../official-standings-${year}.json` : `./official-standings-${year}.json`,
   import.meta.url,
 ).href;
 const staticDb = { promise: null };
+let staticCatalogPromise = null;
 const staticSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const staticFeedProbeAt = new Map();
 const staticFeedProbeIntervalMs = 5 * 60 * 1000;
@@ -208,15 +211,31 @@ async function fetchStaticSessionFeeds(sessionKey, cached, sessionName) {
     }
   }
   await Promise.all(Array.from({ length: Math.min(3, definitions.length) }, () => worker()));
+  completeSessionResultRows(values);
   return { values, failures, unavailable, retained };
 }
 
-async function staticCatalog() {
-  const response = await fetch(STATIC_CATALOG_URL, { cache: "no-store" });
-  if (!response.ok) throw new Error(`赛季目录读取失败 ${response.status}`);
-  const payload = await response.json();
+async function staticCatalogPayload() {
+  if (!staticCatalogPromise) {
+    staticCatalogPromise = fetch(STATIC_CATALOG_URL, { cache: "no-store" }).then(async (response) => {
+      if (!response.ok) throw new Error(`赛季目录读取失败 ${response.status}`);
+      return response.json();
+    });
+  }
+  return staticCatalogPromise;
+}
+
+async function staticSeasons() {
+  const payload = await staticCatalogPayload();
   const rows = Array.isArray(payload) ? payload : payload.meetings;
-  return (Array.isArray(rows) ? rows : []).map((meeting) => ({
+  const listed = Array.isArray(payload?.seasons) ? payload.seasons : (Array.isArray(rows) ? rows.map((meeting) => meeting.year) : []);
+  return [...new Set(listed.map(Number).filter(Number.isInteger))].sort((a, b) => b - a);
+}
+
+async function staticCatalog(year = state.season) {
+  const payload = await staticCatalogPayload();
+  const rows = Array.isArray(payload) ? payload : payload.meetings;
+  return (Array.isArray(rows) ? rows : []).filter((meeting) => Number(meeting.year) === Number(year)).map((meeting) => ({
     ...meeting,
     meeting_key: Number(meeting.meeting_key),
     sessions: Array.isArray(meeting.sessions) ? meeting.sessions : [],
@@ -284,7 +303,7 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   const cacheKey = `${STATIC_CACHE_VERSION}:session:${requestedSessionKey}`;
   const cached = await staticCacheGet(cacheKey);
   if (!force && cached && Number(cached.session?.session_key) === requestedSessionKey) {
-    const sanitised = stripStartingGridFields(stripIgnoredSyncWarnings(stripTyreAgeFields(cached)));
+    const sanitised = completeSessionResultRows(stripStartingGridFields(stripIgnoredSyncWarnings(stripTyreAgeFields(cached))));
     await refreshStaticCachedFeed(sanitised, requestedSessionKey, "weather");
     if (["Race", "Sprint"].includes(sanitised.session?.session_name)) await refreshStaticCachedFeed(sanitised, requestedSessionKey, "pit");
     await refreshStaticCachedFeed(sanitised, requestedSessionKey, "race_control");
@@ -351,17 +370,18 @@ function enrichOfficialStandings(snapshot) {
 }
 
 async function staticStandings({ force = false } = {}) {
-  const cacheKey = `${STATIC_CACHE_VERSION}:official-standings:${state.season}`;
+  const year = force ? 2026 : state.standingsSeason;
+  const cacheKey = `${STATIC_CACHE_VERSION}:official-standings:${year}`;
   const cached = await staticCacheGet(cacheKey);
   try {
-    const response = await fetch(STATIC_STANDINGS_URL, { cache: "no-store" });
+    const response = await fetch(staticStandingsUrl(year), { cache: "no-store" });
     if (!response.ok) throw new Error(`年度排名快照读取失败 ${response.status}`);
     const data = await response.json();
     if (!Array.isArray(data.drivers) || !Array.isArray(data.teams)) throw new Error("年度排名快照格式不完整");
     await staticCacheSet(cacheKey, data);
     return { data, source: "official" };
   } catch (error) {
-    if (cached && Number(cached.season) === Number(state.season)) return { data: cached, source: "cache", error: error.message };
+    if (cached && Number(cached.season) === Number(year)) return { data: cached, source: "cache", error: error.message };
     throw error;
   }
 }
@@ -371,16 +391,34 @@ const esc = (value) => String(value ?? "").replace(/[&<>'"]/g, (char) => ({"&": 
 const number = (value, fallback = "--") => value === null || value === undefined || value === "" ? fallback : Number(value).toLocaleString("en-US");
 const numeric = (value) => value === null || value === undefined || value === "" ? null : Number.isFinite(Number(value)) ? Number(value) : null;
 const backendDriverImageIds = new Set([
-  347482, 347492, 347499, 347501, 347502, 347503, 347504, 347506, 347514,
-  347519, 347520, 347525, 347526, 347528, 347534, 347535, 347536, 347537,
-  347538, 347539, 347540, 347541, 347542, 347544, 347546, 347547, 347548,
-  347549, 347908, 368438, 368439,
+  347421, 347422, 347423, 347424, 347425, 347426, 347427, 347428, 347429, 347430,
+  347431, 347432, 347433, 347434, 347435, 347436, 347437, 347439, 347440, 347441,
+  347442, 347443, 347444, 347445, 347446, 347447, 347448, 347449, 347450, 347451,
+  347453, 347454, 347455, 347456, 347457, 347458, 347460, 347461, 347462, 347463,
+  347464, 347465, 347466, 347467, 347468, 347470, 347473, 347474, 347475, 347476,
+  347477, 347478, 347479, 347480, 347481, 347482, 347483, 347484, 347485, 347486,
+  347487, 347488, 347489, 347491, 347492, 347493, 347494, 347495, 347496, 347497,
+  347498, 347499, 347501, 347502, 347503, 347504, 347506, 347511, 347514, 347517,
+  347518, 347519, 347520, 347522, 347525, 347526, 347528, 347531, 347534, 347535,
+  347536, 347537, 347538, 347539, 347540, 347541, 347542, 347543, 347544, 347545,
+  347546, 347547, 347548, 347549, 347550, 347555, 347556, 347557, 347908, 347909,
+  347521, 347524, 347529, 347530, 347532, 350540, 368438, 368439,
 ]);
 const backendTeamImageIds = new Set([
   385355, 385358, 385361, 385362, 385363, 385364, 385365, 385366, 385367,
-  390378, 394048,
+  385368, 390378, 394048,
 ]);
 const backendIdentityAsset = (kind, id) => new URL(`./assets/f1/${kind}/${Number(id)}.png`, import.meta.url).href;
+const backendTeamAsset = (id, name) => {
+  const resolvedId = numeric(id);
+  if (resolvedId === 385363 && /alpha\s*tauri/i.test(String(name || ""))) {
+    return new URL("./assets/f1/teams/385363-alphatauri.png", import.meta.url).href;
+  }
+  if (resolvedId === 385368 && /alfa\s+romeo/i.test(String(name || ""))) {
+    return new URL("./assets/f1/teams/385368-alfa-romeo.png", import.meta.url).href;
+  }
+  return backendIdentityAsset("teams", resolvedId);
+};
 const identityInitials = (name) => String(name || "?").trim().split(/\s+/).map((part) => part[0] || "").slice(0, 2).join("").toUpperCase() || "?";
 function driverImageHtml(id, name, className = "") {
   const resolvedId = numeric(id);
@@ -392,7 +430,7 @@ function driverImageHtml(id, name, className = "") {
 function teamImageHtml(id, name, className = "") {
   const resolvedId = numeric(id);
   if (resolvedId == null || !backendTeamImageIds.has(resolvedId)) return "";
-  return `<img class="identity-image team-identity-image ${className}" src="${esc(backendIdentityAsset("teams", resolvedId))}" alt="${esc(name || "车队")} Logo" loading="lazy" decoding="async">`;
+  return `<img class="identity-image team-identity-image ${className}" src="${esc(backendTeamAsset(resolvedId, name))}" alt="${esc(name || "车队")} Logo" loading="lazy" decoding="async">`;
 }
 function detailIdentityHtml({ driverId, teamId, name, car, team }) {
   return `<div class="detail-identity"><div class="detail-driver-identity">${driverImageHtml(driverId, name, "detail-driver-image")}<div><strong>${esc(name || "--")}</strong><span>#${esc(car ?? "--")}</span></div></div><div class="detail-team-identity">${teamImageHtml(teamId, team, "detail-team-image")}<span>${esc(team || "--")}</span></div></div>`;
@@ -602,7 +640,7 @@ function raceControlMessageParts(row) {
 const syncTimestampText = (data) => data?.synced_at ? ` · 同步于 ${dateText(data.synced_at)}` : "";
 const syncTitle = (data) => Array.isArray(data?.sync_warnings) && data.sync_warnings.length ? "同步完成（部分字段未更新）" : "同步完成";
 const sessionLabel = (name) => ({"Practice 1": "练习1", "Practice 2": "练习2", "Practice 3": "练习3", "Day 1": "测试第1天", "Day 2": "测试第2天", "Day 3": "测试第3天", "Sprint Qualifying": "冲刺排位赛", Sprint: "冲刺赛", Qualifying: "排位赛", Race: "正赛"}[name] || name || "会话");
-const statusLabel = (row) => row?.dsq ? "DSQ" : row?.dns ? "DNS" : row?.dnf ? "DNF" : "Finished";
+const statusLabel = (row) => row?.is_result_missing ? "无成绩" : row?.dsq ? "DSQ" : row?.dns ? "DNS" : row?.dnf ? "DNF" : "Finished";
 const raceSessionNames = new Set(["Race", "Sprint"]);
 const qualifyingSessionNames = new Set(["Qualifying", "Sprint Qualifying"]);
 const colorNames = { purple: "紫", green: "绿", yellow: "黄", red: "红", blue: "蓝", gray: "灰" };
@@ -612,6 +650,8 @@ const colorBadgeOrEmpty = (value, prefix = "") => value == null || value === "" 
 const phaseLabel = (phase) => phase ? phase.toUpperCase() : "";
 const isRaceSession = () => raceSessionNames.has(state.activeSession?.session_name);
 const isQualifyingSession = () => qualifyingSessionNames.has(state.activeSession?.session_name);
+const CURRENT_STANDINGS_SEASON = 2026;
+const standingsSeasons = [2026, 2025, 2024, 2023];
 const RESULT_COLUMN_STORAGE_KEY = "f1-result-columns-v1";
 const resultColumnDefinitions = Object.freeze([
   { key: "position", label: "名次" },
@@ -719,7 +759,8 @@ const formatTime = (value) => {
 async function api(path, options = {}) {
   if (STATIC_MODE) {
     const url = new URL(path, window.location.href);
-    if (url.pathname === "/api/meetings") return { data: await staticCatalog(), source: "catalog" };
+    if (url.pathname === "/api/seasons") return { data: await staticSeasons(), source: "catalog" };
+    if (url.pathname === "/api/meetings") return { data: await staticCatalog(url.searchParams.get("year")), source: "catalog" };
     if (url.pathname === "/api/sessions") return staticSessionList(url.searchParams.get("meeting_key"));
     if (url.pathname === "/api/live-session-data") return staticLiveSessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"));
     if (url.pathname === "/api/session-data") return staticSessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"));
@@ -750,6 +791,14 @@ function setStatus(title, meta, loading = false) {
 }
 
 function renderStandings() {
+  const historical = state.standingsSeason !== CURRENT_STANDINGS_SEASON;
+  $("standingsSeasonSelect").innerHTML = standingsSeasons.map((year) => `<option value="${year}">${year}</option>`).join("");
+  $("standingsSeasonSelect").value = String(state.standingsSeason);
+  $("standingsTitle").textContent = `${state.standingsSeason} 年度排名`;
+  $("standingsSubtitle").textContent = historical
+    ? "官网最终排名历史快照，车手和车队使用后台映射 ID。历史赛季仅供查看，不参与自动或人工同步。"
+    : "官网排名快照，车手和车队使用后台映射 ID。每周一 8:00（北京时间）自动同步。";
+  $("standingsSyncBtn").hidden = historical;
   const snapshot = state.standings;
   const kind = state.standingsKind;
   const rows = snapshot ? (kind === "teams" ? snapshot.teams : snapshot.drivers) : [];
@@ -772,16 +821,16 @@ function renderStandings() {
     syncStatus.last_manual_at,
     snapshot?.captured_at,
   );
-  $("standingsSyncedAt").textContent = syncAt ? `最近同步：${chinaDateText(syncAt)}` : "最近同步：--";
+  $("standingsSyncedAt").textContent = syncAt ? `${historical ? "快照时间" : "最近同步"}：${chinaDateText(syncAt)}` : `${historical ? "快照时间" : "最近同步"}：--`;
   $("standingsCount").textContent = snapshot ? `${rows.length} 条` : "--";
-  $("standingsSource").textContent = snapshot ? "数据源：官网排名快照" : "数据源：--";
+  $("standingsSource").textContent = snapshot ? `数据源：官网${historical ? "最终排名" : "排名"}快照` : "数据源：--";
   const alert = $("standingsAlert");
   const failed = syncStatus?.status === "failed" || Boolean(state.standingsError);
   if (alert) {
     if (failed) {
       const attemptedAt = syncStatus?.attempted_at ? `（尝试时间：${chinaDateText(syncStatus.attempted_at)}）` : "";
       const manualFailure = syncStatus?.trigger === "manual";
-      const failureTitle = manualFailure ? "年度排名人工同步失败" : "年度排名自动同步失败";
+      const failureTitle = historical ? "历史排名读取失败" : manualFailure ? "年度排名人工同步失败" : "年度排名自动同步失败";
       const detail = syncStatus?.error || state.standingsError || "官网排名同步失败，请查看同步日志";
       const detailSuffix = detail.includes(failureTitle) ? "" : ` ${detail}`;
       alert.textContent = snapshot
@@ -800,12 +849,16 @@ function renderStandings() {
 }
 
 async function loadOfficialStandings({ force = false } = {}) {
+  if (force && state.standingsSeason !== CURRENT_STANDINGS_SEASON) return;
+  const requestedSeason = force ? CURRENT_STANDINGS_SEASON : state.standingsSeason;
   const button = $("standingsSyncBtn");
   const status = $("standingsStatus");
   if (button) button.disabled = true;
   if (status) status.textContent = force ? "正在刷新官网快照…" : "正在读取官网快照…";
   try {
-    const payload = await api(force ? "/api/sync-standings" : "/api/standings", force ? { method: "POST" } : {});
+    const payload = await api(force ? "/api/sync-standings" : `/api/standings?year=${requestedSeason}`, force ? { method: "POST" } : {});
+    if (state.standingsSeason !== requestedSeason) return;
+    if (Number(payload.data?.season) !== Number(requestedSeason)) throw new Error("年度排名快照与所选赛季不一致");
     state.standings = enrichOfficialStandings(payload.data);
     state.standingsError = null;
     renderStandings();
@@ -813,9 +866,11 @@ async function loadOfficialStandings({ force = false } = {}) {
       if (payload.data?.sync_status?.status === "failed") status.textContent = "同步失败，显示上次成功快照";
       else if (force && STATIC_MODE) status.textContent = "已读取最新发布快照";
       else if (force) status.textContent = "排名同步成功";
+      else if (state.standingsSeason !== CURRENT_STANDINGS_SEASON) status.textContent = `已读取 ${state.standingsSeason} 最终排名`;
       else status.textContent = payload.source === "cache" || payload.source === "local" ? "已读取本地快照" : "排名快照已更新";
     }
   } catch (error) {
+    if (state.standingsSeason !== requestedSeason) return;
     state.standingsError = error.message || "年度排名读取失败";
     if (status) status.textContent = error.message || "年度排名读取失败";
     renderStandings();
@@ -1378,6 +1433,17 @@ function renderMeetings() {
   select.value = state.activeMeeting ? String(state.activeMeeting.meeting_key) : "";
 }
 
+function renderSeasonOptions() {
+  const years = state.seasons.length ? state.seasons : [state.season];
+  const options = years.map((year) => `<option value="${year}">${year}</option>`).join("");
+  for (const id of ["seasonSelect", "liveSeasonSelect"]) {
+    const select = $(id);
+    if (!select) continue;
+    select.innerHTML = options;
+    select.value = String(state.season);
+  }
+}
+
 function sessionNodeKey(session, index, phase = null) {
   const base = session.session_key != null ? String(session.session_key) : `pending:${session.meeting_key || state.activeMeeting?.meeting_key}:${index}`;
   return phase ? `${base}:${phase}` : base;
@@ -1448,7 +1514,7 @@ function clearMeetingSelection() {
 }
 
 async function loadMeetings() {
-  $("seasonSelect").innerHTML = `<option value="2026">2026</option>`;
+  renderSeasonOptions();
   let meetingError = null;
   try {
     const payload = await api(`/api/meetings?year=${state.season}`);
@@ -1466,6 +1532,23 @@ async function loadMeetings() {
     setStatus("无法读取分站列表", "请检查本地目录文件", false);
     resetDataPanels(meetingError.message || "无法读取分站列表");
   }
+}
+
+async function loadSeasons() {
+  try {
+    const payload = await api("/api/seasons");
+    const years = [...new Set((payload.data || []).map(Number).filter(Number.isInteger))].sort((a, b) => b - a);
+    state.seasons = years.length ? years : [state.season];
+    if (!state.seasons.includes(state.season)) state.season = state.seasons[0];
+  } catch {
+    state.seasons = [state.season];
+  }
+  renderSeasonOptions();
+}
+
+async function initialiseScheduleCatalog() {
+  await loadSeasons();
+  await loadMeetings();
 }
 
 async function loadSessions(meetingKey) {
@@ -1802,7 +1885,7 @@ function renderResults() {
       laps: `<td>${esc(lapsText)}</td>`,
       time: `<td>${esc(displayTime(row))}</td>`,
       points: `<td>${esc(row.raw.points ?? row.mapped.points ?? "--")}</td>`,
-      status: `<td class="${status === "Finished" ? "status-finished" : "status-dnf"}">${esc(status)}</td>`,
+      status: `<td class="${status === "Finished" ? "status-finished" : status === "无成绩" ? "status-missing" : "status-dnf"}">${esc(status)}</td>`,
       lastLap: `<td>${esc(extension.lastLapTime || "--")} ${colorBadgeOrEmpty(extension.lastLapColor)}</td>`,
       fastestLap: `<td>${esc(fastestText)} ${colorBadgeOrEmpty(extension.bestLapColor)}</td>`,
       interval: `<td>${esc(intervalToPrevious(row, rows.indexOf(row), rows, intervalMap))}</td>`,
@@ -1964,6 +2047,10 @@ $("meetingSelect").addEventListener("change", async (event) => {
   state.activeMeeting = state.meetings.find((meeting) => String(meeting.meeting_key) === event.target.value) || null;
   await loadSessions(state.activeMeeting?.meeting_key);
 });
+$("seasonSelect").addEventListener("change", async (event) => {
+  state.season = Number(event.target.value) || state.seasons[0] || 2026;
+  await loadMeetings();
+});
 $("sessionSelect").addEventListener("change", (event) => selectSessionNode(event.target.value));
 $("refreshBtn").addEventListener("click", loadCurrentData);
 $("syncBtn").addEventListener("click", async () => {
@@ -2016,8 +2103,15 @@ document.querySelectorAll("[data-standings-kind]").forEach((button) => button.ad
   renderStandings();
 }));
 $("standingsSyncBtn")?.addEventListener("click", () => loadOfficialStandings({ force: true }));
+$("standingsSeasonSelect")?.addEventListener("change", async (event) => {
+  state.standingsSeason = standingsSeasons.includes(Number(event.target.value)) ? Number(event.target.value) : CURRENT_STANDINGS_SEASON;
+  state.standings = null;
+  state.standingsError = null;
+  renderStandings();
+  await loadOfficialStandings();
+});
 $("liveSeasonSelect")?.addEventListener("change", async (event) => {
-  state.season = Number(event.target.value) || 2026;
+  state.season = Number(event.target.value) || state.seasons[0] || 2026;
   await loadMeetings();
   renderLiveTimingSelectors();
 });
@@ -2067,4 +2161,4 @@ document.addEventListener("keydown", (event) => {
 
 resetLiveTiming();
 resetDataPanels();
-loadMeetings();
+initialiseScheduleCatalog();

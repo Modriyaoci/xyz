@@ -5,7 +5,8 @@ const DRIVER_IDS = {
   COL: 347540, BOR: 347539, RUS: 347501, HAD: 347537, ANT: 347534, STR: 347503,
   NOR: 347506, HAM: 347542, LAW: 347514, VER: 347482, HUL: 347544, BEA: 347520,
   PIA: 347528, GAS: 347499, PER: 347519, BOT: 347525, CRA: 347908, FOR: 368438,
-  HER: 368439, IWA: 347538, BEG: 347535, BRO: 347536, VES: 347526, ARO: 347526,
+  HER: 368439, IWA: 347538, BEG: 347535, BRO: 347536, VES: 347526, ARO: 347543,
+  MAG: 347532, RIC: 347524, ZHO: 347530, GUA: 347530, SAR: 347521, DEV: 347529,
   HIR: 347541, TSU: 347546,
 };
 
@@ -19,8 +20,37 @@ const DRIVER_IDS_BY_NAME = {
   "oscar piastri": 347528, "pierre gasly": 347499, "sergio perez": 347519,
   "valtteri bottas": 347525, "jak crawford": 347908, "leonardo fornaroli": 368438,
   "colton herta": 368439, "ayumu iwasa": 347538, "dino beganovic": 347535,
-  "luke browning": 347536, "frederik vesti": 347526, "paul aron": 347526,
+  "luke browning": 347536, "frederik vesti": 347526, "paul aron": 347543,
   "ryo hirakawa": 347541, "yuki tsunoda": 347546,
+  "kevin magnussen": 347532, "daniel ricciardo": 347524, "zhou guanyu": 347530,
+  "guanyu zhou": 347530, "logan sargeant": 347521, "nyck de vries": 347529,
+  "jack doohan": 347517, "antonio fuoco": 347909, "theo pourchaire": 347522,
+  "felipe drugovich": 347518, "victor martins": 347545, "pato o ward": 347531,
+  "alex dunne": 347550, "ma qinghua": 347462, "daniel juncadella": 347477,
+  "susie wolff": 347479, "fairuz fauzy": 347432, "jan charouz": 347457,
+  "davide valsecchi": 347443, "luiz razia": 347444, "dani clos": 347467,
+  "robert wickens": 347461, "antonio felix da costa": 347486, "raffaele marciello": 347488,
+  "fabio leimer": 347489, "james calado": 347473, "rodolfo gonzalez": 347474,
+  "cian shields": 350540, "robin frijns": 347481, "adderly fong": 347483,
+  "artem markelov": 347555, "naoki yamamoto": 347556, "arthur leclerc": 347557,
+  "sebastien bourdais": 347424, "anthony davidson": 347422, "takuma sato": 347421,
+  "david coulthard": 347423, "nelson piquet jr": 347427, "luca badoer": 347425,
+  "kazuki nakajima": 347428, "giancarlo fisichella": 347426, "christian klien": 347435,
+  "sakon yamamoto": 347430, "lucas di grassi": 347429, "karun chandhok": 347436,
+  "vitantonio liuzzi": 347458, "jarno trulli": 347451, "rubens barrichello": 347450,
+  "sebastien buemi": 347446, "jaime alguersuari": 347442, "nick heidfeld": 347433,
+  "jerome d ambrosio": 347434, "narain karthikeyan": 347449, "pedro de la rosa": 347454,
+  "timo glock": 347448, "vitaly petrov": 347440, "bruno senna": 347437,
+  "michael schumacher": 347453, "giedo van der garde": 347470, "heikki kovalainen": 347445,
+  "charles pic": 347463, "mark webber": 347441, "andre lotterer": 347484,
+  "kamui kobayashi": 347447, "max chilton": 347464, "adrian sutil": 347455,
+  "jules bianchi": 347466, "jean eric vergne": 347460, "will stevens": 347476,
+  "roberto merhi": 347475, "alexander rossi": 347465, "pastor maldonado": 347456,
+  "roy nissany": 347511, "esteban gutierrez": 347468, "rio haryanto": 347496,
+  "jordan king": 347493, "felipe nasr": 347480, "sean gelael": 347497,
+  "paul di resta": 347431, "alfonso celis jr": 347491, "pascal wehrlein": 347494,
+  "jolyon palmer": 347487, "felipe massa": 347439, "sergey sirotkin": 347485,
+  "brendon hartley": 347498, "stoffel vandoorne": 347495, "marcus ericsson": 347478,
 };
 
 const DRIVER_IDS_BY_CAR = {
@@ -31,9 +61,9 @@ const DRIVER_IDS_BY_CAR = {
 };
 
 const TEAM_IDS = {
-  alpine: 385366, "aston martin": 385362, audi: 394048, cadillac: 390378,
-  ferrari: 385364, "haas f1 team": 385361, mclaren: 385367, mercedes: 385358,
-  "racing bulls": 385363, "red bull racing": 385355, williams: 385365,
+  "alfa romeo": 385368, alphatauri: 385363, alpine: 385366, "aston martin": 385362, audi: 394048, cadillac: 390378,
+  ferrari: 385364, haas: 385361, "haas f1 team": 385361, "kick sauber": 385368, mclaren: 385367, mercedes: 385358,
+  rb: 385363, "racing bulls": 385363, "red bull racing": 385355, williams: 385365,
 };
 
 const STATUS_COLORS = { 0: "red", 2048: "yellow", 2049: "green", 2051: "purple", 2064: "blue" };
@@ -56,9 +86,13 @@ function lookup(map, value) {
   const key = identityKey(value);
   if (!key) return null;
   if (Object.prototype.hasOwnProperty.call(map, key)) return Number(map[key]);
-  for (const [alias, id] of Object.entries(map)) {
-    if (key.endsWith(` ${alias}`) || alias.endsWith(` ${key}`)) return Number(id);
-  }
+  const aliases = Object.entries(map).sort(([left], [right]) => right.length - left.length);
+  const prefix = aliases.find(([alias]) => key.startsWith(`${alias} `));
+  if (prefix) return Number(prefix[1]);
+  const suffix = aliases.find(([alias]) => key.endsWith(` ${alias}`));
+  if (suffix) return Number(suffix[1]);
+  const legacy = aliases.find(([alias]) => alias.endsWith(` ${key}`));
+  if (legacy) return Number(legacy[1]);
   return null;
 }
 
@@ -142,6 +176,7 @@ function messageDriverNumber(message) {
 }
 
 function statusCode(raw, sessionEnded) {
+  if (raw?.is_result_missing) return null;
   if (raw?.dsq) return 304;
   if (raw?.dns) return 303;
   if (raw?.dnf) return 305;
@@ -259,13 +294,14 @@ export function mapOpenF1ToBackend(data, existing = null) {
     const positionDesc = race && !raw.dns && !raw.dsq && ncThreshold !== null && laps !== null && laps < ncThreshold ? "NC" : "";
     const backendDriverId = resolveBackendDriverId(driver);
     const backendTeamId = resolveBackendTeamId(driver.team_name);
+    const status = statusCode(raw, sessionEnded);
     const competitor = {
       ...(backendDriverId == null ? {} : { _id: backendDriverId }),
       ...(backendTeamId == null ? {} : { teamuid: backendTeamId }),
       ...(position == null ? {} : { position }),
       ...(laps == null ? {} : { laps }),
       time: { value: timeValue },
-      status: statusCode(raw, sessionEnded),
+      ...(status == null ? {} : { status }),
       interval: formatBackendGap(intervalRow.interval, { blankZero: true }),
       gap_to_leader: gap,
       pitstop_count: pitsByCar.get(car) || 0,
@@ -277,6 +313,9 @@ export function mapOpenF1ToBackend(data, existing = null) {
     return competitor;
   });
   const competitors = mergeByCar(generatedCompetitors, existing?.competitors);
+  for (const competitor of competitors) {
+    if (resultByCar.get(Number(competitor.car_number))?.is_result_missing) delete competitor.status;
+  }
   competitors.sort((a, b) => (numeric(a.position) ?? 999) - (numeric(b.position) ?? 999) || Number(a.car_number) - Number(b.car_number));
   const winner = competitors.find((row) => Number(row.position) === 1) || competitors[0] || null;
   const latestWeather = (Array.isArray(source.weather) ? source.weather : []).slice().sort((a, b) => Date.parse(a.date || "") - Date.parse(b.date || "")).at(-1);

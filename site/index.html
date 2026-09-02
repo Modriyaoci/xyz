@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#111827" />
     <title>F1 赛后数据</title>
-    <link rel="stylesheet" href="./styles.css?v=20260831-labels-v1" />
+    <link rel="stylesheet" href="./styles.css?v=20260831-standings-v1" />
     <script>
       const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
       const staticPages = new URLSearchParams(window.location.search).get("static") === "1" || (!localServer && !window.location.pathname.startsWith("/site/"));
@@ -45,10 +45,10 @@
               <div>
                 <div class="eyebrow">赛季排名</div>
                 <h1 id="standingsTitle">2026 年度排名</h1>
-                <p>官网排名快照，车手和车队使用后台映射 ID。每周一 8:00（北京时间）自动同步。</p>
+                <p id="standingsSubtitle">官网排名快照，车手和车队使用后台映射 ID。每周一 8:00（北京时间）自动同步。</p>
                 <div id="standingsAlert" class="standings-alert" role="alert" hidden></div>
               </div>
-              <button class="primary-button" id="standingsSyncBtn" type="button"><span>人工同步</span><span aria-hidden="true">↻</span></button>
+              <div class="standings-actions"><label>赛季<select id="standingsSeasonSelect"><option value="2026">2026</option><option value="2025">2025</option><option value="2024">2024</option><option value="2023">2023</option></select></label><button class="primary-button" id="standingsSyncBtn" type="button"><span>人工同步</span><span aria-hidden="true">↻</span></button></div>
             </div>
             <section class="panel standings-panel" aria-labelledby="standingsTableTitle">
               <div class="panel-header">
@@ -296,7 +296,7 @@
               <label>节点<select id="sessionSelect" disabled><option value="">请先选择分站</option></select></label>
               <button class="primary-button sync-button" id="syncBtn" title="从数据源重新同步当前节点" disabled><span>同步数据源</span><span aria-hidden="true">↻</span></button>
             </div>
-            <div class="selector-hint" id="selectorHint">2026 每站的 Meeting / Session 已预置；首次选择节点时请求数据源，成功后保存在本地缓存。</div>
+            <div class="selector-hint" id="selectorHint">OpenF1 可用赛季的 Meeting / Session 已预置；选择节点时才请求详细数据，成功后保存在本地缓存。</div>
           </section>
 
           <nav class="session-nav" id="sessionTabs" aria-label="会话节点"></nav>
@@ -354,6 +354,6 @@
         </main>
       </div>
     </div>
-    <script type="module" src="./app.js?v=20260831-labels-v1"></script>
+    <script type="module" src="./app.js?v=20260831-standings-v1"></script>
   </body>
 </html>
