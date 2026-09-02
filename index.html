@@ -218,6 +218,7 @@
 
             <section class="selector-panel live-control-panel" aria-label="实时数据控制">
               <div class="selector-row">
+                <label class="inline-select">实时源<select id="liveSourceSelect"><option value="f1telemetry">F1 Telemetry</option><option value="nana">nana</option></select></label>
                 <button class="primary-button" id="liveLoadBtn" type="button"><span>开始实时</span><span aria-hidden="true">▶</span></button>
                 <button class="ghost-button sync-button" id="liveSyncBtn" type="button"><span>立即刷新</span><span aria-hidden="true">↻</span></button>
               </div>
@@ -272,7 +273,7 @@
               <div class="table-wrap record-scroll"><table class="data-table dense live-events-table" id="liveEventTable"><thead><tr><th>时间</th><th>圈次</th><th>消息</th></tr></thead><tbody><tr><td colspan="3" class="empty-cell">暂无赛会消息</td></tr></tbody></table></div>
             </section>
 
-            <footer class="page-footer"><span>数据源：F1 Telemetry 实时接口</span><span id="liveCacheLabel">实时状态：等待数据</span><span>不含赛道图、坐标和车辆位置数据</span></footer>
+            <footer class="page-footer"><span id="liveSourceFooter">数据源：F1 Telemetry 实时接口</span><span id="liveCacheLabel">实时状态：等待数据</span><span>不含赛道图、坐标和车辆位置数据</span></footer>
           </section>
 
           <div id="scheduleView">
@@ -354,6 +355,6 @@
         </main>
       </div>
     </div>
-    <script type="module" src="./app.js?v=20260831-standings-v1"></script>
+    <script type="module" src="./app.js?v=20260902-nana-v1"></script>
   </body>
 </html>

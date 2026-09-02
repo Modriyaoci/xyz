@@ -24,6 +24,12 @@ npm start
 
 ## GitHub Pages
 
+### nana 实时入口
+
+另一套后台向 Node 服务的 `/api/live-timing/ingest` 发送最新实时快照；页面选择 `nana` 并点击“开始实时”后通过 SSE 接收。实时状态只保存在内存，每次推送覆盖上一份。
+
+GitHub Pages 只能托管静态页面，不能接收这个 POST 入口。需要把 `server.mjs` 部署到公网 Node 主机，并设置 `F1_HOST=0.0.0.0` 与随机的 `LIVE_TIMING_BRIDGE_TOKEN`。
+
 仓库内的 `.github/workflows/pages.yml` 会发布仓库根目录。根目录静态入口与 `site/` 本地服务入口保持同步；发布后的页面在浏览器中直接读取数据源，并将每个会话的完整响应保存到 IndexedDB；点击“同步数据源”会强制重新拉取，失败时不会覆盖已有缓存。
 
 GitHub Pages 的登录是前端入口校验，适合私有仓库或内部使用；需要服务端安全和真正的账户隔离时，请运行本地 Node 服务或部署 `server.mjs` 到支持 Node 的服务。

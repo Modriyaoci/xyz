@@ -28,6 +28,7 @@ const state = {
   messageLanguage: "both",
   dataRequestId: 0,
   liveTiming: {
+    source: "f1telemetry",
     meetingKey: null,
     sessionKey: null,
     meetingName: "",
@@ -1123,10 +1124,24 @@ const liveResultHeaderHtml = () => {
   return `<tr>${visibleResultColumns(true).map((column) => `<th>${esc(resultColumnLabel(column, true))}</th>`).join("")}</tr>`;
 };
 
+function renderLiveSourceControl() {
+  const live = state.liveTiming;
+  const select = $("liveSourceSelect");
+  const hint = $("liveTimingHint");
+  const footer = $("liveSourceFooter");
+  const bridge = live.source === "nana" || live.source === "bridge";
+  if (select) select.value = bridge ? "nana" : "f1telemetry";
+  if (hint) hint.textContent = bridge
+    ? "数据源：nana；另一套后台 POST 最新快照，本页面通过 SSE 接收并覆盖当前状态，不保存历史。"
+    : "数据源：F1 Telemetry 实时接口；不区分历史分站和节点，只覆盖当前实时快照，不写入本地缓存。";
+  if (footer) footer.textContent = bridge ? "数据源：nana" : "数据源：F1 Telemetry 实时接口";
+}
+
 function renderLiveTiming() {
   const live = state.liveTiming;
   const table = $("liveTimingTable");
   if (!table) return;
+  renderLiveSourceControl();
   renderLiveMeetingMeta();
   const race = liveIsRaceSession();
   table.querySelector("thead").innerHTML = liveResultHeaderHtml();
@@ -1195,7 +1210,8 @@ function renderLiveTiming() {
   renderLiveTyres();
   $("liveStatusTitle").textContent = live.loading ? "正在更新" : live.running ? "实时更新中" : live.received ? "已停止" : "等待连接";
   $("liveStatusPulse").classList.toggle("connected", live.running);
-  $("liveStatusMeta").textContent = live.lastAt ? `最后更新 ${liveClock(live.lastAt)} · WebSocket 持续连接${live.errors ? ` · ${live.errors} 个字段失败` : ""}` : "尚未接收到消息";
+  const transport = live.source === "nana" || live.source === "bridge" ? "SSE 持续连接" : "WebSocket 持续连接";
+  $("liveStatusMeta").textContent = live.lastAt ? `最后更新 ${liveClock(live.lastAt)} · ${transport}${live.errors ? ` · ${live.errors} 个字段失败` : ""}` : "尚未接收到消息";
   $("liveLoadBtn").innerHTML = `<span>${live.running ? "实时更新中" : "开始实时"}</span><span aria-hidden="true">${live.running ? "●" : "▶"}</span>`;
   $("liveLoadBtn").disabled = live.loading;
   $("liveSyncBtn").disabled = live.loading;
@@ -1291,6 +1307,46 @@ function resetLiveTiming() {
   renderLiveTiming();
 }
 
+function openLiveBridgeStream({ onState, onError, onClose } = {}) {
+  if (STATIC_MODE || typeof EventSource !== "function") {
+    throw new Error("nana 推送需要运行本地 Node 服务");
+  }
+  const eventSource = new EventSource("/api/live-timing/stream");
+  let closedByCaller = false;
+  const stateHandler = (event) => {
+    try {
+      onState?.(JSON.parse(event.data));
+    } catch (error) {
+      onError?.(error instanceof Error ? error : new Error("实时推送数据格式无效"));
+    }
+  };
+  eventSource.addEventListener("state", stateHandler);
+  eventSource.onerror = () => {
+    if (!closedByCaller) onError?.(new Error("nana 推送入口连接失败"));
+  };
+  const requestState = async () => {
+    try {
+      const response = await fetch("/api/live-timing", { cache: "no-store" });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `实时推送读取失败 ${response.status}`);
+      if (!payload.data) throw new Error("nana 尚未推送实时数据");
+      onState?.(payload.data);
+      return true;
+    } catch (error) {
+      onError?.(error instanceof Error ? error : new Error(String(error)));
+      return false;
+    }
+  };
+  return {
+    requestState,
+    close() {
+      closedByCaller = true;
+      eventSource.close();
+      onClose?.();
+    },
+  };
+}
+
 async function loadLiveTimingData() {
   const live = state.liveTiming;
   if (live.stream) {
@@ -1302,10 +1358,12 @@ async function loadLiveTimingData() {
   if (live.loading) return false;
   const token = live.token;
   live.loading = true;
-  setConnection(false, "正在连接实时接口");
+  const bridge = live.source === "nana" || live.source === "bridge";
+  setConnection(false, bridge ? "正在连接 nana" : "正在连接实时接口");
   renderLiveTiming();
   try {
-    live.stream = openF1TelemetryStream({
+    const openStream = bridge ? openLiveBridgeStream : openF1TelemetryStream;
+    live.stream = openStream({
       requestedMeetingKey: null,
       requestedSessionKey: null,
       timeoutMs: 30000,
@@ -1334,7 +1392,7 @@ async function loadLiveTimingData() {
       },
       onClose: () => {
         if (token !== live.token) return;
-        setConnection(false, "实时接口已断开");
+        setConnection(false, bridge ? "nana 推送已断开" : "实时接口已断开");
         live.stream = null;
         live.running = false;
         live.loading = false;
@@ -2127,6 +2185,13 @@ $("liveSessionSelect")?.addEventListener("change", (event) => {
   state.liveTiming.sessionName = session?.session_name || "Race";
   resetLiveTiming();
   renderLiveTimingSelectors();
+});
+$("liveSourceSelect")?.addEventListener("change", (event) => {
+  const source = event.target.value === "nana" ? "nana" : "f1telemetry";
+  if (source === state.liveTiming.source) return;
+  state.liveTiming.source = source;
+  resetLiveTiming();
+  renderLiveTiming();
 });
 $("liveLoadBtn")?.addEventListener("click", () => {
   if (state.liveTiming.running) {
