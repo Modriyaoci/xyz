@@ -1,0 +1,296 @@
+{
+  "season": 2024,
+  "captured_at": "2026-08-31T10:29:04.527Z",
+  "sync_status": {
+    "status": "success",
+    "trigger": "historical",
+    "attempted_at": "2026-08-31T10:29:04.527Z",
+    "last_success_at": "2026-08-31T10:29:04.527Z",
+    "last_automatic_at": null,
+    "last_manual_at": null
+  },
+  "source": {
+    "drivers": "https://www.formula1.com/en/results/2024/drivers",
+    "teams": "https://www.formula1.com/en/results/2024/team"
+  },
+  "drivers": [
+    {
+      "position": 1,
+      "name": "Max Verstappen",
+      "code": "VER",
+      "nationality": "NED",
+      "team": "Red Bull Racing Honda RBPT",
+      "points": 437,
+      "url": "https://www.formula1.com/en/results/2024/drivers/MAXVER01/max-verstappen"
+    },
+    {
+      "position": 2,
+      "name": "Lando Norris",
+      "code": "NOR",
+      "nationality": "GBR",
+      "team": "McLaren Mercedes",
+      "points": 374,
+      "url": "https://www.formula1.com/en/results/2024/drivers/LANNOR01/lando-norris"
+    },
+    {
+      "position": 3,
+      "name": "Charles Leclerc",
+      "code": "LEC",
+      "nationality": "MON",
+      "team": "Ferrari",
+      "points": 356,
+      "url": "https://www.formula1.com/en/results/2024/drivers/CHALEC01/charles-leclerc"
+    },
+    {
+      "position": 4,
+      "name": "Oscar Piastri",
+      "code": "PIA",
+      "nationality": "AUS",
+      "team": "McLaren Mercedes",
+      "points": 292,
+      "url": "https://www.formula1.com/en/results/2024/drivers/OSCPIA01/oscar-piastri"
+    },
+    {
+      "position": 5,
+      "name": "Carlos Sainz",
+      "code": "SAI",
+      "nationality": "ESP",
+      "team": "Ferrari",
+      "points": 290,
+      "url": "https://www.formula1.com/en/results/2024/drivers/CARSAI01/carlos-sainz"
+    },
+    {
+      "position": 6,
+      "name": "George Russell",
+      "code": "RUS",
+      "nationality": "GBR",
+      "team": "Mercedes",
+      "points": 245,
+      "url": "https://www.formula1.com/en/results/2024/drivers/GEORUS01/george-russell"
+    },
+    {
+      "position": 7,
+      "name": "Lewis Hamilton",
+      "code": "HAM",
+      "nationality": "GBR",
+      "team": "Mercedes",
+      "points": 223,
+      "url": "https://www.formula1.com/en/results/2024/drivers/LEWHAM01/lewis-hamilton"
+    },
+    {
+      "position": 8,
+      "name": "Sergio Perez",
+      "code": "PER",
+      "nationality": "MEX",
+      "team": "Red Bull Racing Honda RBPT",
+      "points": 152,
+      "url": "https://www.formula1.com/en/results/2024/drivers/SERPER01/sergio-perez"
+    },
+    {
+      "position": 9,
+      "name": "Fernando Alonso",
+      "code": "ALO",
+      "nationality": "ESP",
+      "team": "Aston Martin Aramco Mercedes",
+      "points": 70,
+      "url": "https://www.formula1.com/en/results/2024/drivers/FERALO01/fernando-alonso"
+    },
+    {
+      "position": 10,
+      "name": "Pierre Gasly",
+      "code": "GAS",
+      "nationality": "FRA",
+      "team": "Alpine Renault",
+      "points": 42,
+      "url": "https://www.formula1.com/en/results/2024/drivers/PIEGAS01/pierre-gasly"
+    },
+    {
+      "position": 11,
+      "name": "Nico Hulkenberg",
+      "code": "HUL",
+      "nationality": "GER",
+      "team": "Haas Ferrari",
+      "points": 41,
+      "url": "https://www.formula1.com/en/results/2024/drivers/NICHUL01/nico-hulkenberg"
+    },
+    {
+      "position": 12,
+      "name": "Yuki Tsunoda",
+      "code": "TSU",
+      "nationality": "JPN",
+      "team": "RB Honda RBPT",
+      "points": 30,
+      "url": "https://www.formula1.com/en/results/2024/drivers/YUKTSU01/yuki-tsunoda"
+    },
+    {
+      "position": 13,
+      "name": "Lance Stroll",
+      "code": "STR",
+      "nationality": "CAN",
+      "team": "Aston Martin Aramco Mercedes",
+      "points": 24,
+      "url": "https://www.formula1.com/en/results/2024/drivers/LANSTR01/lance-stroll"
+    },
+    {
+      "position": 14,
+      "name": "Esteban Ocon",
+      "code": "OCO",
+      "nationality": "FRA",
+      "team": "Alpine Renault",
+      "points": 23,
+      "url": "https://www.formula1.com/en/results/2024/drivers/ESTOCO01/esteban-ocon"
+    },
+    {
+      "position": 15,
+      "name": "Kevin Magnussen",
+      "code": "MAG",
+      "nationality": "DEN",
+      "team": "Haas Ferrari",
+      "points": 16,
+      "url": "https://www.formula1.com/en/results/2024/drivers/KEVMAG01/kevin-magnussen"
+    },
+    {
+      "position": 16,
+      "name": "Alexander Albon",
+      "code": "ALB",
+      "nationality": "THA",
+      "team": "Williams Mercedes",
+      "points": 12,
+      "url": "https://www.formula1.com/en/results/2024/drivers/ALEALB01/alexander-albon"
+    },
+    {
+      "position": 17,
+      "name": "Daniel Ricciardo",
+      "code": "RIC",
+      "nationality": "AUS",
+      "team": "RB Honda RBPT",
+      "points": 12,
+      "url": "https://www.formula1.com/en/results/2024/drivers/DANRIC01/daniel-ricciardo"
+    },
+    {
+      "position": 18,
+      "name": "Oliver Bearman",
+      "code": "BEA",
+      "nationality": "GBR",
+      "team": "Haas Ferrari",
+      "points": 7,
+      "url": "https://www.formula1.com/en/results/2024/drivers/OLIBEA01/oliver-bearman"
+    },
+    {
+      "position": 19,
+      "name": "Franco Colapinto",
+      "code": "COL",
+      "nationality": "ARG",
+      "team": "Williams Mercedes",
+      "points": 5,
+      "url": "https://www.formula1.com/en/results/2024/drivers/FRACOL01/franco-colapinto"
+    },
+    {
+      "position": 20,
+      "name": "Zhou Guanyu",
+      "code": "ZHO",
+      "nationality": "CHN",
+      "team": "Kick Sauber Ferrari",
+      "points": 4,
+      "url": "https://www.formula1.com/en/results/2024/drivers/GUAZHO01/guanyu-zhou"
+    },
+    {
+      "position": 21,
+      "name": "Liam Lawson",
+      "code": "LAW",
+      "nationality": "NZL",
+      "team": "RB Honda RBPT",
+      "points": 4,
+      "url": "https://www.formula1.com/en/results/2024/drivers/LIALAW01/liam-lawson"
+    },
+    {
+      "position": 22,
+      "name": "Valtteri Bottas",
+      "code": "BOT",
+      "nationality": "FIN",
+      "team": "Kick Sauber Ferrari",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2024/drivers/VALBOT01/valtteri-bottas"
+    },
+    {
+      "position": 23,
+      "name": "Logan Sargeant",
+      "code": "SAR",
+      "nationality": "USA",
+      "team": "Williams Mercedes",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2024/drivers/LOGSAR01/logan-sargeant"
+    },
+    {
+      "position": 24,
+      "name": "Jack Doohan",
+      "code": "DOO",
+      "nationality": "AUS",
+      "team": "Alpine Renault",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2024/drivers/JACDOO01/jack-doohan"
+    }
+  ],
+  "teams": [
+    {
+      "position": 1,
+      "name": "McLaren Mercedes",
+      "points": 666,
+      "url": "https://www.formula1.com/en/results/2024/team/McLaren-Mercedes"
+    },
+    {
+      "position": 2,
+      "name": "Ferrari",
+      "points": 652,
+      "url": "https://www.formula1.com/en/results/2024/team/Ferrari"
+    },
+    {
+      "position": 3,
+      "name": "Red Bull Racing Honda RBPT",
+      "points": 589,
+      "url": "https://www.formula1.com/en/results/2024/team/Red-Bull-Racing-Honda-RBPT"
+    },
+    {
+      "position": 4,
+      "name": "Mercedes",
+      "points": 468,
+      "url": "https://www.formula1.com/en/results/2024/team/Mercedes"
+    },
+    {
+      "position": 5,
+      "name": "Aston Martin Aramco Mercedes",
+      "points": 94,
+      "url": "https://www.formula1.com/en/results/2024/team/Aston-Martin-Aramco-Mercedes"
+    },
+    {
+      "position": 6,
+      "name": "Alpine Renault",
+      "points": 65,
+      "url": "https://www.formula1.com/en/results/2024/team/Alpine-Renault"
+    },
+    {
+      "position": 7,
+      "name": "Haas Ferrari",
+      "points": 58,
+      "url": "https://www.formula1.com/en/results/2024/team/Haas-Ferrari"
+    },
+    {
+      "position": 8,
+      "name": "RB Honda RBPT",
+      "points": 46,
+      "url": "https://www.formula1.com/en/results/2024/team/RB-Honda-RBPT"
+    },
+    {
+      "position": 9,
+      "name": "Williams Mercedes",
+      "points": 17,
+      "url": "https://www.formula1.com/en/results/2024/team/Williams-Mercedes"
+    },
+    {
+      "position": 10,
+      "name": "Kick Sauber Ferrari",
+      "points": 4,
+      "url": "https://www.formula1.com/en/results/2024/team/Kick-Sauber-Ferrari"
+    }
+  ]
+}

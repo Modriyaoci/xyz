@@ -7,7 +7,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import { mapOpenF1ToBackend } from "./backend-fields.mjs";
 import { fetchF1TelemetryState } from "./f1telemetry.mjs";
-import { collectSessionFeedRows } from "./session-feed-rules.mjs";
+import { collectSessionFeedRows, completeSessionResultRows } from "./session-feed-rules.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const port = Number(process.env.F1_PORT || 4173);
@@ -16,9 +16,13 @@ const upstreamTimeoutMs = 30000;
 const upstreamRequestIntervalMs = 400;
 let nextUpstreamRequestAt = 0;
 const cacheDir = path.join(root, "work", "openf1_cache");
+const meetingCatalogFile = path.join(root, "meetings-all.json");
 const localDutchDir = path.join(root, "work", "openf1_netherlands_2026");
 const localMapped = path.join(root, "outputs", "openf1-mapped-result", "netherlands_2026_race_openf1_mapped.json");
-const officialStandingsFile = path.join(root, "official-standings-2026.json");
+const currentStandingsSeason = 2026;
+const standingsSeasons = new Set([2023, 2024, 2025, currentStandingsSeason]);
+const standingsSeason = (value) => standingsSeasons.has(Number(value)) ? Number(value) : currentStandingsSeason;
+const officialStandingsFile = (year = currentStandingsSeason) => path.join(root, `official-standings-${standingsSeason(year)}.json`);
 const execFileAsync = promisify(execFile);
 const authUsername = "nana";
 const authSalt = "f1-openf1-local-auth";
@@ -78,6 +82,34 @@ const json = (res, status, value) => {
 const readJson = async (file) => JSON.parse(await fs.readFile(file, "utf8"));
 const exists = async (file) => fs.access(file).then(() => true).catch(() => false);
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+let meetingCatalogPromise = null;
+
+async function meetingCatalog() {
+  if (!meetingCatalogPromise) {
+    meetingCatalogPromise = readJson(meetingCatalogFile).catch(() => ({ seasons: [], meetings: [] }));
+  }
+  return meetingCatalogPromise;
+}
+
+async function catalogMeetings(year) {
+  const payload = await meetingCatalog();
+  return (Array.isArray(payload.meetings) ? payload.meetings : [])
+    .filter((meeting) => Number(meeting.year) === Number(year));
+}
+
+async function catalogSessions(meetingKey) {
+  const payload = await meetingCatalog();
+  const meeting = (Array.isArray(payload.meetings) ? payload.meetings : [])
+    .find((item) => Number(item.meeting_key) === Number(meetingKey));
+  return Array.isArray(meeting?.sessions) ? meeting.sessions : [];
+}
+
+async function seasons() {
+  const payload = await meetingCatalog();
+  const listed = Array.isArray(payload.seasons) ? payload.seasons : [];
+  const derived = (Array.isArray(payload.meetings) ? payload.meetings : []).map((meeting) => meeting.year);
+  return { data: [...new Set([...listed, ...derived].map(Number).filter(Number.isInteger))].sort((a, b) => b - a), source: "catalog" };
+}
 async function writeJsonAtomic(file, value) {
   const tempFile = `${file}.tmp-${process.pid}-${Date.now()}`;
   try {
@@ -166,16 +198,10 @@ async function cachedJson(file, endpoint, fallback, { preferFallback = false } =
 
 async function meetings(year) {
   const localFile = path.join(cacheDir, `meetings_${year}.json`);
-  const catalogFile = path.join(cacheDir, `catalog_${year}.json`);
-  let localFallback = null;
-  if (Number(year) === 2026 && (await exists(localFile) || await exists(catalogFile))) {
-    try {
-      const source = await exists(localFile) ? await readJson(localFile) : await readJson(catalogFile);
-      const rows = Array.isArray(source) ? source : source.meetings;
-      localFallback = Array.isArray(rows) ? rows.map(normaliseMeeting) : null;
-    } catch { localFallback = null; }
-  }
-  const result = await cachedJson(localFile, `/meetings?year=${encodeURIComponent(year)}`, localFallback);
+  const catalogRows = await catalogMeetings(year);
+  const result = catalogRows.length
+    ? { data: catalogRows, source: "catalog" }
+    : await cachedJson(localFile, `/meetings?year=${encodeURIComponent(year)}`, null);
   result.data = Array.isArray(result.data) ? await Promise.all(result.data.map(async (meeting) => {
     const normalised = normaliseMeeting(meeting);
     const sessionFile = path.join(cacheDir, `sessions_${normalised.meeting_key}.json`);
@@ -187,7 +213,6 @@ async function meetings(year) {
     }
     return normalised;
   })) : [];
-  if (result.source === "local") result.source = "catalog";
   return result;
 }
 
@@ -198,6 +223,8 @@ async function sessions(meetingKey) {
     const cached = await readJson(cacheFile);
     return { data: Array.isArray(cached) ? cached : [], source: "cache" };
   }
+  const catalogRows = await catalogSessions(key);
+  if (catalogRows.length) return { data: catalogRows, source: "catalog" };
   const localFile = path.join(localDutchDir, "sessions.json");
   const localFallback = key === 1292 && await exists(localFile) ? await readJson(localFile) : null;
   if (localFallback) {
@@ -215,9 +242,10 @@ async function sessions(meetingKey) {
   }
 }
 
-async function officialStandings() {
-  if (!(await exists(officialStandingsFile))) throw new Error("年度排名快照尚未生成");
-  const data = await readJson(officialStandingsFile);
+async function officialStandings(year = currentStandingsSeason) {
+  const file = officialStandingsFile(year);
+  if (!(await exists(file))) throw new Error("年度排名快照尚未生成");
+  const data = await readJson(file);
   if (!Array.isArray(data.drivers) || !Array.isArray(data.teams)) throw new Error("年度排名快照格式不完整");
   return { data, source: "local" };
 }
@@ -228,7 +256,7 @@ async function syncOfficialStandings() {
   } catch (error) {
     const detail = error?.stderr?.trim() || error?.message || "官网快照同步失败";
     try {
-      const current = await officialStandings();
+      const current = await officialStandings(currentStandingsSeason);
       const previous = current.data.sync_status?.last_success_at || current.data.captured_at || null;
       return {
         data: {
@@ -250,7 +278,7 @@ async function syncOfficialStandings() {
       throw new Error(`年度排名同步失败：${detail}`);
     }
   }
-  return officialStandings();
+  return officialStandings(currentStandingsSeason);
 }
 
 async function localSessionData(meetingKey, sessionKey) {
@@ -329,7 +357,7 @@ function normaliseSessionData(data) {
     data.sync_warnings = data.sync_warnings.filter((warning) => !String(warning).startsWith("starting_grid:"));
     if (!data.sync_warnings.length) delete data.sync_warnings;
   }
-  return stripStartingGridFields(stripTyreAgeFields(data));
+  return completeSessionResultRows(stripStartingGridFields(stripTyreAgeFields(data)));
 }
 
 function sessionCacheHealthy(data, sessionKey) {
@@ -412,6 +440,7 @@ async function fetchSessionFeeds(sessionKey, cached, sessionName) {
     }
   }
   await Promise.all(Array.from({ length: Math.min(3, definitions.length) }, () => worker()));
+  completeSessionResultRows(values);
   return { values, failures, unavailable, retained };
 }
 
@@ -531,9 +560,10 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { "content-type": "application/json; charset=utf-8", "set-cookie": authCookie("", 0) }); res.end(JSON.stringify({ authenticated: false })); return;
     }
     if (url.pathname.startsWith("/api/") && !authenticated(req)) return json(res, 401, { error: "需要登录" });
+    if (url.pathname === "/api/seasons") return json(res, 200, await seasons());
     if (url.pathname === "/api/meetings") return json(res, 200, await meetings(url.searchParams.get("year") || "2026"));
     if (url.pathname === "/api/sessions") return json(res, 200, await sessions(url.searchParams.get("meeting_key")));
-    if (url.pathname === "/api/standings" && req.method === "GET") return json(res, 200, await officialStandings());
+    if (url.pathname === "/api/standings" && req.method === "GET") return json(res, 200, await officialStandings(url.searchParams.get("year")));
     if (url.pathname === "/api/sync-standings" && req.method === "POST") return json(res, 200, await syncOfficialStandings());
     if (url.pathname === "/api/live-session-data" && req.method === "GET") return json(res, 200, await liveSessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")));
     if (url.pathname === "/api/session-data") return json(res, 200, await sessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")));

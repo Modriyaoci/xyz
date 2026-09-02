@@ -1,0 +1,269 @@
+{
+  "season": 2025,
+  "captured_at": "2026-08-31T10:29:18.544Z",
+  "sync_status": {
+    "status": "success",
+    "trigger": "historical",
+    "attempted_at": "2026-08-31T10:29:18.544Z",
+    "last_success_at": "2026-08-31T10:29:18.544Z",
+    "last_automatic_at": null,
+    "last_manual_at": null
+  },
+  "source": {
+    "drivers": "https://www.formula1.com/en/results/2025/drivers",
+    "teams": "https://www.formula1.com/en/results/2025/team"
+  },
+  "drivers": [
+    {
+      "position": 1,
+      "name": "Lando Norris",
+      "code": "NOR",
+      "nationality": "GBR",
+      "team": "McLaren",
+      "points": 423,
+      "url": "https://www.formula1.com/en/results/2025/drivers/LANNOR01/lando-norris"
+    },
+    {
+      "position": 2,
+      "name": "Max Verstappen",
+      "code": "VER",
+      "nationality": "NED",
+      "team": "Red Bull Racing",
+      "points": 421,
+      "url": "https://www.formula1.com/en/results/2025/drivers/MAXVER01/max-verstappen"
+    },
+    {
+      "position": 3,
+      "name": "Oscar Piastri",
+      "code": "PIA",
+      "nationality": "AUS",
+      "team": "McLaren",
+      "points": 410,
+      "url": "https://www.formula1.com/en/results/2025/drivers/OSCPIA01/oscar-piastri"
+    },
+    {
+      "position": 4,
+      "name": "George Russell",
+      "code": "RUS",
+      "nationality": "GBR",
+      "team": "Mercedes",
+      "points": 319,
+      "url": "https://www.formula1.com/en/results/2025/drivers/GEORUS01/george-russell"
+    },
+    {
+      "position": 5,
+      "name": "Charles Leclerc",
+      "code": "LEC",
+      "nationality": "MON",
+      "team": "Ferrari",
+      "points": 242,
+      "url": "https://www.formula1.com/en/results/2025/drivers/CHALEC01/charles-leclerc"
+    },
+    {
+      "position": 6,
+      "name": "Lewis Hamilton",
+      "code": "HAM",
+      "nationality": "GBR",
+      "team": "Ferrari",
+      "points": 156,
+      "url": "https://www.formula1.com/en/results/2025/drivers/LEWHAM01/lewis-hamilton"
+    },
+    {
+      "position": 7,
+      "name": "Kimi Antonelli",
+      "code": "ANT",
+      "nationality": "ITA",
+      "team": "Mercedes",
+      "points": 150,
+      "url": "https://www.formula1.com/en/results/2025/drivers/ANDANT01/kimi-antonelli"
+    },
+    {
+      "position": 8,
+      "name": "Alexander Albon",
+      "code": "ALB",
+      "nationality": "THA",
+      "team": "Williams",
+      "points": 73,
+      "url": "https://www.formula1.com/en/results/2025/drivers/ALEALB01/alexander-albon"
+    },
+    {
+      "position": 9,
+      "name": "Carlos Sainz",
+      "code": "SAI",
+      "nationality": "ESP",
+      "team": "Williams",
+      "points": 64,
+      "url": "https://www.formula1.com/en/results/2025/drivers/CARSAI01/carlos-sainz"
+    },
+    {
+      "position": 10,
+      "name": "Fernando Alonso",
+      "code": "ALO",
+      "nationality": "ESP",
+      "team": "Aston Martin",
+      "points": 56,
+      "url": "https://www.formula1.com/en/results/2025/drivers/FERALO01/fernando-alonso"
+    },
+    {
+      "position": 11,
+      "name": "Nico Hulkenberg",
+      "code": "HUL",
+      "nationality": "GER",
+      "team": "Kick Sauber",
+      "points": 51,
+      "url": "https://www.formula1.com/en/results/2025/drivers/NICHUL01/nico-hulkenberg"
+    },
+    {
+      "position": 12,
+      "name": "Isack Hadjar",
+      "code": "HAD",
+      "nationality": "FRA",
+      "team": "Racing Bulls",
+      "points": 51,
+      "url": "https://www.formula1.com/en/results/2025/drivers/ISAHAD01/isack-hadjar"
+    },
+    {
+      "position": 13,
+      "name": "Oliver Bearman",
+      "code": "BEA",
+      "nationality": "GBR",
+      "team": "Haas F1 Team",
+      "points": 41,
+      "url": "https://www.formula1.com/en/results/2025/drivers/OLIBEA01/oliver-bearman"
+    },
+    {
+      "position": 14,
+      "name": "Liam Lawson",
+      "code": "LAW",
+      "nationality": "NZL",
+      "team": "Racing Bulls",
+      "points": 38,
+      "url": "https://www.formula1.com/en/results/2025/drivers/LIALAW01/liam-lawson"
+    },
+    {
+      "position": 15,
+      "name": "Esteban Ocon",
+      "code": "OCO",
+      "nationality": "FRA",
+      "team": "Haas F1 Team",
+      "points": 38,
+      "url": "https://www.formula1.com/en/results/2025/drivers/ESTOCO01/esteban-ocon"
+    },
+    {
+      "position": 16,
+      "name": "Lance Stroll",
+      "code": "STR",
+      "nationality": "CAN",
+      "team": "Aston Martin",
+      "points": 33,
+      "url": "https://www.formula1.com/en/results/2025/drivers/LANSTR01/lance-stroll"
+    },
+    {
+      "position": 17,
+      "name": "Yuki Tsunoda",
+      "code": "TSU",
+      "nationality": "JPN",
+      "team": "Red Bull Racing",
+      "points": 33,
+      "url": "https://www.formula1.com/en/results/2025/drivers/YUKTSU01/yuki-tsunoda"
+    },
+    {
+      "position": 18,
+      "name": "Pierre Gasly",
+      "code": "GAS",
+      "nationality": "FRA",
+      "team": "Alpine",
+      "points": 22,
+      "url": "https://www.formula1.com/en/results/2025/drivers/PIEGAS01/pierre-gasly"
+    },
+    {
+      "position": 19,
+      "name": "Gabriel Bortoleto",
+      "code": "BOR",
+      "nationality": "BRA",
+      "team": "Kick Sauber",
+      "points": 19,
+      "url": "https://www.formula1.com/en/results/2025/drivers/GABBOR01/gabriel-bortoleto"
+    },
+    {
+      "position": 20,
+      "name": "Franco Colapinto",
+      "code": "COL",
+      "nationality": "ARG",
+      "team": "Alpine",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2025/drivers/FRACOL01/franco-colapinto"
+    },
+    {
+      "position": 21,
+      "name": "Jack Doohan",
+      "code": "DOO",
+      "nationality": "AUS",
+      "team": "Alpine",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2025/drivers/JACDOO01/jack-doohan"
+    }
+  ],
+  "teams": [
+    {
+      "position": 1,
+      "name": "McLaren",
+      "points": 833,
+      "url": "https://www.formula1.com/en/results/2025/team/McLaren-Mercedes"
+    },
+    {
+      "position": 2,
+      "name": "Mercedes",
+      "points": 469,
+      "url": "https://www.formula1.com/en/results/2025/team/Mercedes"
+    },
+    {
+      "position": 3,
+      "name": "Red Bull Racing",
+      "points": 451,
+      "url": "https://www.formula1.com/en/results/2025/team/Red-Bull-Racing-Honda-RBPT"
+    },
+    {
+      "position": 4,
+      "name": "Ferrari",
+      "points": 398,
+      "url": "https://www.formula1.com/en/results/2025/team/Ferrari"
+    },
+    {
+      "position": 5,
+      "name": "Williams",
+      "points": 137,
+      "url": "https://www.formula1.com/en/results/2025/team/Williams-Mercedes"
+    },
+    {
+      "position": 6,
+      "name": "Racing Bulls",
+      "points": 92,
+      "url": "https://www.formula1.com/en/results/2025/team/Racing-Bulls-Honda-RBPT"
+    },
+    {
+      "position": 7,
+      "name": "Aston Martin",
+      "points": 89,
+      "url": "https://www.formula1.com/en/results/2025/team/Aston-Martin-Aramco-Mercedes"
+    },
+    {
+      "position": 8,
+      "name": "Haas F1 Team",
+      "points": 79,
+      "url": "https://www.formula1.com/en/results/2025/team/Haas-Ferrari"
+    },
+    {
+      "position": 9,
+      "name": "Kick Sauber",
+      "points": 70,
+      "url": "https://www.formula1.com/en/results/2025/team/Kick-Sauber-Ferrari"
+    },
+    {
+      "position": 10,
+      "name": "Alpine",
+      "points": 22,
+      "url": "https://www.formula1.com/en/results/2025/team/Alpine-Renault"
+    }
+  ]
+}
