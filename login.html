@@ -26,7 +26,8 @@
       const form = document.getElementById("loginForm");
       const error = document.getElementById("loginError");
       const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
-      const staticMode = new URLSearchParams(window.location.search).get("static") === "1" || (!localServer && !window.location.pathname.startsWith("/site/"));
+      const githubPages = window.location.hostname.endsWith(".github.io");
+      const staticMode = new URLSearchParams(window.location.search).get("static") === "1" || githubPages;
       const homePath = staticMode ? "./" : "/";
       if (staticMode && window.localStorage.getItem("f1-static-auth") === "1") window.location.replace(homePath);
       if (!staticMode) fetch("/api/me").then((response) => response.json()).then((payload) => { if (payload.authenticated) window.location.replace(homePath); }).catch(() => {});
