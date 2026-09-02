@@ -4,9 +4,11 @@ import { fileURLToPath } from "node:url";
 
 const root = path.dirname(path.dirname(fileURLToPath(import.meta.url)));
 const cliArgs = typeof process === "undefined" ? [] : process.argv;
-const year = Number(cliArgs[2] || new Date().getUTCFullYear());
+const currentStandingsSeason = 2026;
+const requestedYear = Number(cliArgs[2] || currentStandingsSeason);
 const requestedTrigger = String(cliArgs[3] || "manual").toLowerCase();
-const trigger = requestedTrigger === "automatic" ? "automatic" : "manual";
+const trigger = ["automatic", "historical"].includes(requestedTrigger) ? requestedTrigger : "manual";
+const year = trigger === "historical" ? requestedYear : currentStandingsSeason;
 const output = path.join(root, `official-standings-${year}.json`);
 const baseUrl = "https://www.formula1.com";
 const pages = {
