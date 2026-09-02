@@ -58,8 +58,9 @@ const state = {
 // GitHub Pages cannot run the Node proxy. In that deployment the browser talks
 // to OpenF1 directly and keeps complete session snapshots in IndexedDB.
 const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
+const githubPages = window.location.hostname.endsWith(".github.io");
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
-  || (!localServer && !window.location.pathname.startsWith("/site/"));
+  || githubPages;
 const STATIC_API_BASE = "https://api.openf1.org/v1";
 const STATIC_CACHE_VERSION = "20260828-backend-fields-v5";
 const staticRequestTimeoutMs = 30000;
