@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { adaptF1TelemetryState } from "../f1telemetry.mjs";
+import { mapOpenF1ToBackend } from "../backend-fields.mjs";
 
 test("converts tyre ages into per-stint and cumulative race laps", () => {
   const data = adaptF1TelemetryState({
@@ -77,5 +78,76 @@ test("falls back to TimingAppData stints and ignores metadata", () => {
       tyres_not_changed: false,
       lap_flags: 0,
     },
+  );
+});
+
+test("preserves authoritative Telemetry timing colours", () => {
+  const data = adaptF1TelemetryState({
+    R: {
+      SessionInfo: { Key: 1, Meeting: { Key: 2 } },
+      DriverList: {
+        1: { RacingNumber: "1", Tla: "NOR" },
+        16: { RacingNumber: "16", Tla: "LEC" },
+      },
+      TimingData: {
+        Lines: {
+          1: {
+            RacingNumber: "1",
+            LastLapTime: { Value: "1:31.000", OverallFastest: false, PersonalFastest: true },
+            BestLapTime: { Value: "1:30.000" },
+            Sectors: [
+              { Value: "31.000", PreviousValue: "31.000", OverallFastest: false, PersonalFastest: false },
+              { Value: "32.000", PreviousValue: "32.000", OverallFastest: false, PersonalFastest: true },
+              { Value: "", PreviousValue: "28.000", OverallFastest: false, PersonalFastest: false },
+            ],
+          },
+          16: {
+            RacingNumber: "16",
+            LastLapTime: { Value: "1:29.000", OverallFastest: true, PersonalFastest: true },
+            BestLapTime: { Value: "1:29.000" },
+            Sectors: [
+              { Value: "28.000", PreviousValue: "29.000", OverallFastest: true, PersonalFastest: true },
+              { Value: "33.000", PreviousValue: "33.000", OverallFastest: false, PersonalFastest: false },
+              { Value: "29.000", PreviousValue: "29.000", OverallFastest: false, PersonalFastest: false },
+            ],
+          },
+        },
+      },
+      TimingStats: {
+        Lines: {
+          1: {
+            BestSectors: [
+              { Value: "29.000", Position: 2 },
+              { Value: "32.000", Position: 1 },
+              { Value: "28.000", Position: 1 },
+            ],
+          },
+          16: {
+            BestSectors: [
+              { Value: "28.000", Position: 1 },
+              { Value: "33.000", Position: 2 },
+              { Value: "29.000", Position: 2 },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  const norris = data.session_result.find((row) => row.driver_number === 1);
+  assert.equal(norris.sector_1_overall_fastest, false);
+  assert.equal(norris.sector_2_personal_fastest, true);
+  assert.equal(norris.duration_sector_3_source, "previous");
+
+  const mapped = mapOpenF1ToBackend(data);
+  assert.equal(mapped.extra.last_lap_time_color["347506"], "green");
+  assert.equal(mapped.extra.last_lap_time_color["347492"], "purple");
+  assert.deepEqual(
+    mapped.extra.sectors["347506"].map((sector) => [sector.time_color, sector.best_time_color]),
+    [["yellow", "green"], ["green", "purple"], ["purple", "purple"]],
+  );
+  assert.deepEqual(
+    mapped.extra.sectors["347492"].map((sector) => [sector.time_color, sector.best_time_color]),
+    [["purple", "purple"], ["yellow", "green"], ["yellow", "green"]],
   );
 });
