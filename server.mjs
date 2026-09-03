@@ -28,7 +28,7 @@ const fastF1SessionScript = path.join(root, "scripts", "fastf1-session.py");
 const fastF1CacheDir = path.join(root, "work", "fastf1_cache");
 const fastF1SessionCacheDir = path.join(root, "work", "fastf1_session_cache");
 const nanaMappingFile = path.join(root, "work", "nana-mapping.json");
-const fastF1CacheVersion = "20260903-fastf1-source-v5";
+const fastF1CacheVersion = "20260903-fastf1-source-v6";
 const fastF1TimeoutMs = Number(process.env.FASTF1_TIMEOUT_MS || 180000);
 const fastF1Enabled = process.env.FASTF1_ENABLED !== "0" && process.env.FASTF1_FALLBACK !== "0";
 const meetingCatalogFile = path.join(root, "meetings-all.json");
