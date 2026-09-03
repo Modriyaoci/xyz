@@ -259,6 +259,13 @@ export function mapOpenF1ToBackend(data, existing = null) {
   // personal best sector in TimingStats. Keep both sources separate so the
   // current sector is never shown as the personal best by accident.
   const timingStatsLines = source.f1telemetry?.timing_stats?.Lines || {};
+  const telemetrySessionBestSectors = [0, 1, 2].map((sectorIndex) => {
+    const values = Object.entries(timingStatsLines)
+      .filter(([key, line]) => key !== "_kf" && line && typeof line === "object")
+      .map(([, line]) => numeric(Array.isArray(line.BestSectors) ? line.BestSectors[sectorIndex]?.Value : null))
+      .filter((value) => value !== null);
+    return values.length ? Math.min(...values) : null;
+  });
   const positions = latestByDriver(source.position);
   const intervals = latestByDriver(source.intervals || source.intervals_race);
   const lapsByCar = new Map();
@@ -383,7 +390,14 @@ export function mapOpenF1ToBackend(data, existing = null) {
     const personalBest = valid.slice().sort((a, b) => Number(a.lap_duration) - Number(b.lap_duration))[0] || null;
     const currentTime = numeric(timingRow.last_lap_duration) ?? numeric(latest?.lap_duration);
     const personalTime = numeric(timingRow.best_lap_duration) ?? numeric(personalBest?.lap_duration);
-    const currentColor = currentTime === null ? "gray" : currentTime === sessionBest ? "purple" : currentTime === personalTime ? "green" : "yellow";
+    const hasLastLapFlags = typeof timingRow.last_lap_overall_fastest === "boolean" || typeof timingRow.last_lap_personal_fastest === "boolean";
+    const currentColor = currentTime === null
+      ? "gray"
+      : hasLastLapFlags
+        ? timingRow.last_lap_overall_fastest === true
+          ? "purple"
+          : timingRow.last_lap_personal_fastest === true ? "green" : "yellow"
+        : currentTime === sessionBest ? "purple" : currentTime === personalTime ? "green" : "yellow";
     const bestColor = personalTime === null ? "gray" : personalTime === sessionBest ? "purple" : "green";
     extra.last_lap_time[key] = currentTime === null ? "" : formatBackendTime(currentTime);
     extra.last_lap_time_color[key] = currentColor;
@@ -393,12 +407,23 @@ export function mapOpenF1ToBackend(data, existing = null) {
       const best = valid.map((lap) => numeric(lap[`duration_sector_${sector}`])).filter((value) => value !== null);
       const statsBest = numeric(bestSectorRows[sector - 1]?.Value);
       const bestValue = statsBest ?? (best.length ? Math.min(...best) : null);
+      const overallBest = telemetrySessionBestSectors[sector - 1] ?? sessionBestSectors[sector - 1];
+      const usesCurrentValue = timingRow[`duration_sector_${sector}_source`] === "current";
+      const overallFastest = timingRow[`sector_${sector}_overall_fastest`];
+      const personalFastest = timingRow[`sector_${sector}_personal_fastest`];
+      const hasCurrentFlags = usesCurrentValue && (typeof overallFastest === "boolean" || typeof personalFastest === "boolean");
+      const timeColor = current === null
+        ? "gray"
+        : hasCurrentFlags
+          ? overallFastest === true ? "purple" : personalFastest === true ? "green" : "yellow"
+          : current === overallBest ? "purple" : current === bestValue ? "green" : "yellow";
+      const statsPosition = numeric(bestSectorRows[sector - 1]?.Position);
       return {
         sector,
         time: current === null ? "" : current.toFixed(3),
-        time_color: current === null ? "gray" : current === sessionBestSectors[sector - 1] ? "purple" : current === bestValue ? "green" : "yellow",
+        time_color: timeColor,
         best_time: bestValue === null ? "" : bestValue.toFixed(3),
-        best_time_color: bestValue === null ? "gray" : bestValue === sessionBestSectors[sector - 1] ? "purple" : "green",
+        best_time_color: bestValue === null ? "gray" : statsPosition === 1 || bestValue === overallBest ? "purple" : "green",
       };
     });
     const segmentArrays = [1, 2, 3].map((sector) => timingRow[`segments_sector_${sector}`] || latest?.[`segments_sector_${sector}`]);

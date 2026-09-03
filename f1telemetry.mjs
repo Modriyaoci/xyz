@@ -248,6 +248,13 @@ function numberOrNull(value) {
   return Number.isFinite(number) ? number : null;
 }
 
+function booleanOrNull(value) {
+  if (value === true || value === false) return value;
+  if (value === 1 || String(value).toLowerCase() === "true") return true;
+  if (value === 0 || String(value).toLowerCase() === "false") return false;
+  return null;
+}
+
 function isoWithOffset(value, offset) {
   if (!value) return null;
   const text = String(value);
@@ -330,7 +337,8 @@ function timingRows(raw, timestamp) {
   return lineEntries(raw).map(([key, line]) => {
     const driverNumber = numberOrNull(line.RacingNumber ?? key);
     const sectors = Array.isArray(line.Sectors) ? line.Sectors : [];
-    const lastLap = parseF1Time(line.LastLapTime?.Value);
+    const lastLapData = asObject(line.LastLapTime);
+    const lastLap = parseF1Time(lastLapData.Value);
     const bestLap = parseF1Time(line.BestLapTime?.Value);
     const row = {
       driver_number: driverNumber,
@@ -343,6 +351,8 @@ function timingRows(raw, timestamp) {
       dns: false,
       dsq: false,
       date: timestamp,
+      last_lap_overall_fastest: booleanOrNull(lastLapData.OverallFastest),
+      last_lap_personal_fastest: booleanOrNull(lastLapData.PersonalFastest),
     };
     if (lastLap != null) row.last_lap_duration = lastLap;
     if (bestLap != null) row.best_lap_duration = bestLap;
@@ -350,8 +360,15 @@ function timingRows(raw, timestamp) {
       const sectorNumber = index + 1;
       const current = numberOrNull(sector?.Value);
       const previous = numberOrNull(sector?.PreviousValue);
-      if (current != null) row[`duration_sector_${sectorNumber}`] = current;
-      else if (previous != null) row[`duration_sector_${sectorNumber}`] = previous;
+      if (current != null) {
+        row[`duration_sector_${sectorNumber}`] = current;
+        row[`duration_sector_${sectorNumber}_source`] = "current";
+      } else if (previous != null) {
+        row[`duration_sector_${sectorNumber}`] = previous;
+        row[`duration_sector_${sectorNumber}_source`] = "previous";
+      }
+      row[`sector_${sectorNumber}_overall_fastest`] = booleanOrNull(sector?.OverallFastest);
+      row[`sector_${sectorNumber}_personal_fastest`] = booleanOrNull(sector?.PersonalFastest);
       row[`segments_sector_${sectorNumber}`] = (Array.isArray(sector?.Segments) ? sector.Segments : []).map(normaliseSegmentStatus).filter((value) => value != null);
     });
     return row;
@@ -449,6 +466,15 @@ export function adaptF1TelemetryState(raw, { requestedMeetingKey = null, request
       duration_sector_1: row.duration_sector_1,
       duration_sector_2: row.duration_sector_2,
       duration_sector_3: row.duration_sector_3,
+      duration_sector_1_source: row.duration_sector_1_source,
+      duration_sector_2_source: row.duration_sector_2_source,
+      duration_sector_3_source: row.duration_sector_3_source,
+      sector_1_overall_fastest: row.sector_1_overall_fastest,
+      sector_2_overall_fastest: row.sector_2_overall_fastest,
+      sector_3_overall_fastest: row.sector_3_overall_fastest,
+      sector_1_personal_fastest: row.sector_1_personal_fastest,
+      sector_2_personal_fastest: row.sector_2_personal_fastest,
+      sector_3_personal_fastest: row.sector_3_personal_fastest,
       segments_sector_1: row.segments_sector_1 || [],
       segments_sector_2: row.segments_sector_2 || [],
       segments_sector_3: row.segments_sector_3 || [],
@@ -463,6 +489,15 @@ export function adaptF1TelemetryState(raw, { requestedMeetingKey = null, request
         duration_sector_1: row.duration_sector_1,
         duration_sector_2: row.duration_sector_2,
         duration_sector_3: row.duration_sector_3,
+        duration_sector_1_source: row.duration_sector_1_source,
+        duration_sector_2_source: row.duration_sector_2_source,
+        duration_sector_3_source: row.duration_sector_3_source,
+        sector_1_overall_fastest: row.sector_1_overall_fastest,
+        sector_2_overall_fastest: row.sector_2_overall_fastest,
+        sector_3_overall_fastest: row.sector_3_overall_fastest,
+        sector_1_personal_fastest: row.sector_1_personal_fastest,
+        sector_2_personal_fastest: row.sector_2_personal_fastest,
+        sector_3_personal_fastest: row.sector_3_personal_fastest,
         segments_sector_1: row.segments_sector_1 || [],
         segments_sector_2: row.segments_sector_2 || [],
         segments_sector_3: row.segments_sector_3 || [],
