@@ -1076,6 +1076,14 @@ async function serveStatic(req, res, pathname) {
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://${req.headers.host || "localhost"}`);
+    if ((url.pathname === "/health" || url.pathname === "/api/health") && req.method === "GET") {
+      return json(res, 200, {
+        ok: true,
+        service: "f1-nana-bridge",
+        source: "nana",
+        checked_at: new Date().toISOString(),
+      });
+    }
     if (url.pathname === "/api/me" && req.method === "GET") return json(res, 200, { authenticated: authenticated(req), username: authenticated(req) ? authUsername : null });
     if (url.pathname === "/api/login" && req.method === "POST") {
       const body = await readBody(req);
