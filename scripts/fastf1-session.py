@@ -380,16 +380,21 @@ def main():
     except Exception as exc:
         output({"ok": False, "error": f"FastF1 读取失败：{exc}"}, 2)
 
-    # FastF1 does not expose OpenF1's mini-sector status directly. Load its
-    # optional car/position telemetry so mini sectors can be derived from
-    # relative distance when the upstream session provides it. Older sessions
-    # may legitimately have no telemetry and remain empty.
+    # FastF1 does not expose OpenF1's mini-sector status directly. Deriving it
+    # requires loading the full car/position telemetry feed, which exceeds the
+    # 512 MB Render free-instance limit for many races. Keep that optional on
+    # Render while preserving it for local or larger deployments.
     telemetry_available = False
-    try:
-        session._load_telemetry()
-        telemetry_available = bool(getattr(session, "_car_data", {}) or getattr(session, "_pos_data", {}))
-    except Exception:
-        pass
+    telemetry_enabled = os.environ.get(
+        "FASTF1_MINI_SECTORS",
+        "0" if os.environ.get("RENDER", "").lower() == "true" else "1",
+    ).strip().lower() not in {"0", "false", "no", "off"}
+    if telemetry_enabled:
+        try:
+            session._load_telemetry()
+            telemetry_available = bool(getattr(session, "_car_data", {}) or getattr(session, "_pos_data", {}))
+        except Exception:
+            pass
 
     base = pd.Timestamp(session.date)
     if base.tzinfo is None:
@@ -638,7 +643,7 @@ def main():
         "country_name": clean(getattr(getattr(session, "event", None), "Country", None)),
         "location": clean(getattr(getattr(session, "event", None), "Location", None)),
         "year": args.year, "is_cancelled": False,
-        "mini_sectors_source": "FastF1 telemetry" if telemetry_available else "unavailable",
+        "mini_sectors_source": "FastF1 telemetry" if telemetry_available else "disabled-memory-limit" if not telemetry_enabled else "unavailable",
     }
     payload = {
         "ok": True, "source": "fastf1", "provider_version": getattr(fastf1, "__version__", None),
