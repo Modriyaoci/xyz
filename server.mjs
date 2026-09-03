@@ -8,6 +8,11 @@ import { fileURLToPath } from "node:url";
 import { mapOpenF1ToBackend } from "./backend-fields.mjs";
 import { fetchF1TelemetryState } from "./f1telemetry.mjs";
 import { collectSessionFeedRows, completeSessionResultRows } from "./session-feed-rules.mjs";
+import {
+  DEFAULT_NANA_MAPPING,
+  normaliseNanaMapping,
+  normaliseNanaSnapshot,
+} from "./nana-mapping.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 // Cloud hosts provide PORT; keep F1_PORT for local and existing deployments.
@@ -23,6 +28,7 @@ const fastF1SessionScript = path.join(root, "scripts", "fastf1-session.py");
 const fastF1CacheDir = path.join(root, "work", "fastf1_cache");
 const fastF1SessionCacheDir = path.join(root, "work", "fastf1_session_cache");
 const liveBridgeRawFile = path.join(root, "work", "nana-live-latest.txt");
+const nanaMappingFile = path.join(root, "work", "nana-mapping.json");
 const fastF1CacheVersion = "20260902-fastf1-source-v4";
 const fastF1TimeoutMs = Number(process.env.FASTF1_TIMEOUT_MS || 180000);
 const fastF1Enabled = process.env.FASTF1_ENABLED !== "0" && process.env.FASTF1_FALLBACK !== "0";
@@ -55,6 +61,10 @@ const liveBridgeClients = new Set();
 
 await fs.mkdir(cacheDir, { recursive: true });
 await fs.mkdir(fastF1SessionCacheDir, { recursive: true });
+let nanaMapping = normaliseNanaMapping(DEFAULT_NANA_MAPPING);
+try {
+  nanaMapping = normaliseNanaMapping(JSON.parse(await fs.readFile(nanaMappingFile, "utf8")));
+} catch { /* first boot uses the official 2026 car roster */ }
 
 // OpenF1 meeting keys are stable, while session keys are discovered from the
 // sessions endpoint. Keep the season directory usable even when the API is
@@ -523,7 +533,7 @@ async function ingestLiveBridgeState(req, res) {
     data.mapped = mapOpenF1ToBackend(data, data.mapped);
     payloadKind = "session";
   } else if (isBackendLiveSnapshot(data)) {
-    data = canonicalBackendSnapshot(data);
+    data = canonicalBackendSnapshot(normaliseNanaSnapshot(data, nanaMapping));
     payloadKind = "backend";
   }
   liveBridgeSequence += 1;
@@ -1244,6 +1254,22 @@ const server = http.createServer(async (req, res) => {
     if ((url.pathname === "/api/live-timing/entry" || url.pathname === "/api/livetiming/entry") && req.method === "GET") {
       if (!authenticated(req)) return json(res, 401, { error: "需要登录后获取实时入口" });
       return json(res, 200, liveBridgeEntry(req));
+    }
+    if ((url.pathname === "/api/live-timing/mapping" || url.pathname === "/api/livetiming/mapping") && ["GET", "PUT", "PATCH"].includes(req.method)) {
+      if (!authenticated(req)) return json(res, 401, { error: "需要登录后修改车号映射" });
+      if (req.method === "GET") return json(res, 200, { ...nanaMapping, source: "official-standings-2026" });
+      try {
+        const body = await readBody(req);
+        nanaMapping = normaliseNanaMapping(body?.mapping || body);
+        await writeJsonAtomic(nanaMappingFile, nanaMapping);
+        if (liveBridgeState) {
+          liveBridgeState = canonicalBackendSnapshot(normaliseNanaSnapshot(liveBridgeState, nanaMapping));
+          broadcastLiveBridgeState();
+        }
+        return json(res, 200, { ok: true, ...nanaMapping, source: "official-standings-2026" });
+      } catch (error) {
+        return json(res, 400, { error: error.message || "车号映射保存失败" });
+      }
     }
     if (liveBridgePaths.has(url.pathname) && !liveBridgeAuthorised(req, url)) {
       return json(res, 401, { error: "实时入口令牌无效或已缺少" });

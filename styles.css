@@ -69,6 +69,14 @@ select:focus, .search-box input:focus { border-color: var(--blue); box-shadow: 0
 .sync-button { align-self: end; white-space: nowrap; }
 .sync-button:disabled { cursor: wait; opacity: .65; }
 .selector-hint { color: var(--subtle); margin: 11px 0 0 2px; font-size: 12px; }
+.nana-mapping-panel[hidden] { display: none; }
+.nana-mapping-table { min-width: 960px; }
+.nana-mapping-table th, .nana-mapping-table td { vertical-align: middle; }
+.nana-mapping-table td:first-child { width: 70px; font-weight: 800; }
+.nana-mapping-input { width: 100%; min-width: 120px; height: 32px; border: 1px solid var(--line-strong); border-radius: 5px; padding: 0 8px; color: var(--ink); background: #fff; outline: none; }
+.nana-mapping-input:focus { border-color: var(--blue); box-shadow: 0 0 0 3px rgba(37,99,235,.11); }
+.nana-mapping-input.id { min-width: 110px; font-variant-numeric: tabular-nums; }
+.nana-mapping-table .empty-cell { height: 70px; }
 .session-nav { margin-top: 12px; display: flex; overflow-x: auto; padding: 6px; gap: 4px; }
 .session-tab { border: 0; background: transparent; color: var(--muted); border-radius: 5px; padding: 9px 15px; white-space: nowrap; font-size: 13px; }
 .session-tab:hover { background: #f5f7fa; color: var(--ink); }

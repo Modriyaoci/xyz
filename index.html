@@ -225,6 +225,15 @@
               <div class="selector-hint" id="liveTimingHint">数据源：F1 Telemetry 实时接口；不区分历史分站和节点，只覆盖当前实时快照，不写入本地缓存。</div>
             </section>
 
+            <section class="panel nana-mapping-panel" id="nanaMappingPanel" aria-labelledby="nanaMappingTitle" hidden>
+              <div class="panel-header compact">
+                <div><div class="section-kicker">车号映射</div><h2 id="nanaMappingTitle">车手 / 车队映射</h2></div>
+                <div class="panel-tools"><button class="ghost-button" id="nanaMappingReloadBtn" type="button">重新读取</button><button class="primary-button" id="nanaMappingSaveBtn" type="button">保存映射</button></div>
+              </div>
+              <div class="selector-hint" id="nanaMappingStatus">正在读取车号映射</div>
+              <div class="table-wrap"><table class="data-table dense nana-mapping-table" id="nanaMappingTable"><thead><tr><th>车号</th><th>车手</th><th>缩写</th><th>后台车手 ID</th><th>车队</th><th>后台车队 ID</th></tr></thead><tbody><tr><td colspan="6" class="empty-cell">正在读取车号映射</td></tr></tbody></table></div>
+            </section>
+
             <section class="status-strip" id="liveStatus" aria-live="polite">
               <div class="status-title"><span class="status-pulse" id="liveStatusPulse"></span><span id="liveStatusTitle">等待推送</span></div>
               <div class="status-meta" id="liveStatusMeta">尚未接收到消息</div>
