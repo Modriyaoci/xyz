@@ -797,6 +797,44 @@ async function fastF1Seasons() {
   return [...new Set([...listed, ...derived].map(Number).filter(Number.isInteger))].sort((a, b) => b - a);
 }
 
+function compactProcessOutput(value, limit = 4000) {
+  const text = String(value || "")
+    .replace(/\u001b\[[0-?]*[ -/]*[@-~]/g, "")
+    .trim();
+  if (!text) return "";
+  return text.length <= limit ? text : `${text.slice(0, limit)}\n...[truncated]`;
+}
+
+function parseFastF1ProcessError(error) {
+  const stdout = compactProcessOutput(error?.stdout);
+  const stderr = compactProcessOutput(error?.stderr);
+  let payload = null;
+  const candidates = [...stdout.split(/\r?\n/).reverse(), stdout].filter(Boolean);
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object") {
+        payload = parsed;
+        break;
+      }
+    } catch { /* FastF1 may write ordinary log lines before its JSON error */ }
+  }
+  const reasons = [];
+  if (payload?.error) reasons.push(String(payload.error));
+  if (error?.killed || error?.signal) reasons.push(`进程被终止${error.signal ? `（${error.signal}）` : ""}`);
+  if (error?.code === "ETIMEDOUT") reasons.push(`执行超时（${Math.round(fastF1TimeoutMs / 1000)}秒）`);
+  if (!reasons.length && stderr) reasons.push(stderr.split(/\r?\n/).filter(Boolean).at(-1));
+  if (!reasons.length && error?.message) reasons.push(String(error.message));
+  return {
+    message: `FastF1 读取失败：${[...new Set(reasons)].join("；") || "Python 进程异常退出"}`,
+    diagnostic: compactProcessOutput([
+      `code=${error?.code ?? "unknown"} signal=${error?.signal ?? "none"} killed=${Boolean(error?.killed)}`,
+      stdout ? `stdout:\n${stdout}` : "",
+      stderr ? `stderr:\n${stderr}` : "",
+    ].filter(Boolean).join("\n"), 8000),
+  };
+}
+
 async function fetchFastF1Session(session, meetingKey, sessionKey) {
   if (!fastF1Enabled) throw new Error("FastF1 数据源已关闭（FASTF1_ENABLED=0）");
   const year = Number(session?.year);
@@ -822,12 +860,18 @@ async function fetchFastF1Session(session, meetingKey, sessionKey) {
   ];
   let stdout;
   try {
-    ({ stdout } = await execFileAsync(python, args, {
-      cwd: root,
-      env,
-      timeout: fastF1TimeoutMs,
-      maxBuffer: 32 * 1024 * 1024,
-    }));
+    try {
+      ({ stdout } = await execFileAsync(python, args, {
+        cwd: root,
+        env,
+        timeout: fastF1TimeoutMs,
+        maxBuffer: 32 * 1024 * 1024,
+      }));
+    } catch (error) {
+      const failure = parseFastF1ProcessError(error);
+      console.error(`[FastF1] ${year} ${event} ${session.session_name || "Race"} failed\n${failure.diagnostic}`);
+      throw new Error(failure.message, { cause: error });
+    }
   } finally {
     if (transientCacheDir) await fs.rm(transientCacheDir, { recursive: true, force: true }).catch(() => {});
   }
