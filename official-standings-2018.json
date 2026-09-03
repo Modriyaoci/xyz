@@ -1,0 +1,260 @@
+{
+  "season": 2018,
+  "captured_at": "2026-09-02T04:54:07.941Z",
+  "sync_status": {
+    "status": "success",
+    "trigger": "historical",
+    "attempted_at": "2026-09-02T04:54:07.941Z",
+    "last_success_at": "2026-09-02T04:54:07.941Z",
+    "last_automatic_at": null,
+    "last_manual_at": null
+  },
+  "source": {
+    "drivers": "https://www.formula1.com/en/results/2018/drivers",
+    "teams": "https://www.formula1.com/en/results/2018/team"
+  },
+  "drivers": [
+    {
+      "position": 1,
+      "name": "Lewis Hamilton",
+      "code": "HAM",
+      "nationality": "GBR",
+      "team": "Mercedes",
+      "points": 408,
+      "url": "https://www.formula1.com/en/results/2018/drivers/LEWHAM01/lewis-hamilton"
+    },
+    {
+      "position": 2,
+      "name": "Sebastian Vettel",
+      "code": "VET",
+      "nationality": "GER",
+      "team": "Ferrari",
+      "points": 320,
+      "url": "https://www.formula1.com/en/results/2018/drivers/SEBVET01/sebastian-vettel"
+    },
+    {
+      "position": 3,
+      "name": "Kimi Räikkönen",
+      "code": "RAI",
+      "nationality": "FIN",
+      "team": "Ferrari",
+      "points": 251,
+      "url": "https://www.formula1.com/en/results/2018/drivers/KIMRAI01/kimi-r-ikk-nen"
+    },
+    {
+      "position": 4,
+      "name": "Max Verstappen",
+      "code": "VER",
+      "nationality": "NED",
+      "team": "Red Bull Racing TAG Heuer",
+      "points": 249,
+      "url": "https://www.formula1.com/en/results/2018/drivers/MAXVER01/max-verstappen"
+    },
+    {
+      "position": 5,
+      "name": "Valtteri Bottas",
+      "code": "BOT",
+      "nationality": "FIN",
+      "team": "Mercedes",
+      "points": 247,
+      "url": "https://www.formula1.com/en/results/2018/drivers/VALBOT01/valtteri-bottas"
+    },
+    {
+      "position": 6,
+      "name": "Daniel Ricciardo",
+      "code": "RIC",
+      "nationality": "AUS",
+      "team": "Red Bull Racing TAG Heuer",
+      "points": 170,
+      "url": "https://www.formula1.com/en/results/2018/drivers/DANRIC01/daniel-ricciardo"
+    },
+    {
+      "position": 7,
+      "name": "Nico Hulkenberg",
+      "code": "HUL",
+      "nationality": "GER",
+      "team": "Renault",
+      "points": 69,
+      "url": "https://www.formula1.com/en/results/2018/drivers/NICHUL01/nico-hulkenberg"
+    },
+    {
+      "position": 8,
+      "name": "Sergio Perez",
+      "code": "PER",
+      "nationality": "MEX",
+      "team": "Force India Mercedes",
+      "points": 62,
+      "url": "https://www.formula1.com/en/results/2018/drivers/SERPER01/sergio-perez"
+    },
+    {
+      "position": 9,
+      "name": "Kevin Magnussen",
+      "code": "MAG",
+      "nationality": "DEN",
+      "team": "Haas Ferrari",
+      "points": 56,
+      "url": "https://www.formula1.com/en/results/2018/drivers/KEVMAG01/kevin-magnussen"
+    },
+    {
+      "position": 10,
+      "name": "Carlos Sainz",
+      "code": "SAI",
+      "nationality": "ESP",
+      "team": "Renault",
+      "points": 53,
+      "url": "https://www.formula1.com/en/results/2018/drivers/CARSAI01/carlos-sainz"
+    },
+    {
+      "position": 11,
+      "name": "Fernando Alonso",
+      "code": "ALO",
+      "nationality": "ESP",
+      "team": "McLaren Renault",
+      "points": 50,
+      "url": "https://www.formula1.com/en/results/2018/drivers/FERALO01/fernando-alonso"
+    },
+    {
+      "position": 12,
+      "name": "Esteban Ocon",
+      "code": "OCO",
+      "nationality": "FRA",
+      "team": "Force India Mercedes",
+      "points": 49,
+      "url": "https://www.formula1.com/en/results/2018/drivers/ESTOCO01/esteban-ocon"
+    },
+    {
+      "position": 13,
+      "name": "Charles Leclerc",
+      "code": "LEC",
+      "nationality": "MON",
+      "team": "Sauber Ferrari",
+      "points": 39,
+      "url": "https://www.formula1.com/en/results/2018/drivers/CHALEC01/charles-leclerc"
+    },
+    {
+      "position": 14,
+      "name": "Romain Grosjean",
+      "code": "GRO",
+      "nationality": "FRA",
+      "team": "Haas Ferrari",
+      "points": 37,
+      "url": "https://www.formula1.com/en/results/2018/drivers/ROMGRO01/romain-grosjean"
+    },
+    {
+      "position": 15,
+      "name": "Pierre Gasly",
+      "code": "GAS",
+      "nationality": "FRA",
+      "team": "Scuderia Toro Rosso Honda",
+      "points": 29,
+      "url": "https://www.formula1.com/en/results/2018/drivers/PIEGAS01/pierre-gasly"
+    },
+    {
+      "position": 16,
+      "name": "Stoffel Vandoorne",
+      "code": "VAN",
+      "nationality": "BEL",
+      "team": "McLaren Renault",
+      "points": 12,
+      "url": "https://www.formula1.com/en/results/2018/drivers/STOVAN01/stoffel-vandoorne"
+    },
+    {
+      "position": 17,
+      "name": "Marcus Ericsson",
+      "code": "ERI",
+      "nationality": "SWE",
+      "team": "Sauber Ferrari",
+      "points": 9,
+      "url": "https://www.formula1.com/en/results/2018/drivers/MARERI01/marcus-ericsson"
+    },
+    {
+      "position": 18,
+      "name": "Lance Stroll",
+      "code": "STR",
+      "nationality": "CAN",
+      "team": "Williams Mercedes",
+      "points": 6,
+      "url": "https://www.formula1.com/en/results/2018/drivers/LANSTR01/lance-stroll"
+    },
+    {
+      "position": 19,
+      "name": "Brendon Hartley",
+      "code": "HAR",
+      "nationality": "NZL",
+      "team": "Scuderia Toro Rosso Honda",
+      "points": 4,
+      "url": "https://www.formula1.com/en/results/2018/drivers/BREHAR01/brendon-hartley"
+    },
+    {
+      "position": 20,
+      "name": "Sergey Sirotkin",
+      "code": "SIR",
+      "nationality": "RUS",
+      "team": "Williams Mercedes",
+      "points": 1,
+      "url": "https://www.formula1.com/en/results/2018/drivers/SERSIR01/sergey-sirotkin"
+    }
+  ],
+  "teams": [
+    {
+      "position": 1,
+      "name": "Mercedes",
+      "points": 655,
+      "url": "https://www.formula1.com/en/results/2018/team/Mercedes"
+    },
+    {
+      "position": 2,
+      "name": "Ferrari",
+      "points": 571,
+      "url": "https://www.formula1.com/en/results/2018/team/Ferrari"
+    },
+    {
+      "position": 3,
+      "name": "Red Bull Racing TAG Heuer",
+      "points": 419,
+      "url": "https://www.formula1.com/en/results/2018/team/Red-Bull-Racing-TAG-Heuer"
+    },
+    {
+      "position": 4,
+      "name": "Renault",
+      "points": 122,
+      "url": "https://www.formula1.com/en/results/2018/team/Renault"
+    },
+    {
+      "position": 5,
+      "name": "Haas Ferrari",
+      "points": 93,
+      "url": "https://www.formula1.com/en/results/2018/team/Haas-Ferrari"
+    },
+    {
+      "position": 6,
+      "name": "McLaren Renault",
+      "points": 62,
+      "url": "https://www.formula1.com/en/results/2018/team/McLaren-Renault"
+    },
+    {
+      "position": 7,
+      "name": "Force India Mercedes",
+      "points": 52,
+      "url": "https://www.formula1.com/en/results/2018/team/Force-India-Mercedes"
+    },
+    {
+      "position": 8,
+      "name": "Sauber Ferrari",
+      "points": 48,
+      "url": "https://www.formula1.com/en/results/2018/team/Sauber-Ferrari"
+    },
+    {
+      "position": 9,
+      "name": "Scuderia Toro Rosso Honda",
+      "points": 33,
+      "url": "https://www.formula1.com/en/results/2018/team/Scuderia-Toro-Rosso-Honda"
+    },
+    {
+      "position": 10,
+      "name": "Williams Mercedes",
+      "points": 7,
+      "url": "https://www.formula1.com/en/results/2018/team/Williams-Mercedes"
+    }
+  ]
+}

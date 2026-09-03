@@ -1,0 +1,287 @@
+{
+  "season": 2020,
+  "captured_at": "2026-09-02T04:54:08.229Z",
+  "sync_status": {
+    "status": "success",
+    "trigger": "historical",
+    "attempted_at": "2026-09-02T04:54:08.229Z",
+    "last_success_at": "2026-09-02T04:54:08.229Z",
+    "last_automatic_at": null,
+    "last_manual_at": null
+  },
+  "source": {
+    "drivers": "https://www.formula1.com/en/results/2020/drivers",
+    "teams": "https://www.formula1.com/en/results/2020/team"
+  },
+  "drivers": [
+    {
+      "position": 1,
+      "name": "Lewis Hamilton",
+      "code": "HAM",
+      "nationality": "GBR",
+      "team": "Mercedes",
+      "points": 347,
+      "url": "https://www.formula1.com/en/results/2020/drivers/LEWHAM01/lewis-hamilton"
+    },
+    {
+      "position": 2,
+      "name": "Valtteri Bottas",
+      "code": "BOT",
+      "nationality": "FIN",
+      "team": "Mercedes",
+      "points": 223,
+      "url": "https://www.formula1.com/en/results/2020/drivers/VALBOT01/valtteri-bottas"
+    },
+    {
+      "position": 3,
+      "name": "Max Verstappen",
+      "code": "VER",
+      "nationality": "NED",
+      "team": "Red Bull Racing Honda",
+      "points": 214,
+      "url": "https://www.formula1.com/en/results/2020/drivers/MAXVER01/max-verstappen"
+    },
+    {
+      "position": 4,
+      "name": "Sergio Perez",
+      "code": "PER",
+      "nationality": "MEX",
+      "team": "Racing Point BWT Mercedes",
+      "points": 125,
+      "url": "https://www.formula1.com/en/results/2020/drivers/SERPER01/sergio-perez"
+    },
+    {
+      "position": 5,
+      "name": "Daniel Ricciardo",
+      "code": "RIC",
+      "nationality": "AUS",
+      "team": "Renault",
+      "points": 119,
+      "url": "https://www.formula1.com/en/results/2020/drivers/DANRIC01/daniel-ricciardo"
+    },
+    {
+      "position": 6,
+      "name": "Carlos Sainz",
+      "code": "SAI",
+      "nationality": "ESP",
+      "team": "McLaren Renault",
+      "points": 105,
+      "url": "https://www.formula1.com/en/results/2020/drivers/CARSAI01/carlos-sainz"
+    },
+    {
+      "position": 7,
+      "name": "Alexander Albon",
+      "code": "ALB",
+      "nationality": "THA",
+      "team": "Red Bull Racing Honda",
+      "points": 105,
+      "url": "https://www.formula1.com/en/results/2020/drivers/ALEALB01/alexander-albon"
+    },
+    {
+      "position": 8,
+      "name": "Charles Leclerc",
+      "code": "LEC",
+      "nationality": "MON",
+      "team": "Ferrari",
+      "points": 98,
+      "url": "https://www.formula1.com/en/results/2020/drivers/CHALEC01/charles-leclerc"
+    },
+    {
+      "position": 9,
+      "name": "Lando Norris",
+      "code": "NOR",
+      "nationality": "GBR",
+      "team": "McLaren Renault",
+      "points": 97,
+      "url": "https://www.formula1.com/en/results/2020/drivers/LANNOR01/lando-norris"
+    },
+    {
+      "position": 10,
+      "name": "Pierre Gasly",
+      "code": "GAS",
+      "nationality": "FRA",
+      "team": "AlphaTauri Honda",
+      "points": 75,
+      "url": "https://www.formula1.com/en/results/2020/drivers/PIEGAS01/pierre-gasly"
+    },
+    {
+      "position": 11,
+      "name": "Lance Stroll",
+      "code": "STR",
+      "nationality": "CAN",
+      "team": "Racing Point BWT Mercedes",
+      "points": 75,
+      "url": "https://www.formula1.com/en/results/2020/drivers/LANSTR01/lance-stroll"
+    },
+    {
+      "position": 12,
+      "name": "Esteban Ocon",
+      "code": "OCO",
+      "nationality": "FRA",
+      "team": "Renault",
+      "points": 62,
+      "url": "https://www.formula1.com/en/results/2020/drivers/ESTOCO01/esteban-ocon"
+    },
+    {
+      "position": 13,
+      "name": "Sebastian Vettel",
+      "code": "VET",
+      "nationality": "GER",
+      "team": "Ferrari",
+      "points": 33,
+      "url": "https://www.formula1.com/en/results/2020/drivers/SEBVET01/sebastian-vettel"
+    },
+    {
+      "position": 14,
+      "name": "Daniil Kvyat",
+      "code": "KVY",
+      "nationality": "RUS",
+      "team": "AlphaTauri Honda",
+      "points": 32,
+      "url": "https://www.formula1.com/en/results/2020/drivers/DANKVY01/daniil-kvyat"
+    },
+    {
+      "position": 15,
+      "name": "Nico Hulkenberg",
+      "code": "HUL",
+      "nationality": "GER",
+      "team": "Racing Point BWT Mercedes",
+      "points": 10,
+      "url": "https://www.formula1.com/en/results/2020/drivers/NICHUL01/nico-hulkenberg"
+    },
+    {
+      "position": 16,
+      "name": "Kimi Räikkönen",
+      "code": "RAI",
+      "nationality": "FIN",
+      "team": "Alfa Romeo Racing Ferrari",
+      "points": 4,
+      "url": "https://www.formula1.com/en/results/2020/drivers/KIMRAI01/kimi-r-ikk-nen"
+    },
+    {
+      "position": 17,
+      "name": "Antonio Giovinazzi",
+      "code": "GIO",
+      "nationality": "ITA",
+      "team": "Alfa Romeo Racing Ferrari",
+      "points": 4,
+      "url": "https://www.formula1.com/en/results/2020/drivers/ANTGIO01/antonio-giovinazzi"
+    },
+    {
+      "position": 18,
+      "name": "George Russell",
+      "code": "RUS",
+      "nationality": "GBR",
+      "team": "Williams Mercedes",
+      "points": 3,
+      "url": "https://www.formula1.com/en/results/2020/drivers/GEORUS01/george-russell"
+    },
+    {
+      "position": 19,
+      "name": "Romain Grosjean",
+      "code": "GRO",
+      "nationality": "FRA",
+      "team": "Haas Ferrari",
+      "points": 2,
+      "url": "https://www.formula1.com/en/results/2020/drivers/ROMGRO01/romain-grosjean"
+    },
+    {
+      "position": 20,
+      "name": "Kevin Magnussen",
+      "code": "MAG",
+      "nationality": "DEN",
+      "team": "Haas Ferrari",
+      "points": 1,
+      "url": "https://www.formula1.com/en/results/2020/drivers/KEVMAG01/kevin-magnussen"
+    },
+    {
+      "position": 21,
+      "name": "Nicholas Latifi",
+      "code": "LAT",
+      "nationality": "CAN",
+      "team": "Williams Mercedes",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2020/drivers/NICLAF01/nicholas-latifi"
+    },
+    {
+      "position": 22,
+      "name": "Jack Aitken",
+      "code": "AIT",
+      "nationality": "GBR",
+      "team": "Williams Mercedes",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2020/drivers/JACAIT01/jack-aitken"
+    },
+    {
+      "position": 23,
+      "name": "Pietro Fittipaldi",
+      "code": "FIT",
+      "nationality": "BRA",
+      "team": "Haas Ferrari",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2020/drivers/PIEFIT01/pietro-fittipaldi"
+    }
+  ],
+  "teams": [
+    {
+      "position": 1,
+      "name": "Mercedes",
+      "points": 573,
+      "url": "https://www.formula1.com/en/results/2020/team/Mercedes"
+    },
+    {
+      "position": 2,
+      "name": "Red Bull Racing Honda",
+      "points": 319,
+      "url": "https://www.formula1.com/en/results/2020/team/Red-Bull-Racing-Honda"
+    },
+    {
+      "position": 3,
+      "name": "McLaren Renault",
+      "points": 202,
+      "url": "https://www.formula1.com/en/results/2020/team/McLaren-Renault"
+    },
+    {
+      "position": 4,
+      "name": "Racing Point BWT Mercedes",
+      "points": 195,
+      "url": "https://www.formula1.com/en/results/2020/team/Racing-Point-BWT-Mercedes"
+    },
+    {
+      "position": 5,
+      "name": "Renault",
+      "points": 181,
+      "url": "https://www.formula1.com/en/results/2020/team/Renault"
+    },
+    {
+      "position": 6,
+      "name": "Ferrari",
+      "points": 131,
+      "url": "https://www.formula1.com/en/results/2020/team/Ferrari"
+    },
+    {
+      "position": 7,
+      "name": "AlphaTauri Honda",
+      "points": 107,
+      "url": "https://www.formula1.com/en/results/2020/team/AlphaTauri-Honda"
+    },
+    {
+      "position": 8,
+      "name": "Alfa Romeo Racing Ferrari",
+      "points": 8,
+      "url": "https://www.formula1.com/en/results/2020/team/Alfa-Romeo-Racing-Ferrari"
+    },
+    {
+      "position": 9,
+      "name": "Haas Ferrari",
+      "points": 3,
+      "url": "https://www.formula1.com/en/results/2020/team/Haas-Ferrari"
+    },
+    {
+      "position": 10,
+      "name": "Williams Mercedes",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2020/team/Williams-Mercedes"
+    }
+  ]
+}

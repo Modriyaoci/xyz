@@ -1,0 +1,278 @@
+{
+  "season": 2022,
+  "captured_at": "2026-09-02T04:54:08.145Z",
+  "sync_status": {
+    "status": "success",
+    "trigger": "historical",
+    "attempted_at": "2026-09-02T04:54:08.145Z",
+    "last_success_at": "2026-09-02T04:54:08.145Z",
+    "last_automatic_at": null,
+    "last_manual_at": null
+  },
+  "source": {
+    "drivers": "https://www.formula1.com/en/results/2022/drivers",
+    "teams": "https://www.formula1.com/en/results/2022/team"
+  },
+  "drivers": [
+    {
+      "position": 1,
+      "name": "Max Verstappen",
+      "code": "VER",
+      "nationality": "NED",
+      "team": "Red Bull Racing RBPT",
+      "points": 454,
+      "url": "https://www.formula1.com/en/results/2022/drivers/MAXVER01/max-verstappen"
+    },
+    {
+      "position": 2,
+      "name": "Charles Leclerc",
+      "code": "LEC",
+      "nationality": "MON",
+      "team": "Ferrari",
+      "points": 308,
+      "url": "https://www.formula1.com/en/results/2022/drivers/CHALEC01/charles-leclerc"
+    },
+    {
+      "position": 3,
+      "name": "Sergio Perez",
+      "code": "PER",
+      "nationality": "MEX",
+      "team": "Red Bull Racing RBPT",
+      "points": 305,
+      "url": "https://www.formula1.com/en/results/2022/drivers/SERPER01/sergio-perez"
+    },
+    {
+      "position": 4,
+      "name": "George Russell",
+      "code": "RUS",
+      "nationality": "GBR",
+      "team": "Mercedes",
+      "points": 275,
+      "url": "https://www.formula1.com/en/results/2022/drivers/GEORUS01/george-russell"
+    },
+    {
+      "position": 5,
+      "name": "Carlos Sainz",
+      "code": "SAI",
+      "nationality": "ESP",
+      "team": "Ferrari",
+      "points": 246,
+      "url": "https://www.formula1.com/en/results/2022/drivers/CARSAI01/carlos-sainz"
+    },
+    {
+      "position": 6,
+      "name": "Lewis Hamilton",
+      "code": "HAM",
+      "nationality": "GBR",
+      "team": "Mercedes",
+      "points": 240,
+      "url": "https://www.formula1.com/en/results/2022/drivers/LEWHAM01/lewis-hamilton"
+    },
+    {
+      "position": 7,
+      "name": "Lando Norris",
+      "code": "NOR",
+      "nationality": "GBR",
+      "team": "McLaren Mercedes",
+      "points": 122,
+      "url": "https://www.formula1.com/en/results/2022/drivers/LANNOR01/lando-norris"
+    },
+    {
+      "position": 8,
+      "name": "Esteban Ocon",
+      "code": "OCO",
+      "nationality": "FRA",
+      "team": "Alpine Renault",
+      "points": 92,
+      "url": "https://www.formula1.com/en/results/2022/drivers/ESTOCO01/esteban-ocon"
+    },
+    {
+      "position": 9,
+      "name": "Fernando Alonso",
+      "code": "ALO",
+      "nationality": "ESP",
+      "team": "Alpine Renault",
+      "points": 81,
+      "url": "https://www.formula1.com/en/results/2022/drivers/FERALO01/fernando-alonso"
+    },
+    {
+      "position": 10,
+      "name": "Valtteri Bottas",
+      "code": "BOT",
+      "nationality": "FIN",
+      "team": "Alfa Romeo Ferrari",
+      "points": 49,
+      "url": "https://www.formula1.com/en/results/2022/drivers/VALBOT01/valtteri-bottas"
+    },
+    {
+      "position": 11,
+      "name": "Daniel Ricciardo",
+      "code": "RIC",
+      "nationality": "AUS",
+      "team": "McLaren Mercedes",
+      "points": 37,
+      "url": "https://www.formula1.com/en/results/2022/drivers/DANRIC01/daniel-ricciardo"
+    },
+    {
+      "position": 12,
+      "name": "Sebastian Vettel",
+      "code": "VET",
+      "nationality": "GER",
+      "team": "Aston Martin Aramco Mercedes",
+      "points": 37,
+      "url": "https://www.formula1.com/en/results/2022/drivers/SEBVET01/sebastian-vettel"
+    },
+    {
+      "position": 13,
+      "name": "Kevin Magnussen",
+      "code": "MAG",
+      "nationality": "DEN",
+      "team": "Haas Ferrari",
+      "points": 25,
+      "url": "https://www.formula1.com/en/results/2022/drivers/KEVMAG01/kevin-magnussen"
+    },
+    {
+      "position": 14,
+      "name": "Pierre Gasly",
+      "code": "GAS",
+      "nationality": "FRA",
+      "team": "AlphaTauri RBPT",
+      "points": 23,
+      "url": "https://www.formula1.com/en/results/2022/drivers/PIEGAS01/pierre-gasly"
+    },
+    {
+      "position": 15,
+      "name": "Lance Stroll",
+      "code": "STR",
+      "nationality": "CAN",
+      "team": "Aston Martin Aramco Mercedes",
+      "points": 18,
+      "url": "https://www.formula1.com/en/results/2022/drivers/LANSTR01/lance-stroll"
+    },
+    {
+      "position": 16,
+      "name": "Mick Schumacher",
+      "code": "MSC",
+      "nationality": "GER",
+      "team": "Haas Ferrari",
+      "points": 12,
+      "url": "https://www.formula1.com/en/results/2022/drivers/MICSCH02/mick-schumacher"
+    },
+    {
+      "position": 17,
+      "name": "Yuki Tsunoda",
+      "code": "TSU",
+      "nationality": "JPN",
+      "team": "AlphaTauri RBPT",
+      "points": 12,
+      "url": "https://www.formula1.com/en/results/2022/drivers/YUKTSU01/yuki-tsunoda"
+    },
+    {
+      "position": 18,
+      "name": "Zhou Guanyu",
+      "code": "ZHO",
+      "nationality": "CHN",
+      "team": "Alfa Romeo Ferrari",
+      "points": 6,
+      "url": "https://www.formula1.com/en/results/2022/drivers/GUAZHO01/guanyu-zhou"
+    },
+    {
+      "position": 19,
+      "name": "Alexander Albon",
+      "code": "ALB",
+      "nationality": "THA",
+      "team": "Williams Mercedes",
+      "points": 4,
+      "url": "https://www.formula1.com/en/results/2022/drivers/ALEALB01/alexander-albon"
+    },
+    {
+      "position": 20,
+      "name": "Nicholas Latifi",
+      "code": "LAT",
+      "nationality": "CAN",
+      "team": "Williams Mercedes",
+      "points": 2,
+      "url": "https://www.formula1.com/en/results/2022/drivers/NICLAF01/nicholas-latifi"
+    },
+    {
+      "position": 21,
+      "name": "Nyck De Vries",
+      "code": "DEV",
+      "nationality": "NED",
+      "team": "Williams Mercedes",
+      "points": 2,
+      "url": "https://www.formula1.com/en/results/2022/drivers/NYCDEV01/nyck-de-vries"
+    },
+    {
+      "position": 22,
+      "name": "Nico Hulkenberg",
+      "code": "HUL",
+      "nationality": "GER",
+      "team": "Aston Martin Aramco Mercedes",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2022/drivers/NICHUL01/nico-hulkenberg"
+    }
+  ],
+  "teams": [
+    {
+      "position": 1,
+      "name": "Red Bull Racing RBPT",
+      "points": 759,
+      "url": "https://www.formula1.com/en/results/2022/team/Red-Bull-Racing-RBPT"
+    },
+    {
+      "position": 2,
+      "name": "Ferrari",
+      "points": 554,
+      "url": "https://www.formula1.com/en/results/2022/team/Ferrari"
+    },
+    {
+      "position": 3,
+      "name": "Mercedes",
+      "points": 515,
+      "url": "https://www.formula1.com/en/results/2022/team/Mercedes"
+    },
+    {
+      "position": 4,
+      "name": "Alpine Renault",
+      "points": 173,
+      "url": "https://www.formula1.com/en/results/2022/team/Alpine-Renault"
+    },
+    {
+      "position": 5,
+      "name": "McLaren Mercedes",
+      "points": 159,
+      "url": "https://www.formula1.com/en/results/2022/team/McLaren-Mercedes"
+    },
+    {
+      "position": 6,
+      "name": "Alfa Romeo Ferrari",
+      "points": 55,
+      "url": "https://www.formula1.com/en/results/2022/team/Alfa-Romeo-Ferrari"
+    },
+    {
+      "position": 7,
+      "name": "Aston Martin Aramco Mercedes",
+      "points": 55,
+      "url": "https://www.formula1.com/en/results/2022/team/Aston-Martin-Aramco-Mercedes"
+    },
+    {
+      "position": 8,
+      "name": "Haas Ferrari",
+      "points": 37,
+      "url": "https://www.formula1.com/en/results/2022/team/Haas-Ferrari"
+    },
+    {
+      "position": 9,
+      "name": "AlphaTauri RBPT",
+      "points": 35,
+      "url": "https://www.formula1.com/en/results/2022/team/AlphaTauri-RBPT"
+    },
+    {
+      "position": 10,
+      "name": "Williams Mercedes",
+      "points": 8,
+      "url": "https://www.formula1.com/en/results/2022/team/Williams-Mercedes"
+    }
+  ]
+}

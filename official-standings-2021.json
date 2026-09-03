@@ -1,0 +1,269 @@
+{
+  "season": 2021,
+  "captured_at": "2026-09-02T04:54:08.014Z",
+  "sync_status": {
+    "status": "success",
+    "trigger": "historical",
+    "attempted_at": "2026-09-02T04:54:08.014Z",
+    "last_success_at": "2026-09-02T04:54:08.014Z",
+    "last_automatic_at": null,
+    "last_manual_at": null
+  },
+  "source": {
+    "drivers": "https://www.formula1.com/en/results/2021/drivers",
+    "teams": "https://www.formula1.com/en/results/2021/team"
+  },
+  "drivers": [
+    {
+      "position": 1,
+      "name": "Max Verstappen",
+      "code": "VER",
+      "nationality": "NED",
+      "team": "Red Bull Racing Honda",
+      "points": 395.5,
+      "url": "https://www.formula1.com/en/results/2021/drivers/MAXVER01/max-verstappen"
+    },
+    {
+      "position": 2,
+      "name": "Lewis Hamilton",
+      "code": "HAM",
+      "nationality": "GBR",
+      "team": "Mercedes",
+      "points": 387.5,
+      "url": "https://www.formula1.com/en/results/2021/drivers/LEWHAM01/lewis-hamilton"
+    },
+    {
+      "position": 3,
+      "name": "Valtteri Bottas",
+      "code": "BOT",
+      "nationality": "FIN",
+      "team": "Mercedes",
+      "points": 226,
+      "url": "https://www.formula1.com/en/results/2021/drivers/VALBOT01/valtteri-bottas"
+    },
+    {
+      "position": 4,
+      "name": "Sergio Perez",
+      "code": "PER",
+      "nationality": "MEX",
+      "team": "Red Bull Racing Honda",
+      "points": 190,
+      "url": "https://www.formula1.com/en/results/2021/drivers/SERPER01/sergio-perez"
+    },
+    {
+      "position": 5,
+      "name": "Carlos Sainz",
+      "code": "SAI",
+      "nationality": "ESP",
+      "team": "Ferrari",
+      "points": 164.5,
+      "url": "https://www.formula1.com/en/results/2021/drivers/CARSAI01/carlos-sainz"
+    },
+    {
+      "position": 6,
+      "name": "Lando Norris",
+      "code": "NOR",
+      "nationality": "GBR",
+      "team": "McLaren Mercedes",
+      "points": 160,
+      "url": "https://www.formula1.com/en/results/2021/drivers/LANNOR01/lando-norris"
+    },
+    {
+      "position": 7,
+      "name": "Charles Leclerc",
+      "code": "LEC",
+      "nationality": "MON",
+      "team": "Ferrari",
+      "points": 159,
+      "url": "https://www.formula1.com/en/results/2021/drivers/CHALEC01/charles-leclerc"
+    },
+    {
+      "position": 8,
+      "name": "Daniel Ricciardo",
+      "code": "RIC",
+      "nationality": "AUS",
+      "team": "McLaren Mercedes",
+      "points": 115,
+      "url": "https://www.formula1.com/en/results/2021/drivers/DANRIC01/daniel-ricciardo"
+    },
+    {
+      "position": 9,
+      "name": "Pierre Gasly",
+      "code": "GAS",
+      "nationality": "FRA",
+      "team": "AlphaTauri Honda",
+      "points": 110,
+      "url": "https://www.formula1.com/en/results/2021/drivers/PIEGAS01/pierre-gasly"
+    },
+    {
+      "position": 10,
+      "name": "Fernando Alonso",
+      "code": "ALO",
+      "nationality": "ESP",
+      "team": "Alpine Renault",
+      "points": 81,
+      "url": "https://www.formula1.com/en/results/2021/drivers/FERALO01/fernando-alonso"
+    },
+    {
+      "position": 11,
+      "name": "Esteban Ocon",
+      "code": "OCO",
+      "nationality": "FRA",
+      "team": "Alpine Renault",
+      "points": 74,
+      "url": "https://www.formula1.com/en/results/2021/drivers/ESTOCO01/esteban-ocon"
+    },
+    {
+      "position": 12,
+      "name": "Sebastian Vettel",
+      "code": "VET",
+      "nationality": "GER",
+      "team": "Aston Martin Mercedes",
+      "points": 43,
+      "url": "https://www.formula1.com/en/results/2021/drivers/SEBVET01/sebastian-vettel"
+    },
+    {
+      "position": 13,
+      "name": "Lance Stroll",
+      "code": "STR",
+      "nationality": "CAN",
+      "team": "Aston Martin Mercedes",
+      "points": 34,
+      "url": "https://www.formula1.com/en/results/2021/drivers/LANSTR01/lance-stroll"
+    },
+    {
+      "position": 14,
+      "name": "Yuki Tsunoda",
+      "code": "TSU",
+      "nationality": "JPN",
+      "team": "AlphaTauri Honda",
+      "points": 32,
+      "url": "https://www.formula1.com/en/results/2021/drivers/YUKTSU01/yuki-tsunoda"
+    },
+    {
+      "position": 15,
+      "name": "George Russell",
+      "code": "RUS",
+      "nationality": "GBR",
+      "team": "Williams Mercedes",
+      "points": 16,
+      "url": "https://www.formula1.com/en/results/2021/drivers/GEORUS01/george-russell"
+    },
+    {
+      "position": 16,
+      "name": "Kimi Räikkönen",
+      "code": "RAI",
+      "nationality": "FIN",
+      "team": "Alfa Romeo Racing Ferrari",
+      "points": 10,
+      "url": "https://www.formula1.com/en/results/2021/drivers/KIMRAI01/kimi-r-ikk-nen"
+    },
+    {
+      "position": 17,
+      "name": "Nicholas Latifi",
+      "code": "LAT",
+      "nationality": "CAN",
+      "team": "Williams Mercedes",
+      "points": 7,
+      "url": "https://www.formula1.com/en/results/2021/drivers/NICLAF01/nicholas-latifi"
+    },
+    {
+      "position": 18,
+      "name": "Antonio Giovinazzi",
+      "code": "GIO",
+      "nationality": "ITA",
+      "team": "Alfa Romeo Racing Ferrari",
+      "points": 3,
+      "url": "https://www.formula1.com/en/results/2021/drivers/ANTGIO01/antonio-giovinazzi"
+    },
+    {
+      "position": 19,
+      "name": "Mick Schumacher",
+      "code": "MSC",
+      "nationality": "GER",
+      "team": "Haas Ferrari",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2021/drivers/MICSCH02/mick-schumacher"
+    },
+    {
+      "position": 20,
+      "name": "Robert Kubica",
+      "code": "KUB",
+      "nationality": "POL",
+      "team": "Alfa Romeo Racing Ferrari",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2021/drivers/ROBKUB01/robert-kubica"
+    },
+    {
+      "position": 21,
+      "name": "Nikita Mazepin",
+      "code": "MAZ",
+      "nationality": "RAF",
+      "team": "Haas Ferrari",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2021/drivers/NIKMAZ01/nikita-mazepin"
+    }
+  ],
+  "teams": [
+    {
+      "position": 1,
+      "name": "Mercedes",
+      "points": 613.5,
+      "url": "https://www.formula1.com/en/results/2021/team/Mercedes"
+    },
+    {
+      "position": 2,
+      "name": "Red Bull Racing Honda",
+      "points": 585.5,
+      "url": "https://www.formula1.com/en/results/2021/team/Red-Bull-Racing-Honda"
+    },
+    {
+      "position": 3,
+      "name": "Ferrari",
+      "points": 323.5,
+      "url": "https://www.formula1.com/en/results/2021/team/Ferrari"
+    },
+    {
+      "position": 4,
+      "name": "McLaren Mercedes",
+      "points": 275,
+      "url": "https://www.formula1.com/en/results/2021/team/McLaren-Mercedes"
+    },
+    {
+      "position": 5,
+      "name": "Alpine Renault",
+      "points": 155,
+      "url": "https://www.formula1.com/en/results/2021/team/Alpine-Renault"
+    },
+    {
+      "position": 6,
+      "name": "AlphaTauri Honda",
+      "points": 142,
+      "url": "https://www.formula1.com/en/results/2021/team/AlphaTauri-Honda"
+    },
+    {
+      "position": 7,
+      "name": "Aston Martin Mercedes",
+      "points": 77,
+      "url": "https://www.formula1.com/en/results/2021/team/Aston-Martin-Mercedes"
+    },
+    {
+      "position": 8,
+      "name": "Williams Mercedes",
+      "points": 23,
+      "url": "https://www.formula1.com/en/results/2021/team/Williams-Mercedes"
+    },
+    {
+      "position": 9,
+      "name": "Alfa Romeo Racing Ferrari",
+      "points": 13,
+      "url": "https://www.formula1.com/en/results/2021/team/Alfa-Romeo-Racing-Ferrari"
+    },
+    {
+      "position": 10,
+      "name": "Haas Ferrari",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2021/team/Haas-Ferrari"
+    }
+  ]
+}

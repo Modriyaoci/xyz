@@ -20,19 +20,39 @@
 npm start
 ```
 
-打开 `http://127.0.0.1:4173/`，在登录页输入本地配置的账户信息。
+打开 `http://127.0.0.1:4174/`，在登录页输入本地配置的账户信息。
 
-## GitHub Pages
+### FastF1 独立数据源
+
+赛程管理中的“数据源”选择器可以在 OpenF1 和 FastF1 之间切换。两套源各自使用自己的赛历、节点和会话数据，完全独立，不合并、不互相兜底；FastF1 可读取 2018–最新赛季（具体以 FastF1 可用数据为准），OpenF1 仍按自己的覆盖范围工作。FastF1 会话响应包含赛果、圈速、进站、轮胎、天气和赛会消息，并在转换层统一为后台字段。首次使用本地 FastF1 源需要安装 Python 依赖：
+
+```bash
+python3 -m venv work/fastf1-venv
+work/fastf1-venv/bin/python -m pip install -r requirements.txt
+```
+
+`FASTF1_PYTHON` 可指定其他 Python 路径，`FASTF1_ENABLED=0` 可关闭本地 FastF1 源（兼容旧变量 `FASTF1_FALLBACK=0`）。FastF1 原始缓存保存在 `work/fastf1_cache/`，不会发布到网站。
+
+FastF1 的赛历目录由 `scripts/fastf1-catalog.py` 生成并保存在 `fastf1-meetings.json`；会话数据按选择节点实时读取并缓存到 `work/fastf1_session_cache/`。静态 GitHub Pages 不能运行 Python，目前只提供 FastF1 目录；要读取 FastF1 会话请使用本地 Node 服务，不能回退到 OpenF1：
+
+```bash
+work/fastf1-venv/bin/python scripts/fastf1-catalog.py --start 2018 --end 2026 --output fastf1-meetings.json
+cp fastf1-meetings.json site/fastf1-meetings.json
+```
 
 ### nana 实时入口
 
-登录 Node 服务后访问 `/api/live-timing/entry`，会返回一组带令牌的入口地址。把其中的 `ingest.url` 交给另一套后台，它用 `POST` 逐条推送实时数据；本站的“实时推送”选择数据源 `nana` 并点击“开始实时”后，会通过 SSE 自动接收当前状态。同一赛事按 `id` 在内存中增量更新：本次携带的普通字段覆盖旧值，车手按 `id` 或车号合并，消息去重追加，扩展字段按车手 ID 覆盖；赛事 `id` 变化时才清空上一场。实时数据只保存在内存，不写入历史文件。
+登录本地 Node 服务后访问 `/api/live-timing/entry`，会返回一组带令牌的入口地址。把其中的 `ingest.url` 交给另一套后台，它用 `POST` 逐条推送实时数据；Node 页面打开后默认连接 `nana`，通过 SSE 自动接收当前状态。同一赛事按 `id` 在内存中增量更新：本次携带的普通字段覆盖旧值，车手按 `id` 或车号合并，消息去重追加，扩展字段按车手 ID 覆盖；赛事 `id` 变化时才清空上一场。实时数据只保存在内存，不写入历史文件。
 
-推送请求也可以把令牌放在 `X-Live-Timing-Token` 请求头中，地址使用 `/api/live-timing/ingest`。请求体支持标准 JSON、`{ "data": <数据> }`、直接发送“日志前缀 + Python 字典”的原始 TXT，或用 `multipart/form-data` 上传该文件；没有 `session`、`meeting`、`mapped` 等前置字段要求。另一后台已经生成的 `winner`、`competitors`、`fields`、`messages`、`extra` 会按原字段和值保存，页面只做读取适配，不再次经过 OpenF1 转换。`/api/live-timing` 返回当前状态，`/api/live-timing/stream` 提供持续 SSE 数据流。
+推送请求也可以把令牌放在 `X-Live-Timing-Token` 请求头中，地址使用 `/api/live-timing/ingest`。请求体支持标准 JSON 快照、`{ "data": <快照> }`、直接发送“日志前缀 + Python 字典”的文本文件，或用 `multipart/form-data` 上传该文件；没有 `session`、`meeting`、`mapped` 等前置字段要求。另一后台已经生成的 `winner`、`competitors`、`fields`、`messages`、`extra` 会按原字段和值保存，页面只做读取适配，不再次经过 OpenF1 转换。`/api/live-timing` 返回当前快照，`/api/live-timing/stream` 提供持续 SSE 数据流。
 
-GitHub Pages 只能托管静态页面，不能接收这个 POST 入口。需要把 `server.mjs` 部署到公网 Node 主机，并设置 `F1_HOST=0.0.0.0` 与随机的 `LIVE_TIMING_BRIDGE_TOKEN`。服务会优先读取云平台提供的 `PORT`，同时兼容 `F1_PORT`。
+GitHub Pages 是静态托管，不能接收这个 POST 入口；要把入口交给外部后台，必须把 `server.mjs` 部署到一个可从外网访问的 Node 服务。公网部署时将 `F1_HOST=0.0.0.0`，并用平台分配的域名访问 `/api/live-timing/ingest`；`F1_PORT` 可由平台端口环境变量覆盖。建议同时设置随机的 `LIVE_TIMING_BRIDGE_TOKEN`，不要使用默认令牌。
 
-公网部署还应在平台的环境变量中设置 `F1_AUTH_USERNAME` 和 `F1_AUTH_PASSWORD`，不要把登录凭据写入仓库。
+公网部署还应在平台的环境变量中设置 `F1_AUTH_USERNAME` 和 `F1_AUTH_PASSWORD`，不要使用本地默认登录密码；云平台通常会自动提供 `PORT`，服务会优先读取它。
+
+Render 环境会自动禁用 OpenF1 和 FastF1 会话磁盘缓存，每次选择节点都从对应数据源重新获取。FastF1 原始文件只在单次转换期间临时存在，完成或失败后都会清理；本地 Node 服务仍保留原有缓存行为。
+
+## GitHub Pages
 
 仓库内的 `.github/workflows/pages.yml` 会发布仓库根目录。根目录静态入口与 `site/` 本地服务入口保持同步；发布后的页面在浏览器中直接读取数据源，并将每个会话的完整响应保存到 IndexedDB；点击“同步数据源”会强制重新拉取，失败时不会覆盖已有缓存。
 

@@ -1,6 +1,5 @@
-work/openf1_cache/
-work/openf1_netherlands_2026/
-work/quarantine/
+work/
+__pycache__/
 outputs/
 .DS_Store
 npm-debug.log*

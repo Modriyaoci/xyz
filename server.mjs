@@ -11,18 +11,26 @@ import { collectSessionFeedRows, completeSessionResultRows } from "./session-fee
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 // Cloud hosts provide PORT; keep F1_PORT for local and existing deployments.
-const port = Number(process.env.PORT || process.env.F1_PORT || 4173);
+const port = Number(process.env.PORT || process.env.F1_PORT || 4174);
 const host = String(process.env.F1_HOST || "127.0.0.1");
+const renderNoSessionCache = process.env.RENDER === "true" || Boolean(process.env.RENDER_SERVICE_ID);
 const apiBase = "https://api.openf1.org/v1";
 const upstreamTimeoutMs = 30000;
 const upstreamRequestIntervalMs = 400;
 let nextUpstreamRequestAt = 0;
 const cacheDir = path.join(root, "work", "openf1_cache");
+const fastF1SessionScript = path.join(root, "scripts", "fastf1-session.py");
+const fastF1CacheDir = path.join(root, "work", "fastf1_cache");
+const fastF1SessionCacheDir = path.join(root, "work", "fastf1_session_cache");
+const fastF1CacheVersion = "20260902-fastf1-source-v4";
+const fastF1TimeoutMs = Number(process.env.FASTF1_TIMEOUT_MS || 180000);
+const fastF1Enabled = process.env.FASTF1_ENABLED !== "0" && process.env.FASTF1_FALLBACK !== "0";
 const meetingCatalogFile = path.join(root, "meetings-all.json");
+const fastF1MeetingCatalogFile = path.join(root, "fastf1-meetings.json");
 const localDutchDir = path.join(root, "work", "openf1_netherlands_2026");
 const localMapped = path.join(root, "outputs", "openf1-mapped-result", "netherlands_2026_race_openf1_mapped.json");
 const currentStandingsSeason = 2026;
-const standingsSeasons = new Set([2023, 2024, 2025, currentStandingsSeason]);
+const standingsSeasons = new Set([2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, currentStandingsSeason]);
 const standingsSeason = (value) => standingsSeasons.has(Number(value)) ? Number(value) : currentStandingsSeason;
 const officialStandingsFile = (year = currentStandingsSeason) => path.join(root, `official-standings-${standingsSeason(year)}.json`);
 const execFileAsync = promisify(execFile);
@@ -30,17 +38,20 @@ const authUsername = String(process.env.F1_AUTH_USERNAME || "nana");
 const authSalt = "f1-openf1-local-auth";
 const authPassword = String(process.env.F1_AUTH_PASSWORD || "123456");
 const authPasswordHash = crypto.scryptSync(authPassword, authSalt, 32);
+const liveBridgeToken = String(process.env.LIVE_TIMING_BRIDGE_TOKEN || crypto.createHash("sha256").update(authPasswordHash).digest("hex"));
 const authSessions = new Map();
 const sessionSyncInFlight = new Map();
 const sessionMaxAgeMs = 8 * 60 * 60 * 1000;
 const feedProbeAt = new Map();
 const feedProbeIntervalMs = 5 * 60 * 1000;
-const liveBridgeToken = String(process.env.LIVE_TIMING_BRIDGE_TOKEN || crypto.createHash("sha256").update(authPasswordHash).digest("hex"));
+const fastF1SessionInFlight = new Map();
+let fastF1MeetingCatalogPromise = null;
 let liveBridgeState = null;
 let liveBridgeSequence = 0;
 const liveBridgeClients = new Set();
 
 await fs.mkdir(cacheDir, { recursive: true });
+await fs.mkdir(fastF1SessionCacheDir, { recursive: true });
 
 // OpenF1 meeting keys are stable, while session keys are discovered from the
 // sessions endpoint. Keep the season directory usable even when the API is
@@ -113,15 +124,21 @@ function liveBridgeBaseUrl(req) {
   return `${protocol}://${req.headers.host || "127.0.0.1:4174"}`;
 }
 
+function liveBridgePayload() {
+  if (!liveBridgeState) return null;
+  return liveBridgeState;
+}
+
 function writeLiveBridgeEvent(res, event, value) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(value)}\n\n`);
 }
 
 function broadcastLiveBridgeState() {
-  if (!liveBridgeState) return;
+  const value = liveBridgePayload();
+  if (!value) return;
   for (const client of liveBridgeClients) {
     try {
-      writeLiveBridgeEvent(client.res, "state", liveBridgeState);
+      writeLiveBridgeEvent(client.res, "state", value);
     } catch {
       clearInterval(client.heartbeat);
       liveBridgeClients.delete(client);
@@ -156,39 +173,64 @@ function isPlainObject(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
 }
 
+function isBackendLiveSnapshot(value) {
+  return Boolean(isPlainObject(value) && (
+    Array.isArray(value.competitors)
+    || isPlainObject(value.winner)
+    || isPlainObject(value.fields)
+    || Array.isArray(value.messages)
+    || isPlainObject(value.extra)
+  ));
+}
+
+function canonicalBackendCompetitor(row) {
+  if (!isPlainObject(row)) return row;
+  const { id, team_id: teamId, pitstop, ...canonical } = row;
+  const driverId = row._id ?? id;
+  const teamuid = row.teamuid ?? teamId;
+  const pitstopCount = row.pitstop_count ?? pitstop;
+  if (driverId !== null && driverId !== undefined && driverId !== "") canonical._id = driverId;
+  if (teamuid !== null && teamuid !== undefined && teamuid !== "") canonical.teamuid = teamuid;
+  if (pitstopCount !== null && pitstopCount !== undefined && pitstopCount !== "") canonical.pitstop_count = pitstopCount;
+  return canonical;
+}
+
+function canonicalBackendSnapshot(value) {
+  const data = { ...value };
+  if (isPlainObject(data.winner)) data.winner = canonicalBackendCompetitor(data.winner);
+  if (Array.isArray(data.competitors)) data.competitors = data.competitors.map(canonicalBackendCompetitor);
+  delete data.mapped;
+  return data;
+}
+
+function livePayloadKind(value) {
+  const explicit = value?.live_bridge?.payload_kind;
+  if (explicit) return explicit;
+  if (isBackendLiveSnapshot(value) && !value?.mapped) return "backend";
+  if (value?.mapped || value?.session || value?.meeting) return "session";
+  return "generic";
+}
+
 function liveCompetitorKey(row) {
-  const id = row?.id ?? row?._id;
+  const id = row?._id ?? row?.id;
   if (id !== null && id !== undefined && id !== "") return `id:${id}`;
   const car = row?.car_number;
   return car === null || car === undefined || car === "" ? null : `car:${car}`;
 }
 
 function mergeLiveCompetitors(previous, incoming) {
-  const rows = (Array.isArray(previous) ? previous : []).slice();
-  const idIndexes = new Map();
-  const carIndexes = new Map();
-  const indexRow = (row, index) => {
-    const id = row?.id ?? row?._id;
-    const car = row?.car_number;
-    if (id !== null && id !== undefined && id !== "") idIndexes.set(String(id), index);
-    if (car !== null && car !== undefined && car !== "") carIndexes.set(String(car), index);
-  };
-  rows.forEach(indexRow);
-  for (const row of Array.isArray(incoming) ? incoming : []) {
-    const id = row?.id ?? row?._id;
-    const car = row?.car_number;
-    const index = id !== null && id !== undefined && id !== ""
-      ? idIndexes.get(String(id))
-      : car !== null && car !== undefined && car !== "" ? carIndexes.get(String(car)) : undefined;
-    if (index === undefined) {
-      rows.push(row);
-      indexRow(row, rows.length - 1);
+  const merged = new Map();
+  const withoutKey = [];
+  for (const row of [...(Array.isArray(previous) ? previous : []), ...(Array.isArray(incoming) ? incoming : [])]) {
+    const key = liveCompetitorKey(row);
+    if (!key) {
+      withoutKey.push(row);
       continue;
     }
-    rows[index] = isPlainObject(row) ? mergeLiveValue(rows[index], row) : row;
-    indexRow(rows[index], index);
+    const existing = merged.get(key);
+    merged.set(key, existing && isPlainObject(row) ? mergeLiveValue(existing, row) : row);
   }
-  return rows.sort((left, right) => {
+  return [...merged.values(), ...withoutKey].sort((left, right) => {
     const leftPosition = Number(left?.position);
     const rightPosition = Number(right?.position);
     return (Number.isFinite(leftPosition) ? leftPosition : 999) - (Number.isFinite(rightPosition) ? rightPosition : 999)
@@ -231,6 +273,9 @@ function mergeLiveBridgeSnapshot(previous, incoming) {
   if (previousId !== null && previousId !== undefined && incomingId !== null && incomingId !== undefined && String(previousId) !== String(incomingId)) {
     return incoming;
   }
+  const previousKind = livePayloadKind(previous);
+  const incomingKind = livePayloadKind(incoming);
+  if (previousKind !== "generic" && incomingKind !== "generic" && previousKind !== incomingKind) return incoming;
   return mergeLiveValue(previous, incoming);
 }
 
@@ -346,7 +391,9 @@ async function readLiveBridgeBody(req) {
 
 async function ingestLiveBridgeState(req, res) {
   const contentLength = Number(req.headers["content-length"]);
-  if (Number.isFinite(contentLength) && contentLength > 8 * 1024 * 1024) return json(res, 413, { error: "实时快照超过 8 MB 限制" });
+  if (Number.isFinite(contentLength) && contentLength > 8 * 1024 * 1024) {
+    return json(res, 413, { error: "实时快照超过 8 MB 限制" });
+  }
   let body;
   try {
     body = await readLiveBridgeBody(req);
@@ -354,14 +401,21 @@ async function ingestLiveBridgeState(req, res) {
     return json(res, error.status || 400, { error: error.message || "实时数据文件格式无效" });
   }
   const incoming = body?.data && typeof body.data === "object" && !Array.isArray(body.data) ? body.data : body;
-  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) return json(res, 400, { error: "请求体必须是实时快照 JSON" });
+  if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
+    return json(res, 400, { error: "请求体必须是实时快照 JSON" });
+  }
   const receivedAt = new Date().toISOString();
-  const data = { ...incoming, live: true, fetched_at: receivedAt };
+  let data = { ...incoming, live: true, fetched_at: receivedAt };
   const legacySessionEnvelope = Boolean(data.session || data.meeting || data.mapped)
     || sessionArrayFields.some((field) => Array.isArray(data[field]));
+  let payloadKind = "generic";
   if (legacySessionEnvelope) {
     normaliseSessionData(data);
     data.mapped = mapOpenF1ToBackend(data, data.mapped);
+    payloadKind = "session";
+  } else if (isBackendLiveSnapshot(data)) {
+    data = canonicalBackendSnapshot(data);
+    payloadKind = "backend";
   }
   liveBridgeSequence += 1;
   liveBridgeState = mergeLiveBridgeSnapshot(liveBridgeState, {
@@ -369,10 +423,21 @@ async function ingestLiveBridgeState(req, res) {
     source_name: "nana",
     data_source: "external-live-timing",
     source_session: "external-live-timing",
-    live_bridge: { sequence: liveBridgeSequence, received_at: receivedAt, source: "external-live-timing" },
+    live_bridge: {
+      sequence: liveBridgeSequence,
+      received_at: receivedAt,
+      source: "external-live-timing",
+      payload_kind: payloadKind,
+    },
   });
   broadcastLiveBridgeState();
-  return json(res, 200, { ok: true, source_name: "nana", source: "external-live-timing", sequence: liveBridgeSequence, received_at: receivedAt });
+  return json(res, 200, {
+    ok: true,
+    source_name: "nana",
+    source: "external-live-timing",
+    sequence: liveBridgeSequence,
+    received_at: receivedAt,
+  });
 }
 
 function liveBridgeEntry(req) {
@@ -383,9 +448,20 @@ function liveBridgeEntry(req) {
     source_name: "nana",
     source: "external-live-timing",
     memory_only: true,
-    ingest: { method: "POST", url: `${base}/api/live-timing/ingest?token=${token}`, header: "X-Live-Timing-Token" },
-    state: { method: "GET", url: `${base}/api/live-timing?token=${token}` },
-    stream: { method: "GET", url: `${base}/api/live-timing/stream?token=${token}`, content_type: "text/event-stream" },
+    ingest: {
+      method: "POST",
+      url: `${base}/api/live-timing/ingest?token=${token}`,
+      header: "X-Live-Timing-Token",
+    },
+    state: {
+      method: "GET",
+      url: `${base}/api/live-timing?token=${token}`,
+    },
+    stream: {
+      method: "GET",
+      url: `${base}/api/live-timing/stream?token=${token}`,
+      content_type: "text/event-stream",
+    },
     sequence: liveBridgeSequence,
     received_at: liveBridgeState?.live_bridge?.received_at || null,
   };
@@ -416,7 +492,8 @@ async function catalogSessions(meetingKey) {
   return Array.isArray(meeting?.sessions) ? meeting.sessions : [];
 }
 
-async function seasons() {
+async function seasons(source = "openf1") {
+  if (normaliseDataSource(source) === "fastf1") return { data: await fastF1Seasons(), source: "fastf1-catalog" };
   const payload = await meetingCatalog();
   const listed = Array.isArray(payload.seasons) ? payload.seasons : [];
   const derived = (Array.isArray(payload.meetings) ? payload.meetings : []).map((meeting) => meeting.year);
@@ -492,6 +569,130 @@ async function fetchOpenF1(endpoint) {
   throw new Error(`数据源请求失败 for ${endpoint}`);
 }
 
+async function resolveFastF1Python() {
+  if (process.env.FASTF1_PYTHON) return process.env.FASTF1_PYTHON;
+  const bundled = path.join(root, "work", "fastf1-venv", process.platform === "win32" ? "Scripts" : "bin", process.platform === "win32" ? "python.exe" : "python");
+  return await exists(bundled) ? bundled : "python3";
+}
+
+function normaliseDataSource(value) {
+  return String(value || "openf1").toLowerCase() === "fastf1" ? "fastf1" : "openf1";
+}
+
+async function fastF1Catalog() {
+  if (!fastF1MeetingCatalogPromise) {
+    fastF1MeetingCatalogPromise = readJson(fastF1MeetingCatalogFile).catch(() => ({ seasons: [], meetings: [] }));
+  }
+  return fastF1MeetingCatalogPromise;
+}
+
+async function fastF1Meetings(year) {
+  const payload = await fastF1Catalog();
+  return (Array.isArray(payload.meetings) ? payload.meetings : [])
+    .filter((meeting) => Number(meeting.year) === Number(year));
+}
+
+async function fastF1Sessions(meetingKey) {
+  const payload = await fastF1Catalog();
+  const meeting = (Array.isArray(payload.meetings) ? payload.meetings : [])
+    .find((item) => Number(item.meeting_key) === Number(meetingKey));
+  return Array.isArray(meeting?.sessions) ? meeting.sessions : [];
+}
+
+async function fastF1Seasons() {
+  const payload = await fastF1Catalog();
+  const listed = Array.isArray(payload.seasons) ? payload.seasons : [];
+  const derived = (Array.isArray(payload.meetings) ? payload.meetings : []).map((meeting) => meeting.year);
+  return [...new Set([...listed, ...derived].map(Number).filter(Number.isInteger))].sort((a, b) => b - a);
+}
+
+async function fetchFastF1Session(session, meetingKey, sessionKey) {
+  if (!fastF1Enabled) throw new Error("FastF1 数据源已关闭（FASTF1_ENABLED=0）");
+  const year = Number(session?.year);
+  const event = String(session?.meeting_name || session?.country_name || "").trim();
+  if (!Number.isInteger(year) || !event) throw new Error("缺少 FastF1 所需的赛季或分站信息");
+  const python = await resolveFastF1Python();
+  const transientCacheDir = renderNoSessionCache && !process.env.FASTF1_CACHE_DIR
+    ? await fs.mkdtemp(path.join(root, "work", "fastf1-run-"))
+    : null;
+  const env = {
+    ...process.env,
+    FASTF1_CACHE_DIR: process.env.FASTF1_CACHE_DIR || transientCacheDir || fastF1CacheDir,
+  };
+  const args = [
+    fastF1SessionScript,
+    "--year", String(year),
+    "--event", event,
+    "--session-name", String(session.session_name || "Race"),
+    "--fastf1-session-name", String(session.fastf1_session_name || session.session_name || "Race"),
+    "--session-code", String(session.fastf1_session_code || ""),
+    "--meeting-key", String(meetingKey),
+    "--session-key", String(sessionKey),
+  ];
+  let stdout;
+  try {
+    ({ stdout } = await execFileAsync(python, args, {
+      cwd: root,
+      env,
+      timeout: fastF1TimeoutMs,
+      maxBuffer: 32 * 1024 * 1024,
+    }));
+  } finally {
+    if (transientCacheDir) await fs.rm(transientCacheDir, { recursive: true, force: true }).catch(() => {});
+  }
+  let result;
+  try { result = JSON.parse(String(stdout || "").trim()); } catch { throw new Error("FastF1 返回格式无效"); }
+  if (!result?.ok || !result.session || !Array.isArray(result.drivers)) throw new Error(result?.error || "FastF1 未返回完整会话数据");
+  return result;
+}
+
+async function fastF1SessionData(meetingKey, sessionKey, { force = false } = {}) {
+  const requestedMeetingKey = Number(meetingKey);
+  const requestedSessionKey = Number(sessionKey);
+  if (!Number.isInteger(requestedMeetingKey) || !Number.isInteger(requestedSessionKey)) {
+    throw new Error("请选择有效的 FastF1 分站和节点");
+  }
+  const cacheFile = path.join(fastF1SessionCacheDir, `session_${requestedSessionKey}.json`);
+  if (!renderNoSessionCache && await exists(cacheFile)) {
+    try {
+      const cached = normaliseSessionData(await readJson(cacheFile));
+      const cacheSessionEnded = Date.parse(cached.session?.date_end || "") < Date.now();
+      if (cached.cache_version === fastF1CacheVersion && sessionCacheHealthy(cached, requestedSessionKey)
+        && (!force || cacheSessionEnded)) {
+        cached.data_source = "fastf1";
+        cached.cache_version = fastF1CacheVersion;
+        cached.mapped = mapOpenF1ToBackend(cached, null);
+        await writeJsonAtomic(cacheFile, cached);
+        return { data: cached, source: "fastf1-cache" };
+      }
+    } catch { /* regenerate an incomplete or corrupt FastF1 snapshot */ }
+  }
+  const sessionList = await fastF1Sessions(requestedMeetingKey);
+  const session = sessionList.find((row) => Number(row.session_key) === requestedSessionKey);
+  if (!session) throw new Error("找不到对应 FastF1 会话");
+  let task = fastF1SessionInFlight.get(requestedSessionKey);
+  if (!task || force) {
+    task = fetchFastF1Session(session, requestedMeetingKey, requestedSessionKey);
+    fastF1SessionInFlight.set(requestedSessionKey, task);
+    task.finally(() => {
+      if (fastF1SessionInFlight.get(requestedSessionKey) === task) fastF1SessionInFlight.delete(requestedSessionKey);
+    }).catch(() => {});
+  }
+  const result = await task;
+  const data = {
+    ...result,
+    data_source: "fastf1",
+    source_session: "fastf1",
+    cache_version: fastF1CacheVersion,
+  };
+  normaliseSessionData(data);
+  data.mapped = mapOpenF1ToBackend(data, null);
+  if (!sessionCacheHealthy(data, requestedSessionKey)) throw new Error("FastF1 返回的数据不完整，缓存未更新");
+  data.synced_at = new Date().toISOString();
+  if (!renderNoSessionCache) await writeJsonAtomic(cacheFile, data);
+  return { data, source: "fastf1", cache: !renderNoSessionCache };
+}
+
 async function cachedJson(file, endpoint, fallback, { preferFallback = false } = {}) {
   if (await exists(file)) return { data: await readJson(file), source: "cache" };
   if (preferFallback && fallback) {
@@ -508,7 +709,10 @@ async function cachedJson(file, endpoint, fallback, { preferFallback = false } =
   }
 }
 
-async function meetings(year) {
+async function meetings(year, source = "openf1") {
+  if (normaliseDataSource(source) === "fastf1") {
+    return { data: await fastF1Meetings(year), source: "fastf1-catalog" };
+  }
   const localFile = path.join(cacheDir, `meetings_${year}.json`);
   const catalogRows = await catalogMeetings(year);
   const result = catalogRows.length
@@ -528,7 +732,11 @@ async function meetings(year) {
   return result;
 }
 
-async function sessions(meetingKey) {
+async function sessions(meetingKey, source = "openf1") {
+  if (normaliseDataSource(source) === "fastf1") {
+    const data = await fastF1Sessions(meetingKey);
+    return { data, source: "fastf1-catalog" };
+  }
   const key = Number(meetingKey);
   const cacheFile = path.join(cacheDir, `sessions_${key}.json`);
   if (await exists(cacheFile)) {
@@ -756,34 +964,43 @@ async function fetchSessionFeeds(sessionKey, cached, sessionName) {
   return { values, failures, unavailable, retained };
 }
 
-async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
+async function sessionData(meetingKey, sessionKey, { force = false, source = "openf1" } = {}) {
+  if (normaliseDataSource(source) === "fastf1") return fastF1SessionData(meetingKey, sessionKey, { force });
   const requestedSessionKey = Number(sessionKey);
   if (!Number.isInteger(requestedSessionKey)) throw new Error("该节点尚未获得数据源会话键，请在接口可用时重新加载分站目录");
   const cacheFile = path.join(cacheDir, `session_${requestedSessionKey}.json`);
   let previousCache = null;
-  if (await exists(cacheFile)) {
+  if (!renderNoSessionCache && await exists(cacheFile)) {
     try { previousCache = await readJson(cacheFile); } catch { previousCache = null; }
   }
-  if (!force && await exists(cacheFile)) {
+  if (!renderNoSessionCache && !force && await exists(cacheFile)) {
     const data = normaliseSessionData(previousCache);
     if (sessionCacheHealthy(data, requestedSessionKey)) {
       await refreshCachedFeed(data, requestedSessionKey, "weather");
-      if (["Race", "Sprint"].includes(data.session?.session_name)) await refreshCachedFeed(data, requestedSessionKey, "pit");
+      // Old caches may contain the former FastF1 pit fallback. OpenF1 mode is
+      // source-isolated, so discard that foreign feed before refreshing it.
+      if (data.pit_source === "fastf1") {
+        data.pit = [];
+        delete data.pit_source;
+      }
+      await refreshCachedFeed(data, requestedSessionKey, "pit");
       await refreshCachedFeed(data, requestedSessionKey, "race_control");
       for (const field of retryWarningFields(data)) await refreshCachedFeed(data, requestedSessionKey, field);
       await mergeDriverRoster(meetingKey, data);
       data.mapped = mapOpenF1ToBackend(data, data.mapped);
-      data.cache_version = "20260828-backend-fields-v5";
+      data.data_source = "openf1";
+      data.cache_version = "20260902-independent-sources-v1";
+      if (Array.isArray(data.sync_warnings) && !data.sync_warnings.length) delete data.sync_warnings;
       await writeJsonAtomic(cacheFile, data);
       return { data, source: "cache" };
     }
   }
-  if (!force) {
+  if (!renderNoSessionCache && !force) {
     const local = await localSessionData(meetingKey, sessionKey);
     if (local) {
       const data = normaliseSessionData(await mergeDriverRoster(meetingKey, local));
       data.mapped = mapOpenF1ToBackend(data, data.mapped);
-      data.cache_version = "20260828-backend-fields-v5";
+      data.cache_version = "20260902-independent-sources-v1";
       await writeJsonAtomic(cacheFile, data);
       return { data, source: "local" };
     }
@@ -800,7 +1017,7 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
   }
   if (!session) throw new Error("找不到对应数据源会话");
   let mapped = Number(previousCache?.session?.session_key) === requestedSessionKey ? previousCache?.mapped || null : null;
-  if (!mapped && Number(meetingKey) === 1292 && requestedSessionKey === 11353 && await exists(localMapped)) {
+  if (!renderNoSessionCache && !mapped && Number(meetingKey) === 1292 && requestedSessionKey === 11353 && await exists(localMapped)) {
     try { mapped = await readJson(localMapped); } catch { mapped = null; }
   }
   const data = { meeting: { meeting_key: Number(meetingKey), country_name: session.country_name, location: session.location, meeting_name: session.meeting_name || session.country_name }, session, mapped };
@@ -813,10 +1030,11 @@ async function sessionData(meetingKey, sessionKey, { force = false } = {}) {
   if (!sessionCacheHealthy(data, requestedSessionKey)) throw new Error("同步返回的数据不完整，缓存未更新");
   const syncWarnings = [...feeds.unavailable.map((field) => `${field}: unavailable`), ...feeds.retained];
   if (syncWarnings.length) data.sync_warnings = syncWarnings;
-  data.cache_version = "20260828-backend-fields-v5";
+  data.data_source = "openf1";
+  data.cache_version = "20260902-independent-sources-v1";
   data.synced_at = new Date().toISOString();
-  await writeJsonAtomic(cacheFile, data);
-  return { data, source: "openf1" };
+  if (!renderNoSessionCache) await writeJsonAtomic(cacheFile, data);
+  return { data, source: "openf1", cache: !renderNoSessionCache };
 }
 
 async function liveSessionData(meetingKey, sessionKey) {
@@ -875,26 +1093,33 @@ const server = http.createServer(async (req, res) => {
       if (!authenticated(req)) return json(res, 401, { error: "需要登录后获取实时入口" });
       return json(res, 200, liveBridgeEntry(req));
     }
-    if (liveBridgePaths.has(url.pathname) && !liveBridgeAuthorised(req, url)) return json(res, 401, { error: "实时入口令牌无效或已缺少" });
-    if ((url.pathname === "/api/live-timing/ingest" || url.pathname === "/api/livetiming/ingest") && req.method === "POST") return ingestLiveBridgeState(req, res);
-    if ((url.pathname === "/api/live-timing/stream" || url.pathname === "/api/livetiming/stream") && req.method === "GET") return openLiveBridgeStream(req, res);
+    if (liveBridgePaths.has(url.pathname) && !liveBridgeAuthorised(req, url)) {
+      return json(res, 401, { error: "实时入口令牌无效或已缺少" });
+    }
+    if ((url.pathname === "/api/live-timing/ingest" || url.pathname === "/api/livetiming/ingest") && req.method === "POST") {
+      return ingestLiveBridgeState(req, res);
+    }
+    if ((url.pathname === "/api/live-timing/stream" || url.pathname === "/api/livetiming/stream") && req.method === "GET") {
+      return openLiveBridgeStream(req, res);
+    }
     if ((url.pathname === "/api/live-timing" || url.pathname === "/api/livetiming") && req.method === "GET") {
-      return json(res, 200, { data: liveBridgeState, source_name: "nana", source: "external-live-timing", live: Boolean(liveBridgeState), sequence: liveBridgeSequence });
+      return json(res, 200, { data: liveBridgePayload(), source: "external-live-timing", live: Boolean(liveBridgeState), sequence: liveBridgeSequence });
     }
     if (url.pathname.startsWith("/api/") && !authenticated(req)) return json(res, 401, { error: "需要登录" });
-    if (url.pathname === "/api/seasons") return json(res, 200, await seasons());
-    if (url.pathname === "/api/meetings") return json(res, 200, await meetings(url.searchParams.get("year") || "2026"));
-    if (url.pathname === "/api/sessions") return json(res, 200, await sessions(url.searchParams.get("meeting_key")));
+    if (url.pathname === "/api/seasons") return json(res, 200, await seasons(url.searchParams.get("source")));
+    if (url.pathname === "/api/meetings") return json(res, 200, await meetings(url.searchParams.get("year") || "2026", url.searchParams.get("source")));
+    if (url.pathname === "/api/sessions") return json(res, 200, await sessions(url.searchParams.get("meeting_key"), url.searchParams.get("source")));
     if (url.pathname === "/api/standings" && req.method === "GET") return json(res, 200, await officialStandings(url.searchParams.get("year")));
     if (url.pathname === "/api/sync-standings" && req.method === "POST") return json(res, 200, await syncOfficialStandings());
     if (url.pathname === "/api/live-session-data" && req.method === "GET") return json(res, 200, await liveSessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")));
-    if (url.pathname === "/api/session-data") return json(res, 200, await sessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")));
+    if (url.pathname === "/api/session-data") return json(res, 200, await sessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"), { source: url.searchParams.get("source") }));
     if (url.pathname === "/api/sync-session-data" && req.method === "POST") {
       const body = await readBody(req);
-      const syncKey = `${Number(body.meeting_key)}:${Number(body.session_key)}`;
+      const source = normaliseDataSource(body.source);
+      const syncKey = `${source}:${Number(body.meeting_key)}:${Number(body.session_key)}`;
       let task = sessionSyncInFlight.get(syncKey);
       if (!task) {
-        task = sessionData(body.meeting_key, body.session_key, { force: true });
+        task = sessionData(body.meeting_key, body.session_key, { force: true, source });
         sessionSyncInFlight.set(syncKey, task);
         task.finally(() => {
           if (sessionSyncInFlight.get(syncKey) === task) sessionSyncInFlight.delete(syncKey);

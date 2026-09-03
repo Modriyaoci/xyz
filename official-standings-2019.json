@@ -1,0 +1,260 @@
+{
+  "season": 2019,
+  "captured_at": "2026-09-02T04:54:07.875Z",
+  "sync_status": {
+    "status": "success",
+    "trigger": "historical",
+    "attempted_at": "2026-09-02T04:54:07.875Z",
+    "last_success_at": "2026-09-02T04:54:07.875Z",
+    "last_automatic_at": null,
+    "last_manual_at": null
+  },
+  "source": {
+    "drivers": "https://www.formula1.com/en/results/2019/drivers",
+    "teams": "https://www.formula1.com/en/results/2019/team"
+  },
+  "drivers": [
+    {
+      "position": 1,
+      "name": "Lewis Hamilton",
+      "code": "HAM",
+      "nationality": "GBR",
+      "team": "Mercedes",
+      "points": 413,
+      "url": "https://www.formula1.com/en/results/2019/drivers/LEWHAM01/lewis-hamilton"
+    },
+    {
+      "position": 2,
+      "name": "Valtteri Bottas",
+      "code": "BOT",
+      "nationality": "FIN",
+      "team": "Mercedes",
+      "points": 326,
+      "url": "https://www.formula1.com/en/results/2019/drivers/VALBOT01/valtteri-bottas"
+    },
+    {
+      "position": 3,
+      "name": "Max Verstappen",
+      "code": "VER",
+      "nationality": "NED",
+      "team": "Red Bull Racing Honda",
+      "points": 278,
+      "url": "https://www.formula1.com/en/results/2019/drivers/MAXVER01/max-verstappen"
+    },
+    {
+      "position": 4,
+      "name": "Charles Leclerc",
+      "code": "LEC",
+      "nationality": "MON",
+      "team": "Ferrari",
+      "points": 264,
+      "url": "https://www.formula1.com/en/results/2019/drivers/CHALEC01/charles-leclerc"
+    },
+    {
+      "position": 5,
+      "name": "Sebastian Vettel",
+      "code": "VET",
+      "nationality": "GER",
+      "team": "Ferrari",
+      "points": 240,
+      "url": "https://www.formula1.com/en/results/2019/drivers/SEBVET01/sebastian-vettel"
+    },
+    {
+      "position": 6,
+      "name": "Carlos Sainz",
+      "code": "SAI",
+      "nationality": "ESP",
+      "team": "McLaren Renault",
+      "points": 96,
+      "url": "https://www.formula1.com/en/results/2019/drivers/CARSAI01/carlos-sainz"
+    },
+    {
+      "position": 7,
+      "name": "Pierre Gasly",
+      "code": "GAS",
+      "nationality": "FRA",
+      "team": "Scuderia Toro Rosso Honda",
+      "points": 95,
+      "url": "https://www.formula1.com/en/results/2019/drivers/PIEGAS01/pierre-gasly"
+    },
+    {
+      "position": 8,
+      "name": "Alexander Albon",
+      "code": "ALB",
+      "nationality": "THA",
+      "team": "Red Bull Racing Honda",
+      "points": 92,
+      "url": "https://www.formula1.com/en/results/2019/drivers/ALEALB01/alexander-albon"
+    },
+    {
+      "position": 9,
+      "name": "Daniel Ricciardo",
+      "code": "RIC",
+      "nationality": "AUS",
+      "team": "Renault",
+      "points": 54,
+      "url": "https://www.formula1.com/en/results/2019/drivers/DANRIC01/daniel-ricciardo"
+    },
+    {
+      "position": 10,
+      "name": "Sergio Perez",
+      "code": "PER",
+      "nationality": "MEX",
+      "team": "Racing Point BWT Mercedes",
+      "points": 52,
+      "url": "https://www.formula1.com/en/results/2019/drivers/SERPER01/sergio-perez"
+    },
+    {
+      "position": 11,
+      "name": "Lando Norris",
+      "code": "NOR",
+      "nationality": "GBR",
+      "team": "McLaren Renault",
+      "points": 49,
+      "url": "https://www.formula1.com/en/results/2019/drivers/LANNOR01/lando-norris"
+    },
+    {
+      "position": 12,
+      "name": "Kimi Räikkönen",
+      "code": "RAI",
+      "nationality": "FIN",
+      "team": "Alfa Romeo Racing Ferrari",
+      "points": 43,
+      "url": "https://www.formula1.com/en/results/2019/drivers/KIMRAI01/kimi-r-ikk-nen"
+    },
+    {
+      "position": 13,
+      "name": "Daniil Kvyat",
+      "code": "KVY",
+      "nationality": "RUS",
+      "team": "Scuderia Toro Rosso Honda",
+      "points": 37,
+      "url": "https://www.formula1.com/en/results/2019/drivers/DANKVY01/daniil-kvyat"
+    },
+    {
+      "position": 14,
+      "name": "Nico Hulkenberg",
+      "code": "HUL",
+      "nationality": "GER",
+      "team": "Renault",
+      "points": 37,
+      "url": "https://www.formula1.com/en/results/2019/drivers/NICHUL01/nico-hulkenberg"
+    },
+    {
+      "position": 15,
+      "name": "Lance Stroll",
+      "code": "STR",
+      "nationality": "CAN",
+      "team": "Racing Point BWT Mercedes",
+      "points": 21,
+      "url": "https://www.formula1.com/en/results/2019/drivers/LANSTR01/lance-stroll"
+    },
+    {
+      "position": 16,
+      "name": "Kevin Magnussen",
+      "code": "MAG",
+      "nationality": "DEN",
+      "team": "Haas Ferrari",
+      "points": 20,
+      "url": "https://www.formula1.com/en/results/2019/drivers/KEVMAG01/kevin-magnussen"
+    },
+    {
+      "position": 17,
+      "name": "Antonio Giovinazzi",
+      "code": "GIO",
+      "nationality": "ITA",
+      "team": "Alfa Romeo Racing Ferrari",
+      "points": 14,
+      "url": "https://www.formula1.com/en/results/2019/drivers/ANTGIO01/antonio-giovinazzi"
+    },
+    {
+      "position": 18,
+      "name": "Romain Grosjean",
+      "code": "GRO",
+      "nationality": "FRA",
+      "team": "Haas Ferrari",
+      "points": 8,
+      "url": "https://www.formula1.com/en/results/2019/drivers/ROMGRO01/romain-grosjean"
+    },
+    {
+      "position": 19,
+      "name": "Robert Kubica",
+      "code": "KUB",
+      "nationality": "POL",
+      "team": "Williams Mercedes",
+      "points": 1,
+      "url": "https://www.formula1.com/en/results/2019/drivers/ROBKUB01/robert-kubica"
+    },
+    {
+      "position": 20,
+      "name": "George Russell",
+      "code": "RUS",
+      "nationality": "GBR",
+      "team": "Williams Mercedes",
+      "points": 0,
+      "url": "https://www.formula1.com/en/results/2019/drivers/GEORUS01/george-russell"
+    }
+  ],
+  "teams": [
+    {
+      "position": 1,
+      "name": "Mercedes",
+      "points": 739,
+      "url": "https://www.formula1.com/en/results/2019/team/Mercedes"
+    },
+    {
+      "position": 2,
+      "name": "Ferrari",
+      "points": 504,
+      "url": "https://www.formula1.com/en/results/2019/team/Ferrari"
+    },
+    {
+      "position": 3,
+      "name": "Red Bull Racing Honda",
+      "points": 417,
+      "url": "https://www.formula1.com/en/results/2019/team/Red-Bull-Racing-Honda"
+    },
+    {
+      "position": 4,
+      "name": "McLaren Renault",
+      "points": 145,
+      "url": "https://www.formula1.com/en/results/2019/team/McLaren-Renault"
+    },
+    {
+      "position": 5,
+      "name": "Renault",
+      "points": 91,
+      "url": "https://www.formula1.com/en/results/2019/team/Renault"
+    },
+    {
+      "position": 6,
+      "name": "Scuderia Toro Rosso Honda",
+      "points": 85,
+      "url": "https://www.formula1.com/en/results/2019/team/Scuderia-Toro-Rosso-Honda"
+    },
+    {
+      "position": 7,
+      "name": "Racing Point BWT Mercedes",
+      "points": 73,
+      "url": "https://www.formula1.com/en/results/2019/team/Racing-Point-BWT-Mercedes"
+    },
+    {
+      "position": 8,
+      "name": "Alfa Romeo Racing Ferrari",
+      "points": 57,
+      "url": "https://www.formula1.com/en/results/2019/team/Alfa-Romeo-Racing-Ferrari"
+    },
+    {
+      "position": 9,
+      "name": "Haas Ferrari",
+      "points": 28,
+      "url": "https://www.formula1.com/en/results/2019/team/Haas-Ferrari"
+    },
+    {
+      "position": 10,
+      "name": "Williams Mercedes",
+      "points": 1,
+      "url": "https://www.formula1.com/en/results/2019/team/Williams-Mercedes"
+    }
+  ]
+}
