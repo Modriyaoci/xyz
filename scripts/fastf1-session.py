@@ -4,11 +4,16 @@
 from __future__ import annotations
 
 import argparse
+import ipaddress
 import json
 import math
 import os
+import secrets
 import re
+import socket
+import struct
 import sys
+import time
 from datetime import timedelta
 from pathlib import Path
 
@@ -91,14 +96,114 @@ def parse_args():
     return parser.parse_args()
 
 
-def bypass_proxy_for_fastf1_archive():
-    """Keep local system proxies from being rejected by F1's CloudFront."""
+def _skip_dns_name(packet, offset):
+    while offset < len(packet):
+        length = packet[offset]
+        if length & 0xC0:
+            return offset + 2
+        offset += 1
+        if length == 0:
+            return offset
+        offset += length
+    raise ValueError("invalid DNS response")
+
+
+def _public_ipv4_addresses(hostname):
+    """Resolve A records without using macOS proxy/TUN synthetic DNS."""
+    transaction_id = secrets.randbits(16)
+    labels = hostname.rstrip(".").split(".")
+    question = b"".join(bytes((len(label),)) + label.encode("ascii") for label in labels) + b"\0"
+    query = struct.pack("!HHHHHH", transaction_id, 0x0100, 1, 0, 0, 0) + question + struct.pack("!HH", 1, 1)
+    for resolver in ("1.1.1.1", "8.8.8.8"):
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as client:
+                client.settimeout(2)
+                client.sendto(query, (resolver, 53))
+                packet, _ = client.recvfrom(4096)
+            response_id, flags, questions, answers, _, _ = struct.unpack("!HHHHHH", packet[:12])
+            if response_id != transaction_id or flags & 0x000F:
+                continue
+            offset = 12
+            for _ in range(questions):
+                offset = _skip_dns_name(packet, offset) + 4
+            addresses = []
+            for _ in range(answers):
+                offset = _skip_dns_name(packet, offset)
+                record_type, record_class, _, length = struct.unpack("!HHIH", packet[offset:offset + 10])
+                offset += 10
+                value = packet[offset:offset + length]
+                offset += length
+                if record_type == 1 and record_class == 1 and length == 4:
+                    addresses.append(socket.inet_ntoa(value))
+            if addresses:
+                return list(dict.fromkeys(addresses))
+        except (OSError, struct.error, ValueError):
+            continue
+    return []
+
+
+def prepare_fastf1_archive_network():
+    """Keep archive requests working behind proxies that return synthetic DNS."""
     hosts = ("livetiming.formula1.com", "livetiming-mirror.fastf1.dev")
     for key in ("NO_PROXY", "no_proxy"):
         current = [item.strip() for item in os.environ.get(key, "").split(",") if item.strip()]
         known = {item.lower() for item in current}
         current.extend(host for host in hosts if host.lower() not in known)
         os.environ[key] = ",".join(current)
+
+    mirror = "livetiming-mirror.fastf1.dev"
+    original_getaddrinfo = socket.getaddrinfo
+    try:
+        current_addresses = {
+            item[4][0]
+            for item in original_getaddrinfo(mirror, 443, socket.AF_UNSPEC, socket.SOCK_STREAM)
+        }
+    except OSError:
+        current_addresses = set()
+    synthetic_network = ipaddress.ip_network("198.18.0.0/15")
+    has_synthetic_dns = any(
+        ipaddress.ip_address(address) in synthetic_network
+        for address in current_addresses
+        if address
+    )
+    if current_addresses and not has_synthetic_dns:
+        return
+    public_addresses = _public_ipv4_addresses(mirror)
+    if not public_addresses:
+        return
+
+    def public_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
+        if host != mirror:
+            return original_getaddrinfo(host, port, family, type, proto, flags)
+        resolved = []
+        for address in public_addresses:
+            resolved.extend(original_getaddrinfo(address, port, family, type, proto, flags))
+        return resolved
+
+    socket.getaddrinfo = public_getaddrinfo
+
+
+def load_complete_session(fastf1, args, session_name, session_code):
+    """Retry because FastF1 logs many archive failures without raising them."""
+    failures = []
+    for attempt in range(3):
+        session = fastf1.get_session(args.year, args.event, session_name or session_code)
+        try:
+            session.load(telemetry=False, laps=True, weather=True, messages=True)
+            missing = []
+            for attribute in ("laps", "weather_data", "race_control_messages"):
+                try:
+                    getattr(session, attribute)
+                except Exception as exc:
+                    missing.append(f"{attribute}:{type(exc).__name__}")
+            if not missing:
+                return session
+            failures = missing
+        except Exception as exc:
+            failures = [f"session:{type(exc).__name__}:{exc}"]
+        if attempt < 2:
+            time.sleep(attempt + 1)
+    raise RuntimeError(", ".join(failures) or "required session feeds unavailable")
 
 
 def status_flags(status):
@@ -246,7 +351,7 @@ def mini_sector_statuses(current, personal, overall, previous, pit_lap=False):
 
 def main():
     args = parse_args()
-    bypass_proxy_for_fastf1_archive()
+    prepare_fastf1_archive_network()
     try:
         import pandas as pd
         import fastf1
@@ -271,14 +376,9 @@ def main():
         "Qualifying": "Q", "Sprint Qualifying": "SQ", "Sprint": "S", "Race": "R",
     }.get(args.session_name, args.session_name)
     try:
-        session = fastf1.get_session(args.year, args.event, session_name or session_code)
-        session.load(telemetry=False, laps=True, weather=True, messages=True)
+        session = load_complete_session(fastf1, args, session_name, session_code)
     except Exception as exc:
-        try:
-            session = fastf1.get_session(args.year, args.event, session_name or session_code)
-            session.load(telemetry=False, laps=True, weather=False, messages=False)
-        except Exception as retry_exc:
-            output({"ok": False, "error": f"FastF1 读取失败：{retry_exc}（首次：{exc}）"}, 2)
+        output({"ok": False, "error": f"FastF1 读取失败：{exc}"}, 2)
 
     # FastF1 does not expose OpenF1's mini-sector status directly. Load its
     # optional car/position telemetry so mini sectors can be derived from
