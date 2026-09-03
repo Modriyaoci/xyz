@@ -40,15 +40,17 @@ work/fastf1-venv/bin/python scripts/fastf1-catalog.py --start 2018 --end 2026 --
 cp fastf1-meetings.json site/fastf1-meetings.json
 ```
 
-### nana 实时入口
+### nana / dash 实时入口
 
-登录本地 Node 服务后访问 `/api/live-timing/entry`，会返回一组带令牌的入口地址。把其中的 `ingest.url` 交给另一套后台，它用 `POST` 逐条推送实时数据；Node 页面打开后默认连接 `nana`，通过 SSE 自动接收当前状态。同一赛事按 `id` 在内存中增量更新：本次明确推送的字段覆盖旧值，未推送的字段保持不变；空数组不会清空旧记录，有标识的数组按记录合并，没有标识的数组按位置更新并保留未推送的尾部，消息按消息标识去重追加。只有赛事 `id` 变化时才会开始一份新的实时状态。实时状态不保存历史快照；另有一份最新原始 longtext 会原子替换保存，可通过入口返回的 `raw.url` 读取。
+登录本地 Node 服务后访问 `/api/live-timing/entry` 可获取 `nana` 入口，访问 `/api/live-timing/dash/entry` 可获取 `dash` 入口。把对应的 `ingest.url` 交给另一套后台，它用 `POST` 逐条推送实时数据；页面通过 SSE 自动接收所选源的当前状态。两个源使用相同的数据结构、字段映射和增量规则，但令牌、内存快照、SSE 客户端及最新原始 longtext 完全独立，不会互相覆盖。页面默认仍连接 `nana`。
+
+同一赛事按 `id` 在内存中增量更新：本次明确推送的字段覆盖旧值，未推送的字段保持不变；空数组不会清空旧记录，有标识的数组按记录合并，没有标识的数组按位置更新并保留未推送的尾部，消息按消息标识去重追加。只有赛事 `id` 变化时才会开始一份新的实时状态。实时状态不保存历史快照；每个源各保留一份最新原始 longtext，并通过各自入口返回的 `raw.url` 读取。
 
 `raw.url` 仅用于排查数据源问题，返回的是解析前的原始文本（JSON 或日志前缀 + Python 字典），令牌无效时不可读取。Render 免费实例的文件系统是临时的，服务重启或重新部署后这份诊断文件可能消失；它不会随着推送次数增长。
 
-推送请求也可以把令牌放在 `X-Live-Timing-Token` 请求头中，地址使用 `/api/live-timing/ingest`。请求体支持标准 JSON 快照、`{ "data": <快照> }`、直接发送“日志前缀 + Python 字典”的文本文件，或用 `multipart/form-data` 上传该文件；没有 `session`、`meeting`、`mapped` 等前置字段要求。另一后台已经生成的 `winner`、`competitors`、`fields`、`messages`、`extra` 会按原字段和值保存，页面只做读取适配，不再次经过 OpenF1 转换。`/api/live-timing` 返回当前快照，`/api/live-timing/stream` 提供持续 SSE 数据流。
+推送请求也可以把令牌放在 `X-Live-Timing-Token` 请求头中。Nana 使用 `/api/live-timing/ingest`，Dash 使用 `/api/live-timing/dash/ingest`。请求体支持标准 JSON 快照、`{ "data": <快照> }`、直接发送“日志前缀 + Python 字典”的文本文件，或用 `multipart/form-data` 上传该文件；没有 `session`、`meeting`、`mapped` 等前置字段要求。另一后台已经生成的 `winner`、`competitors`、`fields`、`messages`、`extra` 会按原字段和值保存，页面只做读取适配，不再次经过 OpenF1 转换。
 
-GitHub Pages 是静态托管，不能接收这个 POST 入口；要把入口交给外部后台，必须把 `server.mjs` 部署到一个可从外网访问的 Node 服务。公网部署时将 `F1_HOST=0.0.0.0`，并用平台分配的域名访问 `/api/live-timing/ingest`；`F1_PORT` 可由平台端口环境变量覆盖。建议同时设置随机的 `LIVE_TIMING_BRIDGE_TOKEN`，不要使用默认令牌。
+GitHub Pages 是静态托管，不能接收这些 POST 入口；要把入口交给外部后台，必须把 `server.mjs` 部署到一个可从外网访问的 Node 服务。公网部署时将 `F1_HOST=0.0.0.0`；`F1_PORT` 可由平台端口环境变量覆盖。建议分别设置随机的 `LIVE_TIMING_BRIDGE_TOKEN` 和 `DASH_LIVE_TIMING_BRIDGE_TOKEN`。未配置 Dash 令牌时，服务会从 Nana 令牌稳定派生一个独立令牌。
 
 公网部署还应在平台的环境变量中设置 `F1_AUTH_USERNAME` 和 `F1_AUTH_PASSWORD`，不要使用本地默认登录密码；云平台通常会自动提供 `PORT`，服务会优先读取它。
 

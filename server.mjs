@@ -27,7 +27,6 @@ const cacheDir = path.join(root, "work", "openf1_cache");
 const fastF1SessionScript = path.join(root, "scripts", "fastf1-session.py");
 const fastF1CacheDir = path.join(root, "work", "fastf1_cache");
 const fastF1SessionCacheDir = path.join(root, "work", "fastf1_session_cache");
-const liveBridgeRawFile = path.join(root, "work", "nana-live-latest.txt");
 const nanaMappingFile = path.join(root, "work", "nana-mapping.json");
 const fastF1CacheVersion = "20260902-fastf1-source-v4";
 const fastF1TimeoutMs = Number(process.env.FASTF1_TIMEOUT_MS || 180000);
@@ -46,6 +45,7 @@ const authSalt = "f1-openf1-local-auth";
 const authPassword = String(process.env.F1_AUTH_PASSWORD || "123456");
 const authPasswordHash = crypto.scryptSync(authPassword, authSalt, 32);
 const liveBridgeToken = String(process.env.LIVE_TIMING_BRIDGE_TOKEN || crypto.createHash("sha256").update(authPasswordHash).digest("hex"));
+const dashLiveBridgeToken = String(process.env.DASH_LIVE_TIMING_BRIDGE_TOKEN || crypto.createHash("sha256").update(`dash:${liveBridgeToken}`).digest("hex"));
 const authSessions = new Map();
 const sessionSyncInFlight = new Map();
 const sessionMaxAgeMs = 8 * 60 * 60 * 1000;
@@ -53,11 +53,28 @@ const feedProbeAt = new Map();
 const feedProbeIntervalMs = 5 * 60 * 1000;
 const fastF1SessionInFlight = new Map();
 let fastF1MeetingCatalogPromise = null;
-let liveBridgeState = null;
-let liveBridgeSequence = 0;
-let liveBridgeRawWrite = null;
-let liveBridgeRawPending = null;
-const liveBridgeClients = new Set();
+const liveBridges = {
+  nana: {
+    name: "nana",
+    token: liveBridgeToken,
+    rawFile: path.join(root, "work", "nana-live-latest.txt"),
+    state: null,
+    sequence: 0,
+    rawWrite: null,
+    rawPending: null,
+    clients: new Set(),
+  },
+  dash: {
+    name: "dash",
+    token: dashLiveBridgeToken,
+    rawFile: path.join(root, "work", "dash-live-latest.txt"),
+    state: null,
+    sequence: 0,
+    rawWrite: null,
+    rawPending: null,
+    clients: new Set(),
+  },
+};
 
 await fs.mkdir(cacheDir, { recursive: true });
 await fs.mkdir(fastF1SessionCacheDir, { recursive: true });
@@ -110,7 +127,7 @@ const json = (res, status, value) => {
   res.end(JSON.stringify(value));
 };
 
-const liveBridgePaths = new Set([
+const nanaLiveBridgePaths = new Set([
   "/api/live-timing",
   "/api/live-timing/entry",
   "/api/live-timing/ingest",
@@ -123,14 +140,33 @@ const liveBridgePaths = new Set([
   "/api/livetiming/stream",
 ]);
 
+const dashLiveBridgePaths = new Set([
+  "/api/live-timing/dash",
+  "/api/live-timing/dash/entry",
+  "/api/live-timing/dash/ingest",
+  "/api/live-timing/dash/raw",
+  "/api/live-timing/dash/stream",
+  "/api/livetiming/dash",
+  "/api/livetiming/dash/entry",
+  "/api/livetiming/dash/ingest",
+  "/api/livetiming/dash/raw",
+  "/api/livetiming/dash/stream",
+]);
+
+function liveBridgeForPath(pathname) {
+  if (dashLiveBridgePaths.has(pathname)) return liveBridges.dash;
+  if (nanaLiveBridgePaths.has(pathname)) return liveBridges.nana;
+  return null;
+}
+
 function liveBridgeTokenFromRequest(req, url) {
   const header = req.headers["x-live-timing-token"] || req.headers["x-livetiming-token"];
   const authorization = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
   return String(header || authorization || url.searchParams.get("token") || "");
 }
 
-function liveBridgeAuthorised(req, url) {
-  return authenticated(req) || liveBridgeTokenFromRequest(req, url) === liveBridgeToken;
+function liveBridgeAuthorised(req, url, bridge) {
+  return authenticated(req) || liveBridgeTokenFromRequest(req, url) === bridge.token;
 }
 
 function liveBridgeBaseUrl(req) {
@@ -139,29 +175,29 @@ function liveBridgeBaseUrl(req) {
   return `${protocol}://${req.headers.host || "127.0.0.1:4174"}`;
 }
 
-function liveBridgePayload() {
-  if (!liveBridgeState) return null;
-  return liveBridgeState;
+function liveBridgePayload(bridge) {
+  if (!bridge.state) return null;
+  return bridge.state;
 }
 
 function writeLiveBridgeEvent(res, event, value) {
   res.write(`event: ${event}\ndata: ${JSON.stringify(value)}\n\n`);
 }
 
-function broadcastLiveBridgeState() {
-  const value = liveBridgePayload();
+function broadcastLiveBridgeState(bridge) {
+  const value = liveBridgePayload(bridge);
   if (!value) return;
-  for (const client of liveBridgeClients) {
+  for (const client of bridge.clients) {
     try {
       writeLiveBridgeEvent(client.res, "state", value);
     } catch {
       clearInterval(client.heartbeat);
-      liveBridgeClients.delete(client);
+      bridge.clients.delete(client);
     }
   }
 }
 
-function openLiveBridgeStream(req, res) {
+function openLiveBridgeStream(req, res, bridge) {
   res.writeHead(200, {
     "content-type": "text/event-stream; charset=utf-8",
     "cache-control": "no-cache, no-store, must-revalidate",
@@ -169,18 +205,18 @@ function openLiveBridgeStream(req, res) {
     "access-control-allow-origin": "*",
     "x-accel-buffering": "no",
   });
-  res.write(": live-timing bridge connected\n\n");
+  res.write(`: ${bridge.name} live-timing bridge connected\n\n`);
   const client = {
     res,
     heartbeat: setInterval(() => {
       try { res.write(`: heartbeat ${Date.now()}\n\n`); } catch { /* close handler removes the client */ }
     }, 15000),
   };
-  liveBridgeClients.add(client);
-  if (liveBridgeState) writeLiveBridgeEvent(res, "state", liveBridgeState);
+  bridge.clients.add(client);
+  if (bridge.state) writeLiveBridgeEvent(res, "state", bridge.state);
   req.on("close", () => {
     clearInterval(client.heartbeat);
-    liveBridgeClients.delete(client);
+    bridge.clients.delete(client);
   });
 }
 
@@ -501,7 +537,7 @@ async function readLiveBridgeBody(req) {
   }
 }
 
-async function ingestLiveBridgeState(req, res) {
+async function ingestLiveBridgeState(req, res, bridge) {
   const contentLength = Number(req.headers["content-length"]);
   if (Number.isFinite(contentLength) && contentLength > 8 * 1024 * 1024) {
     return json(res, 413, { error: "实时快照超过 8 MB 限制" });
@@ -510,10 +546,10 @@ async function ingestLiveBridgeState(req, res) {
   try {
     body = await readLiveBridgeBody(req);
   } catch (error) {
-    if (error.rawText) await cacheLatestLiveBridgeRaw(error.rawText);
+    if (error.rawText) await cacheLatestLiveBridgeRaw(bridge, error.rawText);
     return json(res, error.status || 400, { error: error.message || "实时数据文件格式无效" });
   }
-  await cacheLatestLiveBridgeRaw(body.rawText);
+  await cacheLatestLiveBridgeRaw(bridge, body.rawText);
   const incomingBody = body.value;
   const incoming = incomingBody?.data && typeof incomingBody.data === "object" && !Array.isArray(incomingBody.data) ? incomingBody.data : incomingBody;
   if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
@@ -536,60 +572,61 @@ async function ingestLiveBridgeState(req, res) {
     data = canonicalBackendSnapshot(normaliseNanaSnapshot(data, nanaMapping));
     payloadKind = "backend";
   }
-  liveBridgeSequence += 1;
-  liveBridgeState = mergeLiveBridgeSnapshot(liveBridgeState, {
+  bridge.sequence += 1;
+  bridge.state = mergeLiveBridgeSnapshot(bridge.state, {
     ...data,
-    source_name: "nana",
+    source_name: bridge.name,
     data_source: "external-live-timing",
     source_session: "external-live-timing",
     live_bridge: {
-      sequence: liveBridgeSequence,
+      sequence: bridge.sequence,
       received_at: receivedAt,
       source: "external-live-timing",
       payload_kind: payloadKind,
     },
   });
-  broadcastLiveBridgeState();
+  broadcastLiveBridgeState(bridge);
   return json(res, 200, {
     ok: true,
-    source_name: "nana",
+    source_name: bridge.name,
     source: "external-live-timing",
-    sequence: liveBridgeSequence,
+    sequence: bridge.sequence,
     received_at: receivedAt,
   });
 }
 
-function liveBridgeEntry(req) {
+function liveBridgeEntry(req, bridge) {
   const base = liveBridgeBaseUrl(req);
-  const token = encodeURIComponent(liveBridgeToken);
+  const token = encodeURIComponent(bridge.token);
+  const apiPath = bridge.name === "dash" ? "/api/live-timing/dash" : "/api/live-timing";
   return {
     ok: true,
-    source_name: "nana",
+    source_name: bridge.name,
     source: "external-live-timing",
     memory_only: true,
     raw_cache: { latest_only: true, max_bytes: 8 * 1024 * 1024, ephemeral: true },
     ingest: {
       method: "POST",
-      url: `${base}/api/live-timing/ingest?token=${token}`,
+      url: `${base}${apiPath}/ingest?token=${token}`,
       header: "X-Live-Timing-Token",
     },
     state: {
       method: "GET",
-      url: `${base}/api/live-timing?token=${token}`,
+      url: `${base}${apiPath}?token=${token}`,
     },
     raw: {
       method: "GET",
-      url: `${base}/api/live-timing/raw?token=${token}`,
+      url: `${base}${apiPath}/raw?token=${token}`,
       content_type: "text/plain",
       latest_only: true,
     },
     stream: {
       method: "GET",
-      url: `${base}/api/live-timing/stream?token=${token}`,
+      url: `${base}${apiPath}/stream?token=${token}`,
       content_type: "text/event-stream",
     },
-    sequence: liveBridgeSequence,
-    received_at: liveBridgeState?.live_bridge?.received_at || null,
+    sequence: bridge.sequence,
+    received_at: bridge.state?.live_bridge?.received_at || null,
   };
 }
 
@@ -635,32 +672,32 @@ async function writeJsonAtomic(file, value) {
   }
 }
 
-function cacheLatestLiveBridgeRaw(text) {
+function cacheLatestLiveBridgeRaw(bridge, text) {
   // Keep at most one pending value. If writes take longer than the push
   // interval, newer raw data supersedes the pending value instead of forming a
   // queue of full request bodies in memory.
-  liveBridgeRawPending = String(text || "");
-  if (liveBridgeRawWrite) return liveBridgeRawWrite;
-  liveBridgeRawWrite = (async () => {
-    while (liveBridgeRawPending !== null) {
-      const value = liveBridgeRawPending;
-      liveBridgeRawPending = null;
-      const tempFile = `${liveBridgeRawFile}.tmp-${process.pid}-${Date.now()}`;
+  bridge.rawPending = String(text || "");
+  if (bridge.rawWrite) return bridge.rawWrite;
+  bridge.rawWrite = (async () => {
+    while (bridge.rawPending !== null) {
+      const value = bridge.rawPending;
+      bridge.rawPending = null;
+      const tempFile = `${bridge.rawFile}.tmp-${process.pid}-${Date.now()}`;
       try {
         await fs.writeFile(tempFile, value, "utf8");
-        await fs.rename(tempFile, liveBridgeRawFile);
+        await fs.rename(tempFile, bridge.rawFile);
       } catch (error) {
         // Raw capture is diagnostic; a filesystem failure must not reject a
         // valid Nana update or disconnect the live stream.
-        console.error(`Nana 原始数据缓存失败：${error.message || error}`);
+        console.error(`${bridge.name} 原始数据缓存失败：${error.message || error}`);
       } finally {
         await fs.rm(tempFile, { force: true }).catch(() => {});
       }
     }
   })().finally(() => {
-    liveBridgeRawWrite = null;
+    bridge.rawWrite = null;
   });
-  return liveBridgeRawWrite;
+  return bridge.rawWrite;
 }
 
 function parseCookies(req) {
@@ -1233,8 +1270,8 @@ const server = http.createServer(async (req, res) => {
     if ((url.pathname === "/health" || url.pathname === "/api/health") && req.method === "GET") {
       return json(res, 200, {
         ok: true,
-        service: "f1-nana-bridge",
-        source: "nana",
+        service: "f1-live-bridge",
+        sources: ["nana", "dash"],
         checked_at: new Date().toISOString(),
       });
     }
@@ -1251,9 +1288,10 @@ const server = http.createServer(async (req, res) => {
       if (token) authSessions.delete(token);
       res.writeHead(200, { "content-type": "application/json; charset=utf-8", "set-cookie": authCookie("", 0) }); res.end(JSON.stringify({ authenticated: false })); return;
     }
-    if ((url.pathname === "/api/live-timing/entry" || url.pathname === "/api/livetiming/entry") && req.method === "GET") {
+    const liveBridge = liveBridgeForPath(url.pathname);
+    if (liveBridge && url.pathname.endsWith("/entry") && req.method === "GET") {
       if (!authenticated(req)) return json(res, 401, { error: "需要登录后获取实时入口" });
-      return json(res, 200, liveBridgeEntry(req));
+      return json(res, 200, liveBridgeEntry(req, liveBridge));
     }
     if ((url.pathname === "/api/live-timing/mapping" || url.pathname === "/api/livetiming/mapping") && ["GET", "PUT", "PATCH"].includes(req.method)) {
       if (!authenticated(req)) return json(res, 401, { error: "需要登录后修改车号映射" });
@@ -1262,21 +1300,22 @@ const server = http.createServer(async (req, res) => {
         const body = await readBody(req);
         nanaMapping = normaliseNanaMapping(body?.mapping || body);
         await writeJsonAtomic(nanaMappingFile, nanaMapping);
-        if (liveBridgeState) {
-          liveBridgeState = canonicalBackendSnapshot(normaliseNanaSnapshot(liveBridgeState, nanaMapping));
-          broadcastLiveBridgeState();
+        for (const bridge of Object.values(liveBridges)) {
+          if (!bridge.state) continue;
+          bridge.state = canonicalBackendSnapshot(normaliseNanaSnapshot(bridge.state, nanaMapping));
+          broadcastLiveBridgeState(bridge);
         }
         return json(res, 200, { ok: true, ...nanaMapping, source: "official-standings-2026" });
       } catch (error) {
         return json(res, 400, { error: error.message || "车号映射保存失败" });
       }
     }
-    if (liveBridgePaths.has(url.pathname) && !liveBridgeAuthorised(req, url)) {
+    if (liveBridge && !liveBridgeAuthorised(req, url, liveBridge)) {
       return json(res, 401, { error: "实时入口令牌无效或已缺少" });
     }
-    if ((url.pathname === "/api/live-timing/raw" || url.pathname === "/api/livetiming/raw") && req.method === "GET") {
+    if (liveBridge && url.pathname.endsWith("/raw") && req.method === "GET") {
       try {
-        const raw = await fs.readFile(liveBridgeRawFile, "utf8");
+        const raw = await fs.readFile(liveBridge.rawFile, "utf8");
         res.writeHead(200, {
           "content-type": "text/plain; charset=utf-8",
           "cache-control": "no-store",
@@ -1285,18 +1324,18 @@ const server = http.createServer(async (req, res) => {
         });
         return res.end(raw);
       } catch (error) {
-        if (error.code === "ENOENT") return json(res, 404, { error: "尚未缓存 Nana 原始数据" });
-        return json(res, 500, { error: "读取 Nana 原始数据失败" });
+        if (error.code === "ENOENT") return json(res, 404, { error: `尚未缓存 ${liveBridge.name} 原始数据` });
+        return json(res, 500, { error: `读取 ${liveBridge.name} 原始数据失败` });
       }
     }
-    if ((url.pathname === "/api/live-timing/ingest" || url.pathname === "/api/livetiming/ingest") && req.method === "POST") {
-      return ingestLiveBridgeState(req, res);
+    if (liveBridge && url.pathname.endsWith("/ingest") && req.method === "POST") {
+      return ingestLiveBridgeState(req, res, liveBridge);
     }
-    if ((url.pathname === "/api/live-timing/stream" || url.pathname === "/api/livetiming/stream") && req.method === "GET") {
-      return openLiveBridgeStream(req, res);
+    if (liveBridge && url.pathname.endsWith("/stream") && req.method === "GET") {
+      return openLiveBridgeStream(req, res, liveBridge);
     }
-    if ((url.pathname === "/api/live-timing" || url.pathname === "/api/livetiming") && req.method === "GET") {
-      return json(res, 200, { data: liveBridgePayload(), source: "external-live-timing", live: Boolean(liveBridgeState), sequence: liveBridgeSequence });
+    if (liveBridge && req.method === "GET") {
+      return json(res, 200, { data: liveBridgePayload(liveBridge), source_name: liveBridge.name, source: "external-live-timing", live: Boolean(liveBridge.state), sequence: liveBridge.sequence });
     }
     if (url.pathname.startsWith("/api/") && !authenticated(req)) return json(res, 401, { error: "需要登录" });
     if (url.pathname === "/api/seasons") return json(res, 200, await seasons(url.searchParams.get("source")));

@@ -1013,7 +1013,7 @@ function renderLiveMeetingMeta(data = state.liveTiming.data) {
   const session = data?.session || {};
   const backend = liveBackendPayload(data);
   const country = meeting.country_name || "";
-  const title = meeting.meeting_name || country || (isBackendLivePayload(data) ? "nana 实时推送" : "实时推送");
+  const title = meeting.meeting_name || country || (isBackendLivePayload(data) ? `${data?.source_name || state.liveTiming.source || "实时"} 实时推送` : "实时推送");
   const backendType = String(backend.type || backend.name || "").toLowerCase();
   const backendSessionName = backendType.includes("sprint") ? "Sprint" : backendType.includes("race") ? "Race" : "";
   const sessionName = session.session_name || backendSessionName || live.sessionName;
@@ -1308,12 +1308,22 @@ function renderLiveSourceControl() {
   const select = $("liveSourceSelect");
   const hint = $("liveTimingHint");
   const footer = $("liveSourceFooter");
-  const bridge = live.source === "nana" || live.source === "bridge";
-  if (select) select.value = bridge ? "nana" : "f1telemetry";
-  if (hint) hint.textContent = bridge
-    ? "数据源：nana；另一套后台 POST 增量快照，本页面通过 SSE 接收合并后的状态，未推字段保留，不保存历史。"
+  const bridgeName = liveBridgeSourceName(live.source);
+  if (select) select.value = bridgeName || "f1telemetry";
+  if (hint) hint.textContent = bridgeName
+    ? `数据源：${bridgeName}；另一套后台 POST 增量快照，本页面通过 SSE 接收独立的合并状态，未推字段保留，不保存历史。`
     : "数据源：F1 Telemetry 实时接口；不区分历史分站和节点，只覆盖当前实时快照，不写入本地缓存。";
-  if (footer) footer.textContent = bridge ? "数据源：nana" : "数据源：F1 Telemetry 实时接口";
+  if (footer) footer.textContent = bridgeName ? `数据源：${bridgeName}` : "数据源：F1 Telemetry 实时接口";
+}
+
+function liveBridgeSourceName(source = state.liveTiming.source) {
+  if (source === "dash") return "dash";
+  if (source === "nana" || source === "bridge") return "nana";
+  return null;
+}
+
+function liveBridgeApiPath(source = state.liveTiming.source) {
+  return liveBridgeSourceName(source) === "dash" ? "/api/live-timing/dash" : "/api/live-timing";
 }
 
 function nanaMappingRows() {
@@ -1338,7 +1348,7 @@ function renderNanaMapping() {
   const modal = $("nanaMappingModal");
   const table = $("nanaMappingTable");
   if (!modal || !table) return;
-  const available = !STATIC_MODE && (live.source === "nana" || live.source === "bridge");
+  const available = !STATIC_MODE && Boolean(liveBridgeSourceName(live.source));
   if (openButton) openButton.hidden = !available;
   const open = available && live.mappingOpen;
   modal.hidden = !open;
@@ -1356,7 +1366,7 @@ function renderNanaMapping() {
         ? "正在读取车号映射…"
         : live.mappingSaving
           ? "正在保存映射…"
-          : live.mapping ? "按车号匹配；修改后保存即可应用到当前及后续 Nana 数据。" : "尚未读取车号映射";
+          : live.mapping ? "按车号匹配；修改后保存即可应用到当前及后续 Nana、Dash 数据。" : "尚未读取车号映射";
   }
   const rows = nanaMappingRows();
   const signature = JSON.stringify(rows);
@@ -1372,7 +1382,7 @@ function renderNanaMapping() {
 
 async function openNanaMapping() {
   const live = state.liveTiming;
-  if (STATIC_MODE || (live.source !== "nana" && live.source !== "bridge")) return;
+  if (STATIC_MODE || !liveBridgeSourceName(live.source)) return;
   live.mappingOpen = true;
   renderNanaMapping();
   if (!live.mapping) await loadNanaMapping();
@@ -1388,7 +1398,7 @@ function closeNanaMapping() {
 
 async function loadNanaMapping() {
   const live = state.liveTiming;
-  if (STATIC_MODE || (live.source !== "nana" && live.source !== "bridge") || live.mappingLoading) return false;
+  if (STATIC_MODE || !liveBridgeSourceName(live.source) || live.mappingLoading) return false;
   live.mappingLoading = true;
   live.mappingError = null;
   renderNanaMapping();
@@ -1431,7 +1441,7 @@ function nanaMappingFromInputs() {
 
 async function saveNanaMapping() {
   const live = state.liveTiming;
-  if (STATIC_MODE || (live.source !== "nana" && live.source !== "bridge") || live.mappingSaving) return false;
+  if (STATIC_MODE || !liveBridgeSourceName(live.source) || live.mappingSaving) return false;
   live.mappingSaving = true;
   live.mappingError = null;
   renderNanaMapping();
@@ -1447,7 +1457,7 @@ async function saveNanaMapping() {
     // the realtime stream is currently stopped.
     if (live.stream) await live.stream.requestState();
     else if (live.data) {
-      const current = await api("/api/live-timing");
+      const current = await api(liveBridgeApiPath(live.source));
       if (current?.data) {
         live.data = current.data;
         live.rows = buildLiveRows(live.data);
@@ -1550,7 +1560,7 @@ function renderLiveTiming() {
   renderLiveTyres();
   $("liveStatusTitle").textContent = live.loading ? "正在更新" : live.running ? "实时更新中" : live.received ? "已停止" : "等待连接";
   $("liveStatusPulse").classList.toggle("connected", live.running);
-  const transport = live.source === "nana" || live.source === "bridge" ? "SSE 持续连接" : "WebSocket 持续连接";
+  const transport = liveBridgeSourceName(live.source) ? "SSE 持续连接" : "WebSocket 持续连接";
   $("liveStatusMeta").textContent = live.lastAt ? `最后更新 ${liveClock(live.lastAt)} · ${transport}${live.errors ? ` · ${live.errors} 个字段失败` : ""}` : "尚未接收到消息";
   const liveConnected = live.running || Boolean(live.stream);
   $("liveLoadBtn").innerHTML = `<span>${liveConnected ? "停止实时" : "开始实时"}</span><span aria-hidden="true">${liveConnected ? "■" : "▶"}</span>`;
@@ -1642,11 +1652,13 @@ function resetLiveTiming() {
   renderLiveTiming();
 }
 
-function openLiveBridgeStream({ onState, onError, onClose } = {}) {
+function openLiveBridgeStream({ source, onState, onError, onClose } = {}) {
+  const bridgeName = liveBridgeSourceName(source);
   if (STATIC_MODE || typeof EventSource !== "function") {
-    throw new Error("nana 推送需要运行本地 Node 服务");
+    throw new Error(`${bridgeName || "实时"} 推送需要运行本地 Node 服务`);
   }
-  const eventSource = new EventSource("/api/live-timing/stream");
+  const apiPath = liveBridgeApiPath(bridgeName);
+  const eventSource = new EventSource(`${apiPath}/stream`);
   let closedByCaller = false;
   const stateHandler = (event) => {
     try {
@@ -1657,11 +1669,11 @@ function openLiveBridgeStream({ onState, onError, onClose } = {}) {
   };
   eventSource.addEventListener("state", stateHandler);
   eventSource.onerror = () => {
-    if (!closedByCaller) onError?.(new Error("nana 推送入口连接失败"));
+    if (!closedByCaller) onError?.(new Error(`${bridgeName} 推送入口连接失败`));
   };
   const requestState = async () => {
     try {
-      const response = await fetch("/api/live-timing", { cache: "no-store" });
+      const response = await fetch(apiPath, { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || `实时推送读取失败 ${response.status}`);
       if (!payload.data) throw new Error("自有后台尚未推送实时数据");
@@ -1693,12 +1705,13 @@ async function loadLiveTimingData() {
   if (live.loading) return false;
   const token = live.token;
   live.loading = true;
-  const bridge = live.source === "nana" || live.source === "bridge";
-  setConnection(false, bridge ? "正在连接 nana" : "正在连接实时接口");
+  const bridgeName = liveBridgeSourceName(live.source);
+  setConnection(false, bridgeName ? `正在连接 ${bridgeName}` : "正在连接实时接口");
   renderLiveTiming();
   try {
-    const openStream = bridge ? openLiveBridgeStream : openF1TelemetryStream;
+    const openStream = bridgeName ? openLiveBridgeStream : openF1TelemetryStream;
     live.stream = openStream({
+      source: bridgeName,
       requestedMeetingKey: null,
       requestedSessionKey: null,
       timeoutMs: 30000,
@@ -1706,7 +1719,7 @@ async function loadLiveTimingData() {
         if (token !== live.token) return;
         live.data = isBackendLivePayload(data) ? data : enrichBackendMapping(data || {});
         renderLiveMeetingMeta(live.data);
-        setConnection(true, "实时接口已连接");
+        setConnection(true, bridgeName ? `${bridgeName} 已连接` : "实时接口已连接");
         live.rows = buildLiveRows(live.data);
         live.events = buildLiveEvents(live.data);
         live.logs = buildLiveLogs(live.data);
@@ -1727,7 +1740,7 @@ async function loadLiveTimingData() {
       },
       onClose: () => {
         if (token !== live.token) return;
-        setConnection(false, bridge ? "nana 推送已断开" : "实时接口已断开");
+        setConnection(false, bridgeName ? `${bridgeName} 推送已断开` : "实时接口已断开");
         live.stream = null;
         live.running = false;
         live.loading = false;
@@ -1794,7 +1807,7 @@ function setActiveView(view) {
   if (state.activeView === "liveTiming") {
     renderLiveTimingSelectors();
     renderLiveTiming();
-  } else if (state.liveTiming.source !== "nana") {
+  } else if (!liveBridgeSourceName(state.liveTiming.source)) {
     stopLivePolling();
   }
 }
@@ -2561,7 +2574,7 @@ $("liveSessionSelect")?.addEventListener("change", (event) => {
   renderLiveTimingSelectors();
 });
 $("liveSourceSelect")?.addEventListener("change", (event) => {
-  const source = event.target.value === "nana" ? "nana" : "f1telemetry";
+  const source = ["nana", "dash"].includes(event.target.value) ? event.target.value : "f1telemetry";
   if (source === state.liveTiming.source) return;
   state.liveTiming.source = source;
   state.liveTiming.mappingOpen = false;
