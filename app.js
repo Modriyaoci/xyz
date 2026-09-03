@@ -71,6 +71,7 @@ const STATIC_MODE = new URLSearchParams(window.location.search).get("static") ==
 const STATIC_API_BASE = "https://api.openf1.org/v1";
 const STATIC_CACHE_VERSION = "20260902-independent-sources-v1";
 const STATIC_FASTF1_CATALOG_URL = new URL("./fastf1-meetings.json", import.meta.url).href;
+const STATIC_FASTF1_API_BASE = "https://f1-nana-bridge.onrender.com";
 const staticRequestTimeoutMs = 30000;
 const staticRequestIntervalMs = 400;
 let staticNextRequestAt = 0;
@@ -281,15 +282,17 @@ async function staticFastF1SessionList(meetingKey) {
   return { data: Array.isArray(meeting.sessions) ? meeting.sessions : [], source: "fastf1-catalog" };
 }
 
-async function staticFastF1SessionSnapshot(meetingKey, sessionKey) {
+async function staticFastF1SessionSnapshot(meetingKey, sessionKey, { force = false } = {}) {
   const key = Number(sessionKey);
   if (!Number.isInteger(key)) throw new Error("该节点尚未获得 FastF1 会话键");
-  // FastF1 runs in the local Node service. A static page can use bundled
-  // snapshots when they are provided, but must never fall back to OpenF1.
-  const url = new URL(`./fastf1-sessions/${key}.json`, import.meta.url);
+  const url = new URL("/api/public/fastf1/session-data", STATIC_FASTF1_API_BASE);
+  url.searchParams.set("meeting_key", String(meetingKey));
+  url.searchParams.set("session_key", String(key));
+  if (force) url.searchParams.set("force", "1");
   const response = await fetch(url, { cache: "no-store" });
-  if (!response.ok) throw new Error("静态页面未打包该 FastF1 会话，请使用本地服务读取 FastF1");
-  return { data: await response.json(), source: "fastf1-static" };
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Render FastF1 请求失败 ${response.status}`);
+  return payload;
 }
 
 function stripTyreAgeFields(data) {
@@ -854,7 +857,7 @@ async function api(path, options = {}) {
     if (url.pathname === "/api/session-data") return source === "fastf1" ? staticFastF1SessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")) : staticSessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"));
     if (url.pathname === "/api/sync-session-data") {
       const body = JSON.parse(options.body || "{}");
-      return body.source === "fastf1" ? staticFastF1SessionSnapshot(body.meeting_key, body.session_key) : staticSessionSnapshot(body.meeting_key, body.session_key, { force: true });
+      return body.source === "fastf1" ? staticFastF1SessionSnapshot(body.meeting_key, body.session_key, { force: true }) : staticSessionSnapshot(body.meeting_key, body.session_key, { force: true });
     }
     if (url.pathname === "/api/standings") return staticStandings();
     if (url.pathname === "/api/sync-standings") return staticStandings({ force: true });

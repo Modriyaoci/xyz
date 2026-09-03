@@ -52,6 +52,7 @@ const sessionMaxAgeMs = 8 * 60 * 60 * 1000;
 const feedProbeAt = new Map();
 const feedProbeIntervalMs = 5 * 60 * 1000;
 const fastF1SessionInFlight = new Map();
+let fastF1WorkQueue = Promise.resolve();
 let fastF1MeetingCatalogPromise = null;
 const liveBridges = {
   nana: {
@@ -881,6 +882,12 @@ async function fetchFastF1Session(session, meetingKey, sessionKey) {
   return result;
 }
 
+function enqueueFastF1Session(task) {
+  const queued = fastF1WorkQueue.then(task, task);
+  fastF1WorkQueue = queued.catch(() => {});
+  return queued;
+}
+
 async function fastF1SessionData(meetingKey, sessionKey, { force = false } = {}) {
   const requestedMeetingKey = Number(meetingKey);
   const requestedSessionKey = Number(sessionKey);
@@ -904,8 +911,8 @@ async function fastF1SessionData(meetingKey, sessionKey, { force = false } = {})
   const session = sessionList.find((row) => Number(row.session_key) === requestedSessionKey);
   if (!session) throw new Error("找不到对应 FastF1 会话");
   let task = fastF1SessionInFlight.get(requestedSessionKey);
-  if (!task || force) {
-    task = fetchFastF1Session(session, requestedMeetingKey, requestedSessionKey);
+  if (!task) {
+    task = enqueueFastF1Session(() => fetchFastF1Session(session, requestedMeetingKey, requestedSessionKey));
     fastF1SessionInFlight.set(requestedSessionKey, task);
     task.finally(() => {
       if (fastF1SessionInFlight.get(requestedSessionKey) === task) fastF1SessionInFlight.delete(requestedSessionKey);
@@ -1379,6 +1386,13 @@ const server = http.createServer(async (req, res) => {
     }
     if (liveBridge && req.method === "GET") {
       return json(res, 200, { data: liveBridgePayload(liveBridge), source_name: liveBridge.name, source: "external-live-timing", live: Boolean(liveBridge.state), sequence: liveBridge.sequence });
+    }
+    if (url.pathname === "/api/public/fastf1/session-data" && req.method === "GET") {
+      return json(res, 200, await fastF1SessionData(
+        url.searchParams.get("meeting_key"),
+        url.searchParams.get("session_key"),
+        { force: url.searchParams.get("force") === "1" },
+      ));
     }
     if (url.pathname.startsWith("/api/") && !authenticated(req)) return json(res, 401, { error: "需要登录" });
     if (url.pathname === "/api/seasons") return json(res, 200, await seasons(url.searchParams.get("source")));
