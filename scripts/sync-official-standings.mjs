@@ -69,7 +69,7 @@ function parseTeams(html) {
     name: cleanText(cells[1]),
     points: Number(cleanText(cells[2])) || 0,
     url: linkUrl(cells[1]),
-  }));
+  })).filter((row) => Number.isInteger(row.position));
 }
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
