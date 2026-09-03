@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#111827" />
     <title>F1 赛后数据</title>
-    <link rel="stylesheet" href="./styles.css?v=20260831-standings-v1" />
+    <link rel="stylesheet" href="./styles.css?v=20260902-data-sources-v1" />
     <script>
       const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
       const staticPages = new URLSearchParams(window.location.search).get("static") === "1" || (!localServer && !window.location.pathname.startsWith("/site/"));
@@ -292,12 +292,13 @@
 
           <section class="selector-panel" aria-label="分站和节点选择">
             <div class="selector-row">
+              <label>数据源<select id="dataSourceSelect"><option value="openf1">OpenF1</option><option value="fastf1">FastF1</option></select></label>
               <label>赛季<select id="seasonSelect"></select></label>
               <label>分站<select id="meetingSelect"><option value="">请选择分站</option></select></label>
               <label>节点<select id="sessionSelect" disabled><option value="">请先选择分站</option></select></label>
               <button class="primary-button sync-button" id="syncBtn" title="从数据源重新同步当前节点" disabled><span>同步数据源</span><span aria-hidden="true">↻</span></button>
             </div>
-            <div class="selector-hint" id="selectorHint">OpenF1 可用赛季的 Meeting / Session 已预置；选择节点时才请求详细数据，成功后保存在本地缓存。</div>
+            <div class="selector-hint" id="selectorHint">OpenF1 的 Meeting / Session 已预置；选择节点时才请求详细数据，成功后保存在本地缓存。</div>
           </section>
 
           <nav class="session-nav" id="sessionTabs" aria-label="会话节点"></nav>
