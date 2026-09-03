@@ -1339,8 +1339,11 @@ function renderLiveTiming() {
   $("liveStatusPulse").classList.toggle("connected", live.running);
   const transport = live.source === "nana" || live.source === "bridge" ? "SSE 持续连接" : "WebSocket 持续连接";
   $("liveStatusMeta").textContent = live.lastAt ? `最后更新 ${liveClock(live.lastAt)} · ${transport}${live.errors ? ` · ${live.errors} 个字段失败` : ""}` : "尚未接收到消息";
-  $("liveLoadBtn").innerHTML = `<span>${live.running ? "实时更新中" : "开始实时"}</span><span aria-hidden="true">${live.running ? "●" : "▶"}</span>`;
-  $("liveLoadBtn").disabled = live.loading;
+  const liveConnected = live.running || Boolean(live.stream);
+  $("liveLoadBtn").innerHTML = `<span>${liveConnected ? "停止实时" : "开始实时"}</span><span aria-hidden="true">${liveConnected ? "■" : "▶"}</span>`;
+  $("liveLoadBtn").disabled = live.loading && !liveConnected;
+  $("liveLoadBtn").setAttribute("aria-pressed", liveConnected ? "true" : "false");
+  $("liveLoadBtn").title = liveConnected ? "停止实时推送" : "开始实时推送";
   $("liveSyncBtn").disabled = live.loading;
   $("liveCacheLabel").textContent = live.lastAt ? `实时状态：${live.running ? "连接中" : "已停止"}` : "实时状态：等待数据";
 }
@@ -1519,6 +1522,9 @@ async function loadLiveTimingData() {
       },
     });
     live.running = true;
+    // Opening the stream is enough to enable the stop control; the first
+    // payload can arrive later or never arrive while the bridge is idle.
+    live.loading = false;
     live.started = true;
     renderLiveTiming();
     return true;
@@ -1545,6 +1551,7 @@ function stopLivePolling() {
   live.stream?.close();
   live.stream = null;
   live.running = false;
+  live.loading = false;
   live.token += 1;
 }
 
