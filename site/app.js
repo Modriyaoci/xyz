@@ -7,6 +7,7 @@ import { openF1TelemetryStream } from "./f1telemetry.mjs";
 import { collectSessionFeedRows, completeSessionResultRows, isCompleteLapRecord } from "./session-feed-rules.mjs";
 
 const state = {
+  dataSource: "openf1",
   season: 2026,
   seasons: [],
   meetings: [],
@@ -28,7 +29,7 @@ const state = {
   messageLanguage: "both",
   dataRequestId: 0,
   liveTiming: {
-    source: "f1telemetry",
+    source: "nana",
     meetingKey: null,
     sessionKey: null,
     meetingName: "",
@@ -63,7 +64,8 @@ const githubPages = window.location.hostname.endsWith(".github.io");
 const STATIC_MODE = new URLSearchParams(window.location.search).get("static") === "1"
   || githubPages;
 const STATIC_API_BASE = "https://api.openf1.org/v1";
-const STATIC_CACHE_VERSION = "20260828-backend-fields-v5";
+const STATIC_CACHE_VERSION = "20260902-independent-sources-v1";
+const STATIC_FASTF1_CATALOG_URL = new URL("./fastf1-meetings.json", import.meta.url).href;
 const staticRequestTimeoutMs = 30000;
 const staticRequestIntervalMs = 400;
 let staticNextRequestAt = 0;
@@ -78,6 +80,9 @@ let staticCatalogPromise = null;
 const staticSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const staticFeedProbeAt = new Map();
 const staticFeedProbeIntervalMs = 5 * 60 * 1000;
+let staticFastF1CatalogPromise = null;
+
+const dataSourceLabel = (source) => source === "fastf1" ? "FastF1" : "OpenF1";
 
 function openStaticDb() {
   if (staticDb.promise) return staticDb.promise;
@@ -227,11 +232,26 @@ async function staticCatalogPayload() {
   return staticCatalogPromise;
 }
 
+async function staticFastF1CatalogPayload() {
+  if (!staticFastF1CatalogPromise) {
+    staticFastF1CatalogPromise = fetch(STATIC_FASTF1_CATALOG_URL, { cache: "no-store" }).then(async (response) => {
+      if (!response.ok) throw new Error(`FastF1 赛季目录读取失败 ${response.status}`);
+      return response.json();
+    });
+  }
+  return staticFastF1CatalogPromise;
+}
+
 async function staticSeasons() {
   const payload = await staticCatalogPayload();
   const rows = Array.isArray(payload) ? payload : payload.meetings;
   const listed = Array.isArray(payload?.seasons) ? payload.seasons : (Array.isArray(rows) ? rows.map((meeting) => meeting.year) : []);
   return [...new Set(listed.map(Number).filter(Number.isInteger))].sort((a, b) => b - a);
+}
+
+async function staticFastF1Seasons() {
+  const payload = await staticFastF1CatalogPayload();
+  return [...new Set((Array.isArray(payload?.seasons) ? payload.seasons : []).map(Number).filter(Number.isInteger))].sort((a, b) => b - a);
 }
 
 async function staticCatalog(year = state.season) {
@@ -242,6 +262,29 @@ async function staticCatalog(year = state.season) {
     meeting_key: Number(meeting.meeting_key),
     sessions: Array.isArray(meeting.sessions) ? meeting.sessions : [],
   }));
+}
+
+async function staticFastF1Catalog(year = state.season) {
+  const payload = await staticFastF1CatalogPayload();
+  return (Array.isArray(payload?.meetings) ? payload.meetings : []).filter((meeting) => Number(meeting.year) === Number(year));
+}
+
+async function staticFastF1SessionList(meetingKey) {
+  const meetings = await staticFastF1Catalog();
+  const meeting = meetings.find((item) => Number(item.meeting_key) === Number(meetingKey));
+  if (!meeting) throw new Error("找不到对应 FastF1 分站");
+  return { data: Array.isArray(meeting.sessions) ? meeting.sessions : [], source: "fastf1-catalog" };
+}
+
+async function staticFastF1SessionSnapshot(meetingKey, sessionKey) {
+  const key = Number(sessionKey);
+  if (!Number.isInteger(key)) throw new Error("该节点尚未获得 FastF1 会话键");
+  // FastF1 runs in the local Node service. A static page can use bundled
+  // snapshots when they are provided, but must never fall back to OpenF1.
+  const url = new URL(`./fastf1-sessions/${key}.json`, import.meta.url);
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) throw new Error("静态页面未打包该 FastF1 会话，请使用本地服务读取 FastF1");
+  return { data: await response.json(), source: "fastf1-static" };
 }
 
 function stripTyreAgeFields(data) {
@@ -307,10 +350,15 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   if (!force && cached && Number(cached.session?.session_key) === requestedSessionKey) {
     const sanitised = completeSessionResultRows(stripStartingGridFields(stripIgnoredSyncWarnings(stripTyreAgeFields(cached))));
     await refreshStaticCachedFeed(sanitised, requestedSessionKey, "weather");
-    if (["Race", "Sprint"].includes(sanitised.session?.session_name)) await refreshStaticCachedFeed(sanitised, requestedSessionKey, "pit");
+    if (sanitised.pit_source === "fastf1") {
+      sanitised.pit = [];
+      delete sanitised.pit_source;
+    }
+    await refreshStaticCachedFeed(sanitised, requestedSessionKey, "pit");
     await refreshStaticCachedFeed(sanitised, requestedSessionKey, "race_control");
     for (const field of retryWarningFields(sanitised)) await refreshStaticCachedFeed(sanitised, requestedSessionKey, field);
     enrichBackendMapping(sanitised);
+    sanitised.data_source = "openf1";
     sanitised.cache_version = STATIC_CACHE_VERSION;
     await staticCacheSet(cacheKey, sanitised);
     return { data: sanitised, source: "cache" };
@@ -336,6 +384,7 @@ async function staticSessionSnapshot(meetingKey, sessionKey, { force = false } =
   data.synced_at = new Date().toISOString();
   stripTyreAgeFields(data);
   enrichBackendMapping(data);
+  data.data_source = "openf1";
   data.cache_version = STATIC_CACHE_VERSION;
   await staticCacheSet(cacheKey, data);
   return { data, source: "openf1" };
@@ -413,13 +462,13 @@ const liveTeamNames = new Map([
 ]);
 const backendDriverImageIds = new Set([
   347421, 347422, 347423, 347424, 347425, 347426, 347427, 347428, 347429, 347430,
-  347431, 347432, 347433, 347434, 347435, 347436, 347437, 347439, 347440, 347441,
+  347431, 347432, 347433, 347434, 347435, 347436, 347437, 347438, 347439, 347440, 347441,
   347442, 347443, 347444, 347445, 347446, 347447, 347448, 347449, 347450, 347451,
   347453, 347454, 347455, 347456, 347457, 347458, 347460, 347461, 347462, 347463,
-  347464, 347465, 347466, 347467, 347468, 347470, 347473, 347474, 347475, 347476,
+  347464, 347465, 347466, 347467, 347468, 347469, 347470, 347471, 347472, 347473, 347474, 347475, 347476,
   347477, 347478, 347479, 347480, 347481, 347482, 347483, 347484, 347485, 347486,
   347487, 347488, 347489, 347491, 347492, 347493, 347494, 347495, 347496, 347497,
-  347498, 347499, 347501, 347502, 347503, 347504, 347506, 347511, 347514, 347517,
+  347498, 347499, 347500, 347501, 347502, 347503, 347504, 347505, 347506, 347507, 347508, 347510, 347511, 347512, 347513, 347514, 347517,
   347518, 347519, 347520, 347522, 347525, 347526, 347528, 347531, 347534, 347535,
   347536, 347537, 347538, 347539, 347540, 347541, 347542, 347543, 347544, 347545,
   347546, 347547, 347548, 347549, 347550, 347555, 347556, 347557, 347908, 347909,
@@ -435,8 +484,20 @@ const backendTeamAsset = (id, name) => {
   if (resolvedId === 385363 && /alpha\s*tauri/i.test(String(name || ""))) {
     return new URL("./assets/f1/teams/385363-alphatauri.png", import.meta.url).href;
   }
+  if (resolvedId === 385363 && /toro\s+rosso/i.test(String(name || ""))) {
+    return new URL("./assets/f1/teams/385363-toro-rosso.png", import.meta.url).href;
+  }
   if (resolvedId === 385368 && /alfa\s+romeo/i.test(String(name || ""))) {
     return new URL("./assets/f1/teams/385368-alfa-romeo.png", import.meta.url).href;
+  }
+  if (resolvedId === 385362 && /force\s+india/i.test(String(name || ""))) {
+    return new URL("./assets/f1/teams/385362-force-india.png", import.meta.url).href;
+  }
+  if (resolvedId === 385362 && /racing\s+point/i.test(String(name || ""))) {
+    return new URL("./assets/f1/teams/385362-racing-point.png", import.meta.url).href;
+  }
+  if (resolvedId === 385368 && /sauber/i.test(String(name || "")) && !/alfa\s+romeo|kick\s+sauber/i.test(String(name || ""))) {
+    return new URL("./assets/f1/teams/385368-sauber.png", import.meta.url).href;
   }
   return backendIdentityAsset("teams", resolvedId);
 };
@@ -672,7 +733,7 @@ const phaseLabel = (phase) => phase ? phase.toUpperCase() : "";
 const isRaceSession = () => raceSessionNames.has(state.activeSession?.session_name);
 const isQualifyingSession = () => qualifyingSessionNames.has(state.activeSession?.session_name);
 const CURRENT_STANDINGS_SEASON = 2026;
-const standingsSeasons = [2026, 2025, 2024, 2023];
+const standingsSeasons = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018];
 const RESULT_COLUMN_STORAGE_KEY = "f1-result-columns-v1";
 const resultColumnDefinitions = Object.freeze([
   { key: "position", label: "名次" },
@@ -780,14 +841,15 @@ const formatTime = (value) => {
 async function api(path, options = {}) {
   if (STATIC_MODE) {
     const url = new URL(path, window.location.href);
-    if (url.pathname === "/api/seasons") return { data: await staticSeasons(), source: "catalog" };
-    if (url.pathname === "/api/meetings") return { data: await staticCatalog(url.searchParams.get("year")), source: "catalog" };
-    if (url.pathname === "/api/sessions") return staticSessionList(url.searchParams.get("meeting_key"));
+    const source = url.searchParams.get("source") === "fastf1" ? "fastf1" : "openf1";
+    if (url.pathname === "/api/seasons") return { data: source === "fastf1" ? await staticFastF1Seasons() : await staticSeasons(), source: source === "fastf1" ? "fastf1-catalog" : "catalog" };
+    if (url.pathname === "/api/meetings") return { data: source === "fastf1" ? await staticFastF1Catalog(url.searchParams.get("year")) : await staticCatalog(url.searchParams.get("year")), source: source === "fastf1" ? "fastf1-catalog" : "catalog" };
+    if (url.pathname === "/api/sessions") return source === "fastf1" ? staticFastF1SessionList(url.searchParams.get("meeting_key")) : staticSessionList(url.searchParams.get("meeting_key"));
     if (url.pathname === "/api/live-session-data") return staticLiveSessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"));
-    if (url.pathname === "/api/session-data") return staticSessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"));
+    if (url.pathname === "/api/session-data") return source === "fastf1" ? staticFastF1SessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")) : staticSessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"));
     if (url.pathname === "/api/sync-session-data") {
       const body = JSON.parse(options.body || "{}");
-      return staticSessionSnapshot(body.meeting_key, body.session_key, { force: true });
+      return body.source === "fastf1" ? staticFastF1SessionSnapshot(body.meeting_key, body.session_key) : staticSessionSnapshot(body.meeting_key, body.session_key, { force: true });
     }
     if (url.pathname === "/api/standings") return staticStandings();
     if (url.pathname === "/api/sync-standings") return staticStandings({ force: true });
@@ -1022,7 +1084,7 @@ function isBackendLivePayload(data) {
 }
 
 function liveBackendPayload(data) {
-  return data?.mapped && typeof data.mapped === "object" ? data.mapped : isBackendLivePayload(data) ? data : {};
+  return isBackendLivePayload(data) ? data : data?.mapped && typeof data.mapped === "object" ? data.mapped : {};
 }
 
 function liveMessageTimestamp(row) {
@@ -1226,12 +1288,12 @@ function renderLiveTiming() {
         driverId: `<td>${esc(row.driverId ?? "--")}</td>`,
         teamId: `<td>${esc(row.teamId ?? "--")}</td>`,
         laps: `<td>${esc(row.lap ?? "--")}</td>`,
-        time: `<td>${esc(row.time || displayGap(row.gap))}</td>`,
+        time: `<td>${esc(displayGap(row.time || row.gap))}</td>`,
         points: `<td>${esc(row.points ?? "--")}</td>`,
         status: `<td><span class="live-row-status ${statusClass}">${esc(row.status)}</span></td>`,
         lastLap: `<td>${displayLapTime(row.lastLap)} ${colorBadgeOrEmpty(row.extra?.lastLapColor)}</td>`,
         fastestLap: `<td>${displayLapTime(row.bestLap)} ${colorBadgeOrEmpty(row.extra?.bestLapColor)}</td>`,
-        interval: `<td>${esc(previousGap)}</td>`,
+        interval: `<td>${esc(displayGap(previousGap))}</td>`,
         gap: `<td>${esc(displayGap(row.gap))}</td>`,
         pit: `<td>${esc(row.pitCount ?? "--")}</td>`,
         nc: `<td>${esc(row.positionDesc || "--")}</td>`,
@@ -1386,7 +1448,7 @@ function openLiveBridgeStream({ onState, onError, onClose } = {}) {
       const response = await fetch("/api/live-timing", { cache: "no-store" });
       const payload = await response.json().catch(() => ({}));
       if (!response.ok) throw new Error(payload.error || `实时推送读取失败 ${response.status}`);
-      if (!payload.data) throw new Error("nana 尚未推送实时数据");
+      if (!payload.data) throw new Error("自有后台尚未推送实时数据");
       onState?.(payload.data);
       return true;
     } catch (error) {
@@ -1425,7 +1487,7 @@ async function loadLiveTimingData() {
       requestedSessionKey: null,
       timeoutMs: 30000,
       onState: (data) => {
-        if (token !== live.token || state.activeView !== "liveTiming") return;
+        if (token !== live.token) return;
         live.data = isBackendLivePayload(data) ? data : enrichBackendMapping(data || {});
         renderLiveMeetingMeta(live.data);
         setConnection(true, "实时接口已连接");
@@ -1508,7 +1570,7 @@ function setActiveView(view) {
   if (state.activeView === "liveTiming") {
     renderLiveTimingSelectors();
     renderLiveTiming();
-  } else {
+  } else if (state.liveTiming.source !== "nana") {
     stopLivePolling();
   }
 }
@@ -1546,6 +1608,17 @@ function renderMeetings() {
   }).join("");
   select.innerHTML = `<option value="">请选择分站</option>${options}`;
   select.value = state.activeMeeting ? String(state.activeMeeting.meeting_key) : "";
+}
+
+function renderDataSourceControl() {
+  const select = $("dataSourceSelect");
+  if (select) select.value = state.dataSource;
+  const hint = $("selectorHint");
+  if (hint) {
+    hint.textContent = state.dataSource === "fastf1"
+      ? "FastF1 独立数据源：读取 FastF1 自己的赛历和会话数据，不与 OpenF1 合并。"
+      : "OpenF1 独立数据源：读取 OpenF1 的 Meeting / Session 和会话 feeds。";
+  }
 }
 
 function renderSeasonOptions() {
@@ -1632,9 +1705,9 @@ async function loadMeetings() {
   renderSeasonOptions();
   let meetingError = null;
   try {
-    const payload = await api(`/api/meetings?year=${state.season}`);
+    const payload = await api(`/api/meetings?year=${state.season}&source=${state.dataSource}`);
     state.meetings = (payload.data || []).slice().sort((a, b) => (a.round ?? 999) - (b.round ?? 999) || Date.parse(a.date_start || 0) - Date.parse(b.date_start || 0));
-    setConnection(payload.source === "openf1" || payload.source === "cache", payload.source === "openf1" ? "数据源已连接" : payload.source === "catalog" ? "本地赛季目录" : "本地缓存");
+    setConnection(payload.source === "openf1" || payload.source === "fastf1-catalog" || payload.source === "cache", payload.source === "fastf1-catalog" ? "FastF1 赛季目录" : payload.source === "openf1" ? "OpenF1 数据源已连接" : payload.source === "catalog" ? "OpenF1 本地赛季目录" : "本地缓存");
   } catch (error) {
     state.meetings = [];
     meetingError = error;
@@ -1651,7 +1724,7 @@ async function loadMeetings() {
 
 async function loadSeasons() {
   try {
-    const payload = await api("/api/seasons");
+    const payload = await api(`/api/seasons?source=${state.dataSource}`);
     const years = [...new Set((payload.data || []).map(Number).filter(Number.isInteger))].sort((a, b) => b - a);
     state.seasons = years.length ? years : [state.season];
     if (!state.seasons.includes(state.season)) state.season = state.seasons[0];
@@ -1662,6 +1735,7 @@ async function loadSeasons() {
 }
 
 async function initialiseScheduleCatalog() {
+  renderDataSourceControl();
   await loadSeasons();
   await loadMeetings();
 }
@@ -1673,9 +1747,10 @@ async function loadSessions(meetingKey) {
     return;
   }
   try {
-    const payload = await api(`/api/sessions?meeting_key=${meetingKey}`);
+    const payload = await api(`/api/sessions?meeting_key=${meetingKey}&source=${state.dataSource}`);
     state.sessions = payload.data || [];
-    if (payload.source === "openf1") setConnection(true, "数据源已连接");
+    if (payload.source === "openf1") setConnection(true, "OpenF1 数据源已连接");
+    else if (payload.source === "fastf1-catalog") setConnection(true, "FastF1 节点目录");
     else if (payload.source === "cache" || payload.source === "local") setConnection(true, "本地缓存");
     else if (payload.source === "catalog") setConnection(false, "本地节点目录 · 待接口获取");
   } catch (error) {
@@ -1896,7 +1971,9 @@ function getResultRows() {
     const mapped = mappedCompetitors.get(car) || {};
     const resultIndex = phaseIndex ?? (Array.isArray(raw.duration) ? 2 : null);
     const duration = resultIndex !== null && Array.isArray(raw.duration) ? (raw.duration[resultIndex] ?? null) : raw.duration;
-    const gap = resultIndex !== null && Array.isArray(raw.gap_to_leader) ? (raw.gap_to_leader[resultIndex] ?? null) : raw.gap_to_leader;
+    const rawGap = resultIndex !== null && Array.isArray(raw.gap_to_leader) ? (raw.gap_to_leader[resultIndex] ?? null) : raw.gap_to_leader;
+    const mappedGap = mapped.gap_to_leader !== null && mapped.gap_to_leader !== undefined && mapped.gap_to_leader !== "" ? mapped.gap_to_leader : null;
+    const gap = rawGap ?? mappedGap;
     const fastest = viewLaps.filter((lap) => Number(lap.driver_number) === car && isCompleteLapRecord(lap)).sort((a, b) => a.lap_duration - b.lap_duration)[0] || null;
     return { raw, car, driver, mapped, duration, gap, fastest, classification, isNc: isNotClassified(raw, classification), extension: extensionForRow(car, mapped, fastest) };
   });
@@ -1955,7 +2032,8 @@ function intervalToPrevious(row, rowIndex, rows, intervalMap) {
   const source = intervalMap.get(row.car)?.interval;
   if (numeric(source) != null) return displayGap(source);
   const currentGap = numeric(row.gap);
-  const previousGap = numeric(rows[rowIndex - 1]?.gap);
+  const previous = rows[rowIndex - 1];
+  const previousGap = Number(previous?.raw?.position) === 1 ? 0 : numeric(previous?.gap);
   if (currentGap != null && previousGap != null) return displayGap(Math.max(0, currentGap - previousGap));
   const currentDuration = numeric(row.duration);
   const previousDuration = numeric(rows[rowIndex - 1]?.duration);
@@ -1965,6 +2043,7 @@ function intervalToPrevious(row, rowIndex, rows, intervalMap) {
 }
 
 function gapToLeaderText(row) {
+  if (Number(row.raw?.position) === 1) return "--";
   const mappedGap = row.mapped?.gap_to_leader;
   return mappedGap !== null && mappedGap !== undefined && mappedGap !== "" ? displayGap(mappedGap) : displayGap(row.gap);
 }
@@ -2138,11 +2217,13 @@ async function loadCurrentData() {
     return;
   }
   try {
-    const payload = await api(`/api/session-data?meeting_key=${meetingKey}&session_key=${sessionKey}`);
+    const payload = await api(`/api/session-data?meeting_key=${meetingKey}&session_key=${sessionKey}&source=${state.dataSource}`);
     if (requestId !== state.dataRequestId || meetingKey !== state.activeMeeting?.meeting_key || sessionKey !== state.activeSession?.session_key) return;
     state.data = enrichBackendMapping(payload.data || {});
     state.selectedDriver = null;
-    const sourceLabel = payload.source === "cache" ? "本地缓存" : payload.source === "local" ? "本地快照" : "数据源刚刚拉取并已缓存";
+    const sourceLabel = payload.data?.data_source === "fastf1"
+      ? (payload.source === "fastf1-cache" ? "FastF1 本地缓存" : payload.cache === false ? "FastF1 数据源刚刚拉取（Render 不缓存）" : "FastF1 数据源刚刚拉取并已缓存")
+      : payload.source === "cache" ? "OpenF1 本地缓存" : payload.source === "local" ? "OpenF1 本地快照" : payload.cache === false ? "OpenF1 数据源刚刚拉取（Render 不缓存）" : "OpenF1 数据源刚刚拉取并已缓存";
     setStatus("数据已就绪", `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}${syncTimestampText(state.data)}${syncWarningText(state.data.sync_warnings)}`, false);
     $("cachePathLabel").textContent = `缓存状态：${sourceLabel}`;
     $("metricDrivers").textContent = number((state.data.session_result || []).length);
@@ -2162,6 +2243,16 @@ $("meetingSelect").addEventListener("change", async (event) => {
   state.activeMeeting = state.meetings.find((meeting) => String(meeting.meeting_key) === event.target.value) || null;
   await loadSessions(state.activeMeeting?.meeting_key);
 });
+$("dataSourceSelect")?.addEventListener("change", async (event) => {
+  const source = event.target.value === "fastf1" ? "fastf1" : "openf1";
+  if (source === state.dataSource) return;
+  state.dataSource = source;
+  state.data = null;
+  state.season = 2026;
+  renderDataSourceControl();
+  await loadSeasons();
+  await loadMeetings();
+});
 $("seasonSelect").addEventListener("change", async (event) => {
   state.season = Number(event.target.value) || state.seasons[0] || 2026;
   await loadMeetings();
@@ -2178,11 +2269,13 @@ $("syncBtn").addEventListener("click", async () => {
   button.innerHTML = "↻ <span>同步中…</span>";
   setStatus("正在同步数据", `${sessionLabel(state.activeSession.session_name)} · ${sessionKey}`, true);
   try {
-    const payload = await api("/api/sync-session-data", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ meeting_key: meetingKey, session_key: sessionKey }) });
+    const payload = await api("/api/sync-session-data", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ meeting_key: meetingKey, session_key: sessionKey, source: state.dataSource }) });
     if (requestId !== state.dataRequestId || meetingKey !== state.activeMeeting?.meeting_key || sessionKey !== state.activeSession?.session_key) return;
     state.data = enrichBackendMapping(payload.data || {});
     state.selectedDriver = null;
-    const sourceLabel = "数据源已同步并更新缓存";
+    const sourceLabel = payload.cache === false
+      ? `${dataSourceLabel(state.dataSource)} 已同步（Render 不缓存）`
+      : `${dataSourceLabel(state.dataSource)} 已同步并更新缓存`;
     setStatus(syncTitle(state.data), `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}${syncTimestampText(state.data)}${syncWarningText(state.data.sync_warnings)}`, false);
     $("cachePathLabel").textContent = `缓存状态：${sourceLabel}`;
     $("metricDrivers").textContent = number((state.data.session_result || []).length);
@@ -2284,3 +2377,4 @@ document.addEventListener("keydown", (event) => {
 resetLiveTiming();
 resetDataPanels();
 initialiseScheduleCatalog();
+if (!STATIC_MODE && state.liveTiming.source === "nana") startLivePolling();

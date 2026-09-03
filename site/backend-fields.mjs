@@ -7,7 +7,9 @@ const DRIVER_IDS = {
   PIA: 347528, GAS: 347499, PER: 347519, BOT: 347525, CRA: 347908, FOR: 368438,
   HER: 368439, IWA: 347538, BEG: 347535, BRO: 347536, VES: 347526, ARO: 347543,
   MAG: 347532, RIC: 347524, ZHO: 347530, GUA: 347530, SAR: 347521, DEV: 347529,
-  HIR: 347541, TSU: 347546,
+  HIR: 347541, TSU: 347546, VET: 347471, RAI: 347469, GRO: 347438, KVY: 347472,
+  GIO: 347500, KUB: 347505, LAT: 347507, AIT: 347510, FIT: 347512, MSC: 347508,
+  MAZ: 347513,
 };
 
 const DRIVER_IDS_BY_NAME = {
@@ -22,7 +24,11 @@ const DRIVER_IDS_BY_NAME = {
   "colton herta": 368439, "ayumu iwasa": 347538, "dino beganovic": 347535,
   "luke browning": 347536, "frederik vesti": 347526, "paul aron": 347543,
   "ryo hirakawa": 347541, "yuki tsunoda": 347546,
-  "kevin magnussen": 347532, "daniel ricciardo": 347524, "zhou guanyu": 347530,
+  "kevin magnussen": 347532, "daniel ricciardo": 347524, "sebastian vettel": 347471,
+  "kimi raikkonen": 347469, "kimi räikkönen": 347469, "romain grosjean": 347438,
+  "daniil kvyat": 347472, "antonio giovinazzi": 347500, "robert kubica": 347505,
+  "nicholas latifi": 347507, "jack aitken": 347510, "pietro fittipaldi": 347512,
+  "mick schumacher": 347508, "nikita mazepin": 347513, "zhou guanyu": 347530,
   "guanyu zhou": 347530, "logan sargeant": 347521, "nyck de vries": 347529,
   "jack doohan": 347517, "antonio fuoco": 347909, "theo pourchaire": 347522,
   "felipe drugovich": 347518, "victor martins": 347545, "pato o ward": 347531,
@@ -61,10 +67,15 @@ const DRIVER_IDS_BY_CAR = {
 };
 
 const TEAM_IDS = {
-  "alfa romeo": 385368, alphatauri: 385363, alpine: 385366, "aston martin": 385362, audi: 394048, cadillac: 390378,
-  ferrari: 385364, haas: 385361, "haas f1 team": 385361, "kick sauber": 385368, mclaren: 385367, mercedes: 385358,
+  "alfa romeo": 385368, alphatauri: 385363, "scuderia toro rosso": 385363, alpine: 385366, "aston martin": 385362, "force india": 385362, audi: 394048, cadillac: 390378,
+  ferrari: 385364, haas: 385361, "haas f1 team": 385361, "kick sauber": 385368, sauber: 385368, mclaren: 385367, mercedes: 385358, renault: 385366, "racing point": 385362,
   rb: 385363, "racing bulls": 385363, "red bull racing": 385355, williams: 385365,
 };
+
+// These historical names end with a current constructor or engine sponsor.
+// Do not let suffix matching assign them the wrong modern team ID.
+const UNMAPPED_HISTORICAL_TEAMS = new Set([
+]);
 
 const STATUS_COLORS = { 0: "red", 2048: "yellow", 2049: "green", 2051: "purple", 2064: "blue" };
 const RACE_SESSIONS = new Set(["Race", "Sprint"]);
@@ -104,7 +115,9 @@ export function resolveBackendDriverId(driver) {
 }
 
 export function resolveBackendTeamId(team) {
-  return lookup(TEAM_IDS, team);
+  const key = identityKey(team);
+  if (UNMAPPED_HISTORICAL_TEAMS.has(key)) return null;
+  return lookup(TEAM_IDS, key);
 }
 
 function numeric(value) {
@@ -224,7 +237,14 @@ function mergeByCar(generated, existing) {
     const left = generated.find((row) => Number(row.car_number) === a)?.position;
     const right = generated.find((row) => Number(row.car_number) === b)?.position;
     return (numeric(left) ?? 999) - (numeric(right) ?? 999) || a - b;
-  }).map((car) => ({ ...(generated.find((row) => Number(row.car_number) === car) || { car_number: car }), ...(existingByCar.get(car) || {}) }));
+  }).map((car) => {
+    const generatedRow = generated.find((row) => Number(row.car_number) === car) || { car_number: car };
+    const existingRow = existingByCar.get(car) || {};
+    const merged = { ...generatedRow, ...existingRow };
+    // A newly fetched pit feed must replace stale zeroes retained in mapped snapshots.
+    if (Object.prototype.hasOwnProperty.call(generatedRow, "pitstop_count")) merged.pitstop_count = generatedRow.pitstop_count;
+    return merged;
+  });
 }
 
 export function mapOpenF1ToBackend(data, existing = null) {
@@ -273,6 +293,7 @@ export function mapOpenF1ToBackend(data, existing = null) {
   const winnerRaw = rawResults.find((row) => Number(row.position) === 1) || rawResults.slice().sort((a, b) => Number(a.position) - Number(b.position))[0] || null;
   const winnerLaps = numeric(winnerRaw?.number_of_laps) ?? numeric(session.laps_completed) ?? null;
   const ncThreshold = RACE_SESSIONS.has(sessionName) && winnerLaps !== null ? Math.floor(winnerLaps * 0.9) : null;
+  const fastF1Race = String(source.data_source || source.source_session || "").toLowerCase() === "fastf1" && RACE_SESSIONS.has(sessionName);
   const cars = new Set([...drivers.keys(), ...resultByCar.keys(), ...positions.keys(), ...intervals.keys(), ...lapsByCar.keys()]);
   const generatedCompetitors = Array.from(cars).filter(Number.isFinite).map((car) => {
     const driver = drivers.get(car) || {};
@@ -281,8 +302,16 @@ export function mapOpenF1ToBackend(data, existing = null) {
     const lapRows = validLaps(lapsByCar.get(car) || []);
     const bestLap = lapRows.slice().sort((a, b) => Number(a.lap_duration) - Number(b.lap_duration))[0] || null;
     const duration = phaseValue(raw.duration);
+    const laps = numeric(raw.number_of_laps) ?? (lapRows.length ? Math.max(...lapRows.map((lap) => Number(lap.lap_number) || 0)) : null);
     const intervalRow = intervals.get(car) || {};
-    const gapRaw = phaseValue(raw.gap_to_leader) ?? intervalRow.gap_to_leader;
+    // Older FastF1 caches stored the non-winner race `Time` in duration and
+    // left gap_to_leader empty. FastF1 defines that value as the cumulative
+    // gap to the winner, so recover it here while retaining source isolation.
+    const sourceGap = phaseValue(raw.gap_to_leader) ?? intervalRow.gap_to_leader;
+    const lapDeficit = fastF1Race && position !== null && !raw.dns && !raw.dsq && winnerLaps !== null && laps !== null && winnerLaps > laps
+      ? `${Math.max(1, Math.round(winnerLaps - laps))}L`
+      : null;
+    const gapRaw = sourceGap ?? (fastF1Race && position !== 1 ? duration ?? lapDeficit : null);
     const gap = position === 1 ? "" : formatBackendGap(gapRaw, { blankZero: true });
     const race = RACE_SESSIONS.has(sessionName);
     const timeValue = raw.dnf || raw.dns || raw.dsq
@@ -290,7 +319,6 @@ export function mapOpenF1ToBackend(data, existing = null) {
       : race && position !== 1
         ? (gap || formatBackendTime(duration))
         : formatBackendTime(duration);
-    const laps = numeric(raw.number_of_laps) ?? (lapRows.length ? Math.max(...lapRows.map((lap) => Number(lap.lap_number) || 0)) : null);
     const positionDesc = race && !raw.dns && !raw.dsq && ncThreshold !== null && laps !== null && laps < ncThreshold ? "NC" : "";
     const backendDriverId = resolveBackendDriverId(driver);
     const backendTeamId = resolveBackendTeamId(driver.team_name);
