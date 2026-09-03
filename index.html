@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#111827" />
     <title>F1 赛后数据</title>
-    <link rel="stylesheet" href="./styles.css?v=20260902-data-sources-v1" />
+    <link rel="stylesheet" href="./styles.css?v=20260903-mapping-modal-v1" />
     <script>
       const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
       const staticPages = new URLSearchParams(window.location.search).get("static") === "1" || (!localServer && !window.location.pathname.startsWith("/site/"));
@@ -221,17 +221,9 @@
                 <label class="inline-select">实时源<select id="liveSourceSelect"><option value="f1telemetry">F1 Telemetry</option><option value="nana" selected>nana</option></select></label>
                 <button class="primary-button" id="liveLoadBtn" type="button"><span>开始实时</span><span aria-hidden="true">▶</span></button>
                 <button class="ghost-button sync-button" id="liveSyncBtn" type="button"><span>立即刷新</span><span aria-hidden="true">↻</span></button>
+                <button class="ghost-button sync-button" id="nanaMappingOpenBtn" type="button" hidden>车号映射</button>
               </div>
               <div class="selector-hint" id="liveTimingHint">数据源：F1 Telemetry 实时接口；不区分历史分站和节点，只覆盖当前实时快照，不写入本地缓存。</div>
-            </section>
-
-            <section class="panel nana-mapping-panel" id="nanaMappingPanel" aria-labelledby="nanaMappingTitle" hidden>
-              <div class="panel-header compact">
-                <div><div class="section-kicker">车号映射</div><h2 id="nanaMappingTitle">车手 / 车队映射</h2></div>
-                <div class="panel-tools"><button class="ghost-button" id="nanaMappingReloadBtn" type="button">重新读取</button><button class="primary-button" id="nanaMappingSaveBtn" type="button">保存映射</button></div>
-              </div>
-              <div class="selector-hint" id="nanaMappingStatus">正在读取车号映射</div>
-              <div class="table-wrap"><table class="data-table dense nana-mapping-table" id="nanaMappingTable"><thead><tr><th>车号</th><th>车手</th><th>缩写</th><th>后台车手 ID</th><th>车队</th><th>后台车队 ID</th></tr></thead><tbody><tr><td colspan="6" class="empty-cell">正在读取车号映射</td></tr></tbody></table></div>
             </section>
 
             <section class="status-strip" id="liveStatus" aria-live="polite">
@@ -365,6 +357,19 @@
         </main>
       </div>
     </div>
-    <script type="module" src="./app.js?v=20260903-live-toggle-v1"></script>
+    <div class="modal-backdrop" id="nanaMappingModal" hidden>
+      <section class="mapping-modal" id="nanaMappingDialog" role="dialog" aria-modal="true" aria-labelledby="nanaMappingTitle" tabindex="-1">
+        <div class="mapping-modal-header">
+          <div><div class="section-kicker">车号映射</div><h2 id="nanaMappingTitle">车手 / 车队映射</h2></div>
+          <button class="icon-button mapping-modal-close" id="nanaMappingCloseBtn" type="button" title="关闭映射" aria-label="关闭映射">×</button>
+        </div>
+        <div class="mapping-modal-body">
+          <div class="selector-hint" id="nanaMappingStatus">正在读取车号映射</div>
+          <div class="table-wrap mapping-modal-table-wrap"><table class="data-table dense nana-mapping-table" id="nanaMappingTable"><thead><tr><th>车号</th><th>车手</th><th>缩写</th><th>后台车手 ID</th><th>车队</th><th>后台车队 ID</th></tr></thead><tbody><tr><td colspan="6" class="empty-cell">正在读取车号映射</td></tr></tbody></table></div>
+        </div>
+        <div class="mapping-modal-footer"><button class="ghost-button" id="nanaMappingReloadBtn" type="button">重新读取</button><button class="primary-button" id="nanaMappingSaveBtn" type="button">保存映射</button></div>
+      </section>
+    </div>
+    <script type="module" src="./app.js?v=20260903-mapping-modal-v1"></script>
   </body>
 </html>

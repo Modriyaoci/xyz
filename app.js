@@ -58,6 +58,7 @@ const state = {
     mappingLoading: false,
     mappingSaving: false,
     mappingError: null,
+    mappingOpen: false,
   },
 };
 
@@ -1333,12 +1334,16 @@ function nanaMappingRows() {
 
 function renderNanaMapping() {
   const live = state.liveTiming;
-  const panel = $("nanaMappingPanel");
+  const openButton = $("nanaMappingOpenBtn");
+  const modal = $("nanaMappingModal");
   const table = $("nanaMappingTable");
-  if (!panel || !table) return;
-  const visible = !STATIC_MODE && (live.source === "nana" || live.source === "bridge");
-  panel.hidden = !visible;
-  if (!visible) return;
+  if (!modal || !table) return;
+  const available = !STATIC_MODE && (live.source === "nana" || live.source === "bridge");
+  if (openButton) openButton.hidden = !available;
+  const open = available && live.mappingOpen;
+  modal.hidden = !open;
+  document.body.classList.toggle("modal-open", open);
+  if (!open) return;
   const status = $("nanaMappingStatus");
   const reload = $("nanaMappingReloadBtn");
   const save = $("nanaMappingSaveBtn");
@@ -1363,6 +1368,22 @@ function renderNanaMapping() {
       return `<tr data-mapping-car="${esc(row.car)}"><td>${esc(row.car)}</td><td>${input("driver_name", row.driverName)}</td><td>${input("driver_code", row.driverCode)}</td><td>${input("driver_id", row.driverId, "number", " inputmode=\"numeric\"")}</td><td>${input("team_name", row.teamName)}</td><td>${input("team_id", row.teamId, "number", " inputmode=\"numeric\"")}</td></tr>`;
     }).join("")
     : `<tr><td colspan="6" class="empty-cell">暂无车号映射</td></tr>`;
+}
+
+async function openNanaMapping() {
+  const live = state.liveTiming;
+  if (STATIC_MODE || (live.source !== "nana" && live.source !== "bridge")) return;
+  live.mappingOpen = true;
+  renderNanaMapping();
+  if (!live.mapping) await loadNanaMapping();
+  window.requestAnimationFrame(() => $("nanaMappingDialog")?.focus());
+}
+
+function closeNanaMapping() {
+  if (!state.liveTiming.mappingOpen) return;
+  state.liveTiming.mappingOpen = false;
+  renderNanaMapping();
+  $("nanaMappingOpenBtn")?.focus();
 }
 
 async function loadNanaMapping() {
@@ -1432,6 +1453,7 @@ async function saveNanaMapping() {
         live.rows = buildLiveRows(live.data);
       }
     }
+    live.mappingOpen = false;
     return true;
   } catch (error) {
     live.mappingError = error.message || "车号映射保存失败";
@@ -1759,6 +1781,10 @@ function startLivePolling() {
 
 function setActiveView(view) {
   state.activeView = ["schedule", "standings", "liveTiming", "dataGuide"].includes(view) ? view : "schedule";
+  if (state.activeView !== "liveTiming" && state.liveTiming.mappingOpen) {
+    state.liveTiming.mappingOpen = false;
+    renderNanaMapping();
+  }
   $("scheduleView").hidden = state.activeView !== "schedule";
   $("standingsView").hidden = state.activeView !== "standings";
   $("liveTimingView").hidden = state.activeView !== "liveTiming";
@@ -1767,7 +1793,6 @@ function setActiveView(view) {
   if (state.activeView === "standings" && !state.standings) loadOfficialStandings();
   if (state.activeView === "liveTiming") {
     renderLiveTimingSelectors();
-    loadNanaMapping();
     renderLiveTiming();
   } else if (state.liveTiming.source !== "nana") {
     stopLivePolling();
@@ -2539,8 +2564,8 @@ $("liveSourceSelect")?.addEventListener("change", (event) => {
   const source = event.target.value === "nana" ? "nana" : "f1telemetry";
   if (source === state.liveTiming.source) return;
   state.liveTiming.source = source;
+  state.liveTiming.mappingOpen = false;
   resetLiveTiming();
-  loadNanaMapping();
   renderLiveTiming();
 });
 $("liveLoadBtn")?.addEventListener("click", () => {
@@ -2557,6 +2582,9 @@ $("liveClearSearch")?.addEventListener("click", () => { $("liveDriverSearch").va
 $("liveWeatherView")?.addEventListener("change", (event) => { state.liveTiming.weatherView = event.target.value; renderLiveWeather(); });
 $("liveMessageView")?.addEventListener("change", (event) => { state.liveTiming.messageView = event.target.value; renderLiveTiming(); });
 $("liveMessageLanguage")?.addEventListener("change", (event) => { state.liveTiming.messageLanguage = event.target.value; renderLiveTiming(); });
+$("nanaMappingOpenBtn")?.addEventListener("click", () => openNanaMapping());
+$("nanaMappingCloseBtn")?.addEventListener("click", () => closeNanaMapping());
+$("nanaMappingModal")?.addEventListener("click", (event) => { if (event.target === event.currentTarget) closeNanaMapping(); });
 $("nanaMappingReloadBtn")?.addEventListener("click", () => loadNanaMapping());
 $("nanaMappingSaveBtn")?.addEventListener("click", () => saveNanaMapping());
 bindResultColumnPicker("resultColumnPicker", "resultColumnPickerReset");
@@ -2570,6 +2598,10 @@ document.addEventListener("click", (event) => {
 });
 document.addEventListener("keydown", (event) => {
   if (event.key !== "Escape") return;
+  if (state.liveTiming.mappingOpen) {
+    closeNanaMapping();
+    return;
+  }
   document.querySelectorAll(".column-picker-menu:not([hidden])").forEach((menu) => {
     menu.hidden = true;
     menu.closest(".column-picker")?.querySelector("[data-column-picker-toggle]")?.setAttribute("aria-expanded", "false");
