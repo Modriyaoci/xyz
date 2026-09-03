@@ -283,21 +283,28 @@ function normaliseSegmentStatus(value) {
 
 function normaliseStints(driverNumber, source) {
   const raw = source && typeof source === "object" ? source : {};
-  const entries = Array.isArray(raw) ? raw.map((item, index) => [index, item]) : Object.entries(raw);
+  const entries = (Array.isArray(raw) ? raw.map((item, index) => [index, item]) : Object.entries(raw))
+    .filter(([key, stint]) => key !== "_kf" && stint && typeof stint === "object");
+  let completedLaps = 0;
   return entries.map(([index, stint]) => {
-    const total = numberOrNull(stint?.TotalLaps) ?? 0;
-    const startLaps = numberOrNull(stint?.StartLaps) ?? 0;
+    const endTyreAge = numberOrNull(stint?.TotalLaps) ?? 0;
+    const startTyreAge = numberOrNull(stint?.StartLaps) ?? 0;
+    const stintLaps = Math.max(0, endTyreAge - startTyreAge);
+    const lapStart = completedLaps + 1;
+    completedLaps += stintLaps;
     return {
       driver_number: Number(driverNumber),
       stint_number: Number(index) + 1,
       compound: String(stint?.Compound || "UNKNOWN").toUpperCase(),
-      lap_start: Math.max(1, startLaps + 1),
-      lap_end: Math.max(0, startLaps + total),
+      lap_start: lapStart,
+      lap_end: completedLaps,
       lap_number: numberOrNull(stint?.LapNumber),
       lap_time: stint?.LapTime || "",
-      total_laps: total,
-      start_laps: startLaps,
+      total_laps: stintLaps,
+      start_laps: startTyreAge,
+      end_laps: endTyreAge,
       is_new: String(stint?.New).toLowerCase() === "true",
+      tyres_not_changed: ["true", "1"].includes(String(stint?.TyresNotChanged).toLowerCase()),
       lap_flags: numberOrNull(stint?.LapFlags) ?? 0,
     };
   });

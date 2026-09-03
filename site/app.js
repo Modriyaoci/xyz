@@ -54,6 +54,10 @@ const state = {
     loading: false,
     sequence: 0,
     stream: null,
+    mapping: null,
+    mappingLoading: false,
+    mappingSaving: false,
+    mappingError: null,
   },
 };
 
@@ -1095,7 +1099,7 @@ function liveMessageTimestamp(row) {
 }
 
 function liveCompetitorStatus(row, fallback) {
-  if (row?.position_desc) return String(row.position_desc);
+  if (row?.position_desc && String(row.position_desc).toUpperCase() !== "NC") return String(row.position_desc);
   const labels = { 301: "运行中", 302: "完成", 303: "DNS", 304: "DSQ", 305: "DNF" };
   return labels[Number(row?.status)] || fallback;
 }
@@ -1106,6 +1110,51 @@ function liveWeatherRows(data) {
   return weather && typeof weather === "object" && Object.keys(weather).length
     ? [{ ...weather, date: weather.date || data?.fetched_at }]
     : [];
+}
+
+function liveNcContext(data) {
+  const backend = liveBackendPayload(data);
+  const sessionName = String(data?.session?.session_name || backend.type || backend.name || state.liveTiming.sessionName || "").toLowerCase();
+  if (!new Set(["race", "sprint"]).has(sessionName)) return { enabled: false, pending: false, winnerLaps: null, threshold: null };
+  const resultRows = Array.isArray(data?.session_result) ? data.session_result : [];
+  const competitorRows = Array.isArray(backend.competitors) ? backend.competitors : [];
+  const rows = [...resultRows, ...competitorRows];
+  const scheduledLaps = numeric(backend.fields?.laps);
+  const completedLaps = numeric(backend.fields?.laps_completed);
+  const lapTargetReached = isBackendLivePayload(data)
+    && scheduledLaps != null && scheduledLaps > 0 && completedLaps != null && completedLaps >= scheduledLaps;
+  const terminalStatuses = new Set([302, 303, 304, 305]);
+  const allCompetitorsFinal = competitorRows.length > 0 && competitorRows.every((row) => terminalStatuses.has(Number(row?.status)));
+  const sessionEndedAt = Date.parse(data?.session?.date_end || "");
+  const finalResultAvailable = resultRows.some((row) => Number(row?.position) === 1)
+    && (!Number.isFinite(sessionEndedAt) || sessionEndedAt <= Date.now());
+  if (!lapTargetReached && !allCompetitorsFinal && !finalResultAvailable) {
+    return { enabled: false, pending: true, winnerLaps: null, threshold: null };
+  }
+  const winner = rows.find((row) => Number(row?.position) === 1)
+    || (backend.winner && typeof backend.winner === "object" ? backend.winner : null);
+  const rowLaps = (row) => [row?.number_of_laps, row?.laps, row?.lap].map(numeric).find((value) => value != null);
+  let winnerLaps = rowLaps(winner);
+  if (winnerLaps == null) winnerLaps = numeric(backend.fields?.laps_completed ?? backend.fields?.laps);
+  if (winnerLaps == null) {
+    const liveLapValues = (Array.isArray(data?.laps) ? data.laps : []).map((row) => rowLaps(row)).filter((value) => value != null);
+    if (liveLapValues.length) winnerLaps = Math.max(...liveLapValues);
+  }
+  return Number.isFinite(winnerLaps)
+    ? { enabled: true, pending: false, winnerLaps, threshold: Math.floor(winnerLaps * 0.9) }
+    : { enabled: false, pending: false, winnerLaps: null, threshold: null };
+}
+
+function isLiveNotClassified(rows, context) {
+  if (!context.enabled) return false;
+  const values = Array.isArray(rows) ? rows : [rows];
+  const excluded = values.some((row) => {
+    const status = Number(row?.status);
+    return row?.dns || row?.dsq || status === 303 || status === 304;
+  });
+  if (excluded) return false;
+  const laps = values.flatMap((row) => [row?.number_of_laps, row?.laps, row?.lap]).map(numeric).find((value) => value != null);
+  return laps != null && laps < context.threshold;
 }
 
 function buildLiveRows(data) {
@@ -1136,6 +1185,7 @@ function buildLiveRows(data) {
   }
   const cars = new Set([...drivers.keys(), ...results.keys(), ...mappedRows.keys(), ...positions.keys(), ...intervals.keys(), ...laps.keys()]);
   const snapshotTime = Date.parse(data?.fetched_at || "") || Date.now();
+  const classification = liveNcContext(data);
   const rows = Array.from(cars).map((car) => {
     const driver = drivers.get(car) || {};
     const result = results.get(car) || {};
@@ -1157,8 +1207,8 @@ function buildLiveRows(data) {
     const mappedTeamId = mapped.teamuid ?? mapped.team_id ?? sharedResolveBackendTeamId(driver.team_name);
     const gap = mapped.gap_to_leader || liveResultValue(result, "gap_to_leader") || interval.gap_to_leader || null;
     const intervalValue = mapped.interval || liveResultValue(result, "interval") || interval.interval || null;
-    const mappedLastLap = mappedId != null ? mappedExtra.last_lap_time?.[String(mappedId)] : null;
-    const mappedBestLap = mapped.fastest_lap_time || null;
+    const mappedLastLap = mappedId != null ? mappedExtra.last_lap_time?.[String(mappedId)] || mapped.last_lap_time : mapped.last_lap_time;
+    const mappedBestLap = mapped.fastest_lap_time || mapped.best_lap_time || null;
     const directSectors = [1, 2, 3].map((sector) => ({
       sector,
       time: result[`duration_sector_${sector}`] == null ? "" : Number(result[`duration_sector_${sector}`]).toFixed(3),
@@ -1173,13 +1223,13 @@ function buildLiveRows(data) {
     const directTyreHistory = (data?.stints || []).filter((stint) => Number(stint.driver_number) === car).slice().sort((a, b) => Number(a.stint_number) - Number(b.stint_number));
     const directTyreInfo = directTyreHistory.at(-1) || null;
     const profile = liveDriverProfiles.get(Number(mappedId)) || {};
-    const name = driver.full_name || `${driver.first_name || ""} ${driver.last_name || ""}`.trim() || profile.name || `车手 ${car}`;
+    const name = driver.full_name || `${driver.first_name || ""} ${driver.last_name || ""}`.trim() || mapped.name || mapped.driver_name || profile.name || `车手 ${car}`;
     return {
       position: numeric(mapped.position) ?? resultPosition ?? livePosition ?? null,
       car,
       name,
-      code: driver.name_acronym || profile.code || "",
-      team: driver.team_name || liveTeamNames.get(Number(mappedTeamId)) || "--",
+      code: driver.name_acronym || mapped.abbr || mapped.short_name || profile.code || "",
+      team: driver.team_name || mapped.teamname || mapped.team_name || mapped.team || liveTeamNames.get(Number(mappedTeamId)) || "--",
       driverId: mappedId,
       teamId: mappedTeamId,
       lap: mapped.laps ?? numeric(result.number_of_laps) ?? numeric(latestLap.lap_number),
@@ -1191,6 +1241,9 @@ function buildLiveRows(data) {
       points: mapped.points ?? result.points ?? null,
       status,
       positionDesc: mapped.position_desc ?? "",
+      isNc: isLiveNotClassified([mapped, result, latestLap], classification),
+      ncWinnerLaps: classification.winnerLaps,
+      ncThreshold: classification.threshold,
       grid: mapped.grid ?? null,
       lapsLed: mapped.laps_led ?? null,
       pitCount: mapped.pitstop_count ?? mapped.pitstop ?? pit?.count ?? 0,
@@ -1198,11 +1251,11 @@ function buildLiveRows(data) {
       extra: mappedId != null ? {
         lastLapColor: mappedExtra.last_lap_time_color?.[String(mappedId)] || null,
         bestLapColor: mappedExtra.best_lap_time_color?.[String(mappedId)] || null,
-        sectors: mappedExtra.sectors?.[String(mappedId)] || directSectors,
+        sectors: mappedExtra.sectors?.[String(mappedId)] || mapped.sectors || directSectors,
         miniSectors: mappedExtra.mini_sectors?.[String(mappedId)] || mappedExtra.mini_sectors_data?.[String(mappedId)] || directMiniSectors,
         tyreInfo: mappedExtra.tire_info?.[String(mappedId)] || directTyreInfo,
         tyreHistory: mappedExtra.tire_history?.[String(mappedId)] || directTyreHistory,
-        trackLimits: mappedExtra.track_limits?.[String(mappedId)] ?? null,
+        trackLimits: mappedExtra.track_limits?.[String(mappedId)] ?? mapped.track_limits ?? null,
       } : null,
       updatedAt: lastActivity ? new Date(lastActivity).toISOString() : data?.fetched_at,
     };
@@ -1262,11 +1315,139 @@ function renderLiveSourceControl() {
   if (footer) footer.textContent = bridge ? "数据源：nana" : "数据源：F1 Telemetry 实时接口";
 }
 
+function nanaMappingRows() {
+  const cars = state.liveTiming.mapping?.cars;
+  if (!cars || typeof cars !== "object") return [];
+  return Object.entries(cars)
+    .map(([car, row]) => ({
+      car: Number(car),
+      driverName: String(row?.driver_name ?? ""),
+      driverCode: String(row?.driver_code ?? ""),
+      driverId: row?.driver_id ?? null,
+      teamName: String(row?.team_name ?? ""),
+      teamId: row?.team_id ?? null,
+    }))
+    .filter((row) => Number.isFinite(row.car))
+    .sort((a, b) => a.car - b.car);
+}
+
+function renderNanaMapping() {
+  const live = state.liveTiming;
+  const panel = $("nanaMappingPanel");
+  const table = $("nanaMappingTable");
+  if (!panel || !table) return;
+  const visible = !STATIC_MODE && (live.source === "nana" || live.source === "bridge");
+  panel.hidden = !visible;
+  if (!visible) return;
+  const status = $("nanaMappingStatus");
+  const reload = $("nanaMappingReloadBtn");
+  const save = $("nanaMappingSaveBtn");
+  if (reload) reload.disabled = live.mappingLoading || live.mappingSaving;
+  if (save) save.disabled = live.mappingLoading || live.mappingSaving || !live.mapping;
+  if (status) {
+    status.textContent = live.mappingError
+      ? `映射读取失败：${live.mappingError}`
+      : live.mappingLoading
+        ? "正在读取车号映射…"
+        : live.mappingSaving
+          ? "正在保存映射…"
+          : live.mapping ? "按车号匹配；修改后保存即可应用到当前及后续 Nana 数据。" : "尚未读取车号映射";
+  }
+  const rows = nanaMappingRows();
+  const signature = JSON.stringify(rows);
+  if (table.dataset.mappingSignature === signature) return;
+  table.dataset.mappingSignature = signature;
+  table.querySelector("tbody").innerHTML = rows.length
+    ? rows.map((row) => {
+      const input = (field, value, type = "text", extra = "") => `<input class="nana-mapping-input${type === "number" ? " id" : ""}" data-mapping-field="${field}" type="${type}" value="${esc(value ?? "")}"${extra}>`;
+      return `<tr data-mapping-car="${esc(row.car)}"><td>${esc(row.car)}</td><td>${input("driver_name", row.driverName)}</td><td>${input("driver_code", row.driverCode)}</td><td>${input("driver_id", row.driverId, "number", " inputmode=\"numeric\"")}</td><td>${input("team_name", row.teamName)}</td><td>${input("team_id", row.teamId, "number", " inputmode=\"numeric\"")}</td></tr>`;
+    }).join("")
+    : `<tr><td colspan="6" class="empty-cell">暂无车号映射</td></tr>`;
+}
+
+async function loadNanaMapping() {
+  const live = state.liveTiming;
+  if (STATIC_MODE || (live.source !== "nana" && live.source !== "bridge") || live.mappingLoading) return false;
+  live.mappingLoading = true;
+  live.mappingError = null;
+  renderNanaMapping();
+  try {
+    const payload = await api("/api/live-timing/mapping");
+    if (!payload?.cars) throw new Error("映射响应格式无效");
+    live.mapping = payload;
+    return true;
+  } catch (error) {
+    live.mappingError = error.message || "车号映射读取失败";
+    return false;
+  } finally {
+    live.mappingLoading = false;
+    renderNanaMapping();
+  }
+}
+
+function nanaMappingFromInputs() {
+  const table = $("nanaMappingTable");
+  const cars = {};
+  table?.querySelectorAll("tr[data-mapping-car]").forEach((row) => {
+    const value = (field) => row.querySelector(`[data-mapping-field="${field}"]`)?.value.trim() || "";
+    const number = (field) => {
+      const raw = value(field);
+      if (!raw) return null;
+      const parsed = Number(raw);
+      return Number.isFinite(parsed) ? parsed : null;
+    };
+    cars[row.dataset.mappingCar] = {
+      car_number: Number(row.dataset.mappingCar),
+      driver_name: value("driver_name"),
+      driver_code: value("driver_code").toUpperCase(),
+      driver_id: number("driver_id"),
+      team_name: value("team_name"),
+      team_id: number("team_id"),
+    };
+  });
+  return { version: 1, based_on: "official-standings-2026", cars };
+}
+
+async function saveNanaMapping() {
+  const live = state.liveTiming;
+  if (STATIC_MODE || (live.source !== "nana" && live.source !== "bridge") || live.mappingSaving) return false;
+  live.mappingSaving = true;
+  live.mappingError = null;
+  renderNanaMapping();
+  try {
+    const payload = await api("/api/live-timing/mapping", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(nanaMappingFromInputs()),
+    });
+    if (!payload?.cars) throw new Error("映射保存响应格式无效");
+    live.mapping = payload;
+    // Refresh the current snapshot so a mapping edit is visible even when
+    // the realtime stream is currently stopped.
+    if (live.stream) await live.stream.requestState();
+    else if (live.data) {
+      const current = await api("/api/live-timing");
+      if (current?.data) {
+        live.data = current.data;
+        live.rows = buildLiveRows(live.data);
+      }
+    }
+    return true;
+  } catch (error) {
+    live.mappingError = error.message || "车号映射保存失败";
+    return false;
+  } finally {
+    live.mappingSaving = false;
+    renderLiveTiming();
+  }
+}
+
 function renderLiveTiming() {
   const live = state.liveTiming;
   const table = $("liveTimingTable");
   if (!table) return;
   renderLiveSourceControl();
+  renderNanaMapping();
   renderLiveMeetingMeta();
   const race = liveIsRaceSession();
   table.querySelector("thead").innerHTML = liveResultHeaderHtml();
@@ -1280,8 +1461,11 @@ function renderLiveTiming() {
       const currentTyreLaps = row.extra?.tyreInfo?.total_laps;
       const previousGap = rowIndex === 0 ? "--" : row.interval || (numeric(row.gap) != null && numeric(previous?.gap) != null ? displayGap(Math.max(0, numeric(row.gap) - numeric(previous.gap))) : "--");
       const statusClass = row.status === "进站" ? "is-pit" : row.status === "运行中" ? "is-running" : "is-warning";
+      const ncCell = row.isNc
+        ? `<span class="nc-badge" title="完成 ${esc(row.lap ?? "--")} 圈，小于实时 NC 阈值 ${esc(row.ncThreshold ?? "--")} 圈">NC</span>`
+        : "--";
       const cells = {
-        position: `<td class="position">${esc(row.position ?? "--")}</td>`,
+        position: `<td class="position">${esc(row.isNc ? "NC" : row.position ?? "--")}</td>`,
         car: `<td>${esc(row.car)}</td>`,
         driver: `<td class="driver-cell"><strong>${esc(row.name)}</strong><span class="driver-code">${esc(row.code)}</span></td>`,
         team: `<td>${esc(row.team)}</td>`,
@@ -1296,7 +1480,7 @@ function renderLiveTiming() {
         interval: `<td>${esc(displayGap(previousGap))}</td>`,
         gap: `<td>${esc(displayGap(row.gap))}</td>`,
         pit: `<td>${esc(row.pitCount ?? "--")}</td>`,
-        nc: `<td>${esc(row.positionDesc || "--")}</td>`,
+        nc: `<td>${ncCell}</td>`,
         tyre: `<td>${currentTyre ? tyreChip(currentTyre, `${currentTyre} · ${currentTyreLaps ?? "--"} 圈`) : "--"}</td>`,
         trackLimits: `<td>${esc(row.extra?.trackLimits ?? "--")}</td>`,
         miniSectors: `<td><div class="row-colors">${miniSectorSummary(row.extra?.miniSectors)}</div></td>`,
@@ -1311,12 +1495,19 @@ function renderLiveTiming() {
   }));
   const data = live.data || {};
   const backend = liveBackendPayload(data);
+  const liveClassification = liveNcContext(data);
+  const liveNcCount = live.rows.filter((row) => row.isNc).length;
   const backendLaps = numeric(backend.fields?.laps_completed) ?? numeric(backend.fields?.laps);
   $("liveMetricDrivers").textContent = number((backend.competitors || data.drivers || []).length);
   $("liveMetricLaps").textContent = number(backendLaps ?? Math.max(0, ...(data.laps || []).map((lap) => Number(lap.lap_number) || 0)));
   $("liveMetricWeather").textContent = number(liveWeatherRows(data).length);
   $("liveMetricMessages").textContent = number((backend.messages || data.race_control || []).length);
   $("liveRowsBadge").textContent = `${filteredRows.length} / ${live.rows.length} 条`;
+  $("liveResultsFooter").textContent = liveClassification.enabled && liveClassification.threshold != null
+    ? `实时字段来自当前快照 · NC 实时计算：领先 ${liveClassification.winnerLaps} 圈，90% 向下取整阈值 ${liveClassification.threshold} 圈，${liveNcCount} 位 NC · 点击车手行可查看详情。`
+    : liveClassification.pending
+      ? "正赛进行中 · NC 将在完赛后按领先圈数的 90% 计算 · 点击车手行可查看详情。"
+    : "实时字段将在接收到数据后显示。点击车手行可查看车手详情。";
   $("liveSequenceBadge").textContent = `更新 ${live.sequence ? `#${String(live.sequence).padStart(3, "0")}` : "--"}`;
   $("liveEventsBadge").textContent = `${live.events.length} 条`;
   const messageLimit = live.messageView === "all" ? live.events.length : Number(live.messageView);
@@ -1576,6 +1767,7 @@ function setActiveView(view) {
   if (state.activeView === "standings" && !state.standings) loadOfficialStandings();
   if (state.activeView === "liveTiming") {
     renderLiveTimingSelectors();
+    loadNanaMapping();
     renderLiveTiming();
   } else if (state.liveTiming.source !== "nana") {
     stopLivePolling();
@@ -2348,6 +2540,7 @@ $("liveSourceSelect")?.addEventListener("change", (event) => {
   if (source === state.liveTiming.source) return;
   state.liveTiming.source = source;
   resetLiveTiming();
+  loadNanaMapping();
   renderLiveTiming();
 });
 $("liveLoadBtn")?.addEventListener("click", () => {
@@ -2364,6 +2557,8 @@ $("liveClearSearch")?.addEventListener("click", () => { $("liveDriverSearch").va
 $("liveWeatherView")?.addEventListener("change", (event) => { state.liveTiming.weatherView = event.target.value; renderLiveWeather(); });
 $("liveMessageView")?.addEventListener("change", (event) => { state.liveTiming.messageView = event.target.value; renderLiveTiming(); });
 $("liveMessageLanguage")?.addEventListener("change", (event) => { state.liveTiming.messageLanguage = event.target.value; renderLiveTiming(); });
+$("nanaMappingReloadBtn")?.addEventListener("click", () => loadNanaMapping());
+$("nanaMappingSaveBtn")?.addEventListener("click", () => saveNanaMapping());
 bindResultColumnPicker("resultColumnPicker", "resultColumnPickerReset");
 bindResultColumnPicker("liveColumnPicker", "liveColumnPickerReset");
 document.addEventListener("click", (event) => {
