@@ -28,7 +28,7 @@ const fastF1SessionScript = path.join(root, "scripts", "fastf1-session.py");
 const fastF1CacheDir = path.join(root, "work", "fastf1_cache");
 const fastF1SessionCacheDir = path.join(root, "work", "fastf1_session_cache");
 const nanaMappingFile = path.join(root, "work", "nana-mapping.json");
-const fastF1CacheVersion = "20260902-fastf1-source-v4";
+const fastF1CacheVersion = "20260903-fastf1-source-v5";
 const fastF1TimeoutMs = Number(process.env.FASTF1_TIMEOUT_MS || 180000);
 const fastF1Enabled = process.env.FASTF1_ENABLED !== "0" && process.env.FASTF1_FALLBACK !== "0";
 const meetingCatalogFile = path.join(root, "meetings-all.json");
@@ -847,9 +847,7 @@ async function fastF1SessionData(meetingKey, sessionKey, { force = false } = {})
   if (!renderNoSessionCache && await exists(cacheFile)) {
     try {
       const cached = normaliseSessionData(await readJson(cacheFile));
-      const cacheSessionEnded = Date.parse(cached.session?.date_end || "") < Date.now();
-      if (cached.cache_version === fastF1CacheVersion && sessionCacheHealthy(cached, requestedSessionKey)
-        && (!force || cacheSessionEnded)) {
+      if (!force && cached.cache_version === fastF1CacheVersion && sessionCacheHealthy(cached, requestedSessionKey)) {
         cached.data_source = "fastf1";
         cached.cache_version = fastF1CacheVersion;
         cached.mapped = mapOpenF1ToBackend(cached, null);
@@ -1079,6 +1077,7 @@ function sessionCacheHealthy(data, sessionKey) {
     if (data[field].some((row) => row?.session_key != null && Number(row.session_key) !== Number(sessionKey))) return false;
   }
   const sessionEnded = Date.parse(data.session?.date_end || "") < Date.now();
+  if (sessionEnded && !data.session?.is_cancelled && data.session_result.length > 0 && data.laps.length === 0) return false;
   if (sessionEnded && data.laps.length > 0 && data.session_result.length === 0) return false;
   return true;
 }
