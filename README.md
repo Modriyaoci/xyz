@@ -42,7 +42,9 @@ cp fastf1-meetings.json site/fastf1-meetings.json
 
 ### nana 实时入口
 
-登录本地 Node 服务后访问 `/api/live-timing/entry`，会返回一组带令牌的入口地址。把其中的 `ingest.url` 交给另一套后台，它用 `POST` 逐条推送实时数据；Node 页面打开后默认连接 `nana`，通过 SSE 自动接收当前状态。同一赛事按 `id` 在内存中增量更新：本次携带的普通字段覆盖旧值，车手按 `id` 或车号合并，消息去重追加，扩展字段按车手 ID 覆盖；赛事 `id` 变化时才清空上一场。实时数据只保存在内存，不写入历史文件。
+登录本地 Node 服务后访问 `/api/live-timing/entry`，会返回一组带令牌的入口地址。把其中的 `ingest.url` 交给另一套后台，它用 `POST` 逐条推送实时数据；Node 页面打开后默认连接 `nana`，通过 SSE 自动接收当前状态。同一赛事按 `id` 在内存中增量更新：本次明确推送的字段覆盖旧值，未推送的字段保持不变；空数组不会清空旧记录，有标识的数组按记录合并，没有标识的数组按位置更新并保留未推送的尾部，消息按消息标识去重追加。只有赛事 `id` 变化时才会开始一份新的实时状态。实时状态不保存历史快照；另有一份最新原始 longtext 会原子替换保存，可通过入口返回的 `raw.url` 读取。
+
+`raw.url` 仅用于排查数据源问题，返回的是解析前的原始文本（JSON 或日志前缀 + Python 字典），令牌无效时不可读取。Render 免费实例的文件系统是临时的，服务重启或重新部署后这份诊断文件可能消失；它不会随着推送次数增长。
 
 推送请求也可以把令牌放在 `X-Live-Timing-Token` 请求头中，地址使用 `/api/live-timing/ingest`。请求体支持标准 JSON 快照、`{ "data": <快照> }`、直接发送“日志前缀 + Python 字典”的文本文件，或用 `multipart/form-data` 上传该文件；没有 `session`、`meeting`、`mapped` 等前置字段要求。另一后台已经生成的 `winner`、`competitors`、`fields`、`messages`、`extra` 会按原字段和值保存，页面只做读取适配，不再次经过 OpenF1 转换。`/api/live-timing` 返回当前快照，`/api/live-timing/stream` 提供持续 SSE 数据流。
 

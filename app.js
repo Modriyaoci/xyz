@@ -1257,7 +1257,7 @@ function renderLiveSourceControl() {
   const bridge = live.source === "nana" || live.source === "bridge";
   if (select) select.value = bridge ? "nana" : "f1telemetry";
   if (hint) hint.textContent = bridge
-    ? "数据源：nana；另一套后台 POST 最新快照，本页面通过 SSE 接收并覆盖当前状态，不保存历史。"
+    ? "数据源：nana；另一套后台 POST 增量快照，本页面通过 SSE 接收合并后的状态，未推字段保留，不保存历史。"
     : "数据源：F1 Telemetry 实时接口；不区分历史分站和节点，只覆盖当前实时快照，不写入本地缓存。";
   if (footer) footer.textContent = bridge ? "数据源：nana" : "数据源：F1 Telemetry 实时接口";
 }

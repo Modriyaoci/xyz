@@ -22,6 +22,7 @@ const cacheDir = path.join(root, "work", "openf1_cache");
 const fastF1SessionScript = path.join(root, "scripts", "fastf1-session.py");
 const fastF1CacheDir = path.join(root, "work", "fastf1_cache");
 const fastF1SessionCacheDir = path.join(root, "work", "fastf1_session_cache");
+const liveBridgeRawFile = path.join(root, "work", "nana-live-latest.txt");
 const fastF1CacheVersion = "20260902-fastf1-source-v4";
 const fastF1TimeoutMs = Number(process.env.FASTF1_TIMEOUT_MS || 180000);
 const fastF1Enabled = process.env.FASTF1_ENABLED !== "0" && process.env.FASTF1_FALLBACK !== "0";
@@ -48,6 +49,8 @@ const fastF1SessionInFlight = new Map();
 let fastF1MeetingCatalogPromise = null;
 let liveBridgeState = null;
 let liveBridgeSequence = 0;
+let liveBridgeRawWrite = null;
+let liveBridgeRawPending = null;
 const liveBridgeClients = new Set();
 
 await fs.mkdir(cacheDir, { recursive: true });
@@ -101,10 +104,12 @@ const liveBridgePaths = new Set([
   "/api/live-timing",
   "/api/live-timing/entry",
   "/api/live-timing/ingest",
+  "/api/live-timing/raw",
   "/api/live-timing/stream",
   "/api/livetiming",
   "/api/livetiming/entry",
   "/api/livetiming/ingest",
+  "/api/livetiming/raw",
   "/api/livetiming/stream",
 ]);
 
@@ -220,15 +225,30 @@ function liveCompetitorKey(row) {
 
 function mergeLiveCompetitors(previous, incoming) {
   const merged = new Map();
-  const withoutKey = [];
-  for (const row of [...(Array.isArray(previous) ? previous : []), ...(Array.isArray(incoming) ? incoming : [])]) {
+  const previousWithoutKey = [];
+  const incomingWithoutKey = [];
+  for (const row of (Array.isArray(previous) ? previous : [])) {
     const key = liveCompetitorKey(row);
     if (!key) {
-      withoutKey.push(row);
+      previousWithoutKey.push(row);
+      continue;
+    }
+    merged.set(key, row);
+  }
+  for (const row of (Array.isArray(incoming) ? incoming : [])) {
+    const key = liveCompetitorKey(row);
+    if (!key) {
+      incomingWithoutKey.push(row);
       continue;
     }
     const existing = merged.get(key);
     merged.set(key, existing && isPlainObject(row) ? mergeLiveValue(existing, row) : row);
+  }
+  const withoutKey = [];
+  for (let index = 0; index < Math.max(previousWithoutKey.length, incomingWithoutKey.length); index += 1) {
+    const oldRow = previousWithoutKey[index];
+    const newRow = incomingWithoutKey[index];
+    withoutKey.push(oldRow && isPlainObject(newRow) ? mergeLiveValue(oldRow, newRow) : newRow ?? oldRow);
   }
   return [...merged.values(), ...withoutKey].sort((left, right) => {
     const leftPosition = Number(left?.position);
@@ -240,6 +260,12 @@ function mergeLiveCompetitors(previous, incoming) {
 
 function liveMessageKey(row) {
   if (!isPlainObject(row)) return JSON.stringify(row);
+  const identity = row._id ?? row.id ?? row.uuid;
+  if (identity !== null && identity !== undefined && identity !== "") return `id:${identity}`;
+  const timestamp = row.utc ?? row.date ?? row.timestamp;
+  if (timestamp !== null && timestamp !== undefined && timestamp !== "") {
+    return `time:${timestamp}|lap:${row.lap ?? row.lap_number ?? ""}`;
+  }
   return [row.utc ?? row.date ?? "", row.lap ?? row.lap_number ?? "", row.text_en ?? row.message ?? "", row.text_zh ?? ""].join("|");
 }
 
@@ -251,12 +277,79 @@ function mergeLiveMessages(previous, incoming) {
   return [...merged.values()];
 }
 
+function liveArrayItemKey(row) {
+  if (!isPlainObject(row)) return null;
+  for (const field of ["_id", "id", "uuid", "key"]) {
+    const value = row[field];
+    if (value !== null && value !== undefined && value !== "") return `${field}:${value}`;
+  }
+
+  const driver = ["driver_number", "driver_id", "car_number"].find((field) => {
+    const value = row[field];
+    return value !== null && value !== undefined && value !== "";
+  });
+  const sequence = [
+    "lap_number", "lap", "stint_number", "sector", "mini_sector", "global_mini_sector",
+    "utc", "date", "date_start", "timestamp",
+  ].find((field) => {
+    const value = row[field];
+    return value !== null && value !== undefined && value !== "";
+  });
+  if (driver && sequence) return `${driver}:${row[driver]}|${sequence}:${row[sequence]}`;
+  if (sequence) return `${sequence}:${row[sequence]}`;
+  return null;
+}
+
+function mergeLiveArray(previous, incoming) {
+  // Nana sends partial snapshots. An empty array means that this field was not
+  // included in this update, so retain the last non-empty value.
+  if (!incoming.length) return Array.isArray(previous) ? previous : incoming;
+  if (!Array.isArray(previous) || !previous.length) return incoming;
+
+  const previousKeys = previous.map(liveArrayItemKey);
+  const incomingKeys = incoming.map(liveArrayItemKey);
+  if (incoming.every((row, index) => isPlainObject(row) && incomingKeys[index])) {
+    const merged = new Map();
+    previous.forEach((row, index) => {
+      const itemKey = previousKeys[index];
+      if (itemKey) merged.set(itemKey, row);
+    });
+    incoming.forEach((row, index) => {
+      const itemKey = incomingKeys[index];
+      const existing = merged.get(itemKey);
+      merged.set(itemKey, existing && isPlainObject(existing) ? mergeLiveValue(existing, row) : row);
+    });
+    const unkeyedPrevious = previous.filter((_, index) => !previousKeys[index]);
+    const unkeyedIncoming = incoming.filter((_, index) => !incomingKeys[index]);
+    const unkeyed = [];
+    for (let index = 0; index < Math.max(unkeyedPrevious.length, unkeyedIncoming.length); index += 1) {
+      const oldRow = unkeyedPrevious[index];
+      const newRow = unkeyedIncoming[index];
+      unkeyed.push(oldRow && isPlainObject(newRow) ? mergeLiveValue(oldRow, newRow) : newRow ?? oldRow);
+    }
+    return [...merged.values(), ...unkeyed].filter((row) => row !== undefined);
+  }
+
+  // For records without a stable ID (for example a tire-history row), merge by
+  // position and retain trailing rows that were not part of this update.
+  const merged = previous.slice();
+  incoming.forEach((row, index) => {
+    merged[index] = isPlainObject(merged[index]) && isPlainObject(row)
+      ? mergeLiveValue(merged[index], row)
+      : row;
+  });
+  return merged;
+}
+
 function mergeLiveValue(previous, incoming, key = "") {
   if (Array.isArray(incoming)) {
     if (key === "competitors") return mergeLiveCompetitors(previous, incoming);
     if (key === "messages" || key === "race_control") return mergeLiveMessages(previous, incoming);
-    return incoming;
+    return mergeLiveArray(previous, incoming);
   }
+  // A null value in a partial snapshot represents an unavailable field. Keep
+  // an already-known value, while preserving null on the first snapshot.
+  if (incoming === null || incoming === undefined) return previous === undefined ? incoming : previous;
   if (!isPlainObject(incoming)) return incoming;
   const base = isPlainObject(previous) ? previous : {};
   const merged = { ...base };
@@ -386,7 +479,16 @@ async function readLiveBridgeBody(req) {
   const contentType = String(req.headers["content-type"] || "");
   let text = Buffer.concat(chunks).toString("utf8");
   if (/multipart\/form-data/i.test(contentType)) text = multipartFileText(text, contentType);
-  try { return JSON.parse(text); } catch { return parsePythonLiteral(text); }
+  try {
+    return { value: JSON.parse(text), rawText: text };
+  } catch {
+    try {
+      return { value: parsePythonLiteral(text), rawText: text };
+    } catch (pythonError) {
+      pythonError.rawText = text;
+      throw pythonError;
+    }
+  }
 }
 
 async function ingestLiveBridgeState(req, res) {
@@ -398,16 +500,23 @@ async function ingestLiveBridgeState(req, res) {
   try {
     body = await readLiveBridgeBody(req);
   } catch (error) {
+    if (error.rawText) await cacheLatestLiveBridgeRaw(error.rawText);
     return json(res, error.status || 400, { error: error.message || "实时数据文件格式无效" });
   }
-  const incoming = body?.data && typeof body.data === "object" && !Array.isArray(body.data) ? body.data : body;
+  await cacheLatestLiveBridgeRaw(body.rawText);
+  const incomingBody = body.value;
+  const incoming = incomingBody?.data && typeof incomingBody.data === "object" && !Array.isArray(incomingBody.data) ? incomingBody.data : incomingBody;
   if (!incoming || typeof incoming !== "object" || Array.isArray(incoming)) {
     return json(res, 400, { error: "请求体必须是实时快照 JSON" });
   }
   const receivedAt = new Date().toISOString();
   let data = { ...incoming, live: true, fetched_at: receivedAt };
+  // A Nana backend snapshot can contain fields named like OpenF1 feeds (for
+  // example laps or weather). Only an explicit session/mapped envelope should
+  // force the legacy conversion; otherwise partial backend snapshots stay in
+  // the backend contract and can be merged incrementally.
   const legacySessionEnvelope = Boolean(data.session || data.meeting || data.mapped)
-    || sessionArrayFields.some((field) => Array.isArray(data[field]));
+    || (!isBackendLiveSnapshot(data) && sessionArrayFields.some((field) => Array.isArray(data[field])));
   let payloadKind = "generic";
   if (legacySessionEnvelope) {
     normaliseSessionData(data);
@@ -448,6 +557,7 @@ function liveBridgeEntry(req) {
     source_name: "nana",
     source: "external-live-timing",
     memory_only: true,
+    raw_cache: { latest_only: true, max_bytes: 8 * 1024 * 1024, ephemeral: true },
     ingest: {
       method: "POST",
       url: `${base}/api/live-timing/ingest?token=${token}`,
@@ -456,6 +566,12 @@ function liveBridgeEntry(req) {
     state: {
       method: "GET",
       url: `${base}/api/live-timing?token=${token}`,
+    },
+    raw: {
+      method: "GET",
+      url: `${base}/api/live-timing/raw?token=${token}`,
+      content_type: "text/plain",
+      latest_only: true,
     },
     stream: {
       method: "GET",
@@ -507,6 +623,34 @@ async function writeJsonAtomic(file, value) {
   } finally {
     await fs.rm(tempFile, { force: true }).catch(() => {});
   }
+}
+
+function cacheLatestLiveBridgeRaw(text) {
+  // Keep at most one pending value. If writes take longer than the push
+  // interval, newer raw data supersedes the pending value instead of forming a
+  // queue of full request bodies in memory.
+  liveBridgeRawPending = String(text || "");
+  if (liveBridgeRawWrite) return liveBridgeRawWrite;
+  liveBridgeRawWrite = (async () => {
+    while (liveBridgeRawPending !== null) {
+      const value = liveBridgeRawPending;
+      liveBridgeRawPending = null;
+      const tempFile = `${liveBridgeRawFile}.tmp-${process.pid}-${Date.now()}`;
+      try {
+        await fs.writeFile(tempFile, value, "utf8");
+        await fs.rename(tempFile, liveBridgeRawFile);
+      } catch (error) {
+        // Raw capture is diagnostic; a filesystem failure must not reject a
+        // valid Nana update or disconnect the live stream.
+        console.error(`Nana 原始数据缓存失败：${error.message || error}`);
+      } finally {
+        await fs.rm(tempFile, { force: true }).catch(() => {});
+      }
+    }
+  })().finally(() => {
+    liveBridgeRawWrite = null;
+  });
+  return liveBridgeRawWrite;
 }
 
 function parseCookies(req) {
@@ -1103,6 +1247,21 @@ const server = http.createServer(async (req, res) => {
     }
     if (liveBridgePaths.has(url.pathname) && !liveBridgeAuthorised(req, url)) {
       return json(res, 401, { error: "实时入口令牌无效或已缺少" });
+    }
+    if ((url.pathname === "/api/live-timing/raw" || url.pathname === "/api/livetiming/raw") && req.method === "GET") {
+      try {
+        const raw = await fs.readFile(liveBridgeRawFile, "utf8");
+        res.writeHead(200, {
+          "content-type": "text/plain; charset=utf-8",
+          "cache-control": "no-store",
+          "access-control-allow-origin": "*",
+          "content-length": Buffer.byteLength(raw),
+        });
+        return res.end(raw);
+      } catch (error) {
+        if (error.code === "ENOENT") return json(res, 404, { error: "尚未缓存 Nana 原始数据" });
+        return json(res, 500, { error: "读取 Nana 原始数据失败" });
+      }
     }
     if ((url.pathname === "/api/live-timing/ingest" || url.pathname === "/api/livetiming/ingest") && req.method === "POST") {
       return ingestLiveBridgeState(req, res);
