@@ -69,7 +69,18 @@ select:focus, .search-box input:focus { border-color: var(--blue); box-shadow: 0
 .sync-button { align-self: end; white-space: nowrap; }
 .sync-button:disabled { cursor: wait; opacity: .65; }
 .selector-hint { color: var(--subtle); margin: 11px 0 0 2px; font-size: 12px; }
-.nana-mapping-panel[hidden] { display: none; }
+.modal-open { overflow: hidden; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 24px; background: rgba(15, 23, 42, .48); }
+.modal-backdrop[hidden] { display: none; }
+.mapping-modal { width: min(1180px, 100%); max-height: min(82vh, 820px); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; overflow: hidden; border: 1px solid var(--line-strong); border-radius: 8px; background: var(--panel); box-shadow: 0 24px 64px rgba(15, 23, 42, .24); outline: none; }
+.mapping-modal-header, .mapping-modal-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 18px; }
+.mapping-modal-header { border-bottom: 1px solid var(--line); }
+.mapping-modal-footer { justify-content: flex-end; border-top: 1px solid var(--line); }
+.mapping-modal-footer .primary-button { align-self: center; }
+.mapping-modal-close { flex: 0 0 auto; }
+.mapping-modal-body { min-height: 0; padding: 13px 18px 0; }
+.mapping-modal-body .selector-hint { margin: 0 0 10px; }
+.mapping-modal-table-wrap { max-height: calc(min(82vh, 820px) - 148px); }
 .nana-mapping-table { min-width: 960px; }
 .nana-mapping-table th, .nana-mapping-table td { vertical-align: middle; }
 .nana-mapping-table td:first-child { width: 70px; font-weight: 800; }
@@ -339,4 +350,9 @@ h2 { margin: 2px 0 0; font-size: 16px; letter-spacing: 0; }
   .guide-notice { align-items: flex-start; flex-direction: column; gap: 4px; }
   .detail-identity { align-items: flex-start; flex-direction: column; gap: 9px; }
   .detail-team-identity { justify-content: flex-start; text-align: left; }
+  .modal-backdrop { align-items: end; padding: 8px; }
+  .mapping-modal { max-height: 92dvh; }
+  .mapping-modal-header, .mapping-modal-footer { padding: 12px; }
+  .mapping-modal-body { padding: 10px 12px 0; }
+  .mapping-modal-table-wrap { max-height: calc(92dvh - 136px); }
 }
