@@ -29,7 +29,7 @@ const state = {
   messageLanguage: "both",
   dataRequestId: 0,
   liveTiming: {
-    source: "nana",
+    source: "nami-dash",
     stageId: 103697,
     namiMeetingKey: 103689,
     namiMeetings: [],
@@ -2875,4 +2875,11 @@ document.addEventListener("keydown", (event) => {
 resetLiveTiming();
 resetDataPanels();
 initialiseScheduleCatalog();
-if (!STATIC_MODE && state.liveTiming.source === "nana") startLivePolling();
+const defaultLiveSource = state.liveTiming.source;
+if (namiLiveProvider(defaultLiveSource)) {
+  void loadNamiLiveCatalog().then(() => {
+    if (state.liveTiming.source === defaultLiveSource) startLivePolling();
+  });
+} else if (!STATIC_MODE && liveBridgeSourceName(defaultLiveSource)) {
+  startLivePolling();
+}

@@ -212,13 +212,13 @@
               <div>
                 <div class="eyebrow">实时数据节点</div>
                 <h1 id="liveTimingTitle">实时推送</h1>
-                <p id="liveTimingSubtitle">连接后显示 F1 Telemetry 当前实时会话</p>
+                <p id="liveTimingSubtitle">连接后显示纳米当前实时节点</p>
               </div>
             </section>
 
             <section class="selector-panel live-control-panel" aria-label="实时数据控制">
               <div class="selector-row">
-                <label class="inline-select">实时源<select id="liveSourceSelect"><option value="f1telemetry">F1 Telemetry</option><option value="nana" selected>nana</option><option value="dash">dash</option><option value="nami-radar">纳米-雷达</option><option value="nami-dash">纳米-dash</option><option value="nami-official">纳米-官方</option></select></label>
+                <label class="inline-select">实时源<select id="liveSourceSelect"><option value="f1telemetry">F1 Telemetry</option><option value="nana">nana</option><option value="dash">dash</option><option value="nami-radar">纳米-雷达</option><option value="nami-dash" selected>纳米-dash</option><option value="nami-official">纳米-官方</option></select></label>
                 <label class="inline-select" id="namiMeetingControl" hidden>分站<select id="namiMeetingSelect"><option value="103689">第 14 站 · Dutch Grand Prix</option></select></label>
                 <label class="inline-select" id="namiNodeControl" hidden>节点<select id="namiNodeSelect"><option value="103697">正赛</option></select></label>
                 <label class="inline-select" id="namiStageControl" hidden>Stage ID<input id="namiStageInput" type="number" inputmode="numeric" min="1" value="103697" readonly /></label>
@@ -226,7 +226,7 @@
                 <button class="ghost-button sync-button" id="liveSyncBtn" type="button"><span>立即刷新</span><span aria-hidden="true">↻</span></button>
                 <button class="ghost-button sync-button" id="nanaMappingOpenBtn" type="button" hidden>车号映射</button>
               </div>
-              <div class="selector-hint" id="liveTimingHint">数据源：F1 Telemetry 实时接口；不区分历史分站和节点，只覆盖当前实时快照，不写入本地缓存。</div>
+              <div class="selector-hint" id="liveTimingHint">数据源：纳米-dash；荷兰站 · 正赛 · Stage 103697；每 5 秒读取一次当前记录。</div>
             </section>
 
             <section class="status-strip" id="liveStatus" aria-live="polite">
@@ -277,7 +277,7 @@
               <div class="table-wrap record-scroll"><table class="data-table dense live-events-table" id="liveEventTable"><thead><tr><th>时间</th><th>圈次</th><th>消息</th></tr></thead><tbody><tr><td colspan="3" class="empty-cell">暂无赛会消息</td></tr></tbody></table></div>
             </section>
 
-            <footer class="page-footer"><span id="liveSourceFooter">数据源：nana</span><span id="liveCacheLabel">实时状态：等待数据</span><span>不含赛道图、坐标和车辆位置数据</span></footer>
+            <footer class="page-footer"><span id="liveSourceFooter">数据源：纳米-dash</span><span id="liveCacheLabel">实时状态：等待数据</span><span>不含赛道图、坐标和车辆位置数据</span></footer>
           </section>
 
           <div id="scheduleView">
@@ -373,6 +373,6 @@
         <div class="mapping-modal-footer"><button class="ghost-button" id="nanaMappingReloadBtn" type="button">重新读取</button><button class="primary-button" id="nanaMappingSaveBtn" type="button">保存映射</button></div>
       </section>
     </div>
-    <script type="module" src="./app.js?v=20260904-nami-catalog-v2"></script>
+    <script type="module" src="./app.js?v=20260904-nami-live-default-v3"></script>
   </body>
 </html>
