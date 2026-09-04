@@ -7,6 +7,7 @@ import {
   NAMI_STAGES,
   decodeNamiData,
   fetchNamiSnapshot,
+  namiLiveTargetAt,
   namiMeetingRows,
   namiSessionData,
   namiSessionRows,
@@ -127,16 +128,67 @@ test("exposes all 2026 meetings and stage ids from the supplied workbook", () =>
   assert.equal(namiSessionRows(103689).at(-1).season_id, 103557);
 });
 
+test("selects the nearest Nami node and only polls around a live session", () => {
+  const fridayWake = namiLiveTargetAt("2026-09-04T02:57:00.000Z");
+  assert.equal(fridayWake.stage_id, 103707);
+  assert.equal(fridayWake.auto_state, "next");
+  assert.equal(fridayWake.polling, false);
+
+  const prestart = namiLiveTargetAt("2026-09-04T10:20:00.000Z");
+  assert.equal(prestart.stage_id, 103707);
+  assert.equal(prestart.auto_state, "prestart");
+  assert.equal(prestart.polling, true);
+
+  const live = namiLiveTargetAt("2026-09-04T10:57:00.000Z");
+  assert.equal(live.stage_id, 103707);
+  assert.equal(live.auto_state, "active");
+  assert.equal(live.polling, true);
+
+  const nearerPrevious = namiLiveTargetAt("2026-09-04T12:20:00.000Z");
+  assert.equal(nearerPrevious.stage_id, 103707);
+  assert.equal(nearerPrevious.auto_state, "previous");
+  assert.equal(nearerPrevious.polling, false);
+
+  const nearerNext = namiLiveTargetAt("2026-09-04T13:10:00.000Z");
+  assert.equal(nearerNext.stage_id, 103708);
+  assert.equal(nearerNext.auto_state, "next");
+  assert.equal(nearerNext.polling, false);
+
+  const qualifying = namiLiveTargetAt("2026-09-05T14:10:00.000Z");
+  assert.equal(qualifying.stage_id, 103710);
+  assert.equal(qualifying.session_name, "Qualifying");
+  assert.equal(qualifying.session_phase, null);
+
+  const mondayBeforeSleep = namiLiveTargetAt("2026-09-07T04:00:00.000Z");
+  assert.equal(mondayBeforeSleep.stage_id, 103711);
+  assert.equal(mondayBeforeSleep.auto_state, "previous");
+  assert.equal(mondayBeforeSleep.polling, false);
+});
+
 test("defaults live timing to Nami Dash in both deployed site copies", () => {
   for (const file of ["../app.js", "../site/app.js"]) {
     const script = readFileSync(new URL(file, import.meta.url), "utf8");
     assert.match(script, /liveTiming:\s*\{\s*source: "nami-dash"/);
-    assert.match(script, /loadNamiLiveCatalog\(\)\.then/);
+    assert.match(script, /nodeMode: "auto"/);
+    assert.match(script, /startNamiAutoMonitor\(\)/);
+    assert.match(script, /nami\/auto/);
+    assert.doesNotMatch(script, /NAMI_PROVIDERS\.map\([^)]*fetchNamiLiveSnapshot/);
   }
   for (const file of ["../index.html", "../site/index.html"]) {
     const html = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.match(html, /<select id="liveSourceSelect"><option value="nami-radar">纳米-雷达<\/option><option value="nami-dash" selected>纳米-dash<\/option><option value="nami-official">纳米-官方<\/option><option value="f1telemetry">F1 Telemetry<\/option><option value="nana">nana<\/option><option value="dash">dash<\/option><\/select>/);
     assert.match(html, /option value="nami-dash" selected>纳米-dash<\/option>/);
     assert.doesNotMatch(html, /option value="nana" selected/);
-    assert.match(html, /app\.js\?v=20260904-nami-live-default-v3/);
+    assert.match(html, /id="namiModeSelect"/);
+    assert.match(html, /app\.js\?v=20260904-page-selected-source-v5/);
   }
+});
+
+test("keeps Render on node selection and lets each page request its selected Nami source", () => {
+  const script = readFileSync(new URL("../server.mjs", import.meta.url), "utf8");
+  assert.doesNotMatch(script, /startNamiAutoLivePolling/);
+  assert.doesNotMatch(script, /Promise\.all\(Object\.values\(NAMI_PROVIDERS\)/);
+  assert.match(script, /url\.pathname === "\/api\/public\/nami\/auto"/);
+  assert.match(script, /nami_auto: namiAutoLiveStatus\(\)/);
+  assert.match(script, /background_polling: false/);
 });
