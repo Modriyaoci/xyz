@@ -116,6 +116,27 @@ test("keeps missing timing colours gray instead of treating them as status zero"
   assert.equal(data.mapped.extra.best_lap_time_color["347506"], "gray");
 });
 
+test("includes every supplied reserve-driver car mapping", () => {
+  const expected = {
+    25: ["Colton Herta", 368439, "Cadillac", 390378],
+    34: ["Jak Crawford", 347908, "Aston Martin", 385362],
+    38: ["Dino Beganovic", 347535, "Ferrari", 385364],
+    46: ["Luke Browning", 347536, "Williams", 385365],
+    50: ["Ryo Hirakawa", 347541, "Haas F1 Team", 385361],
+    61: ["Paul Aron", 347543, "Alpine", 385366],
+    67: ["Leonardo Fornaroli", 368438, "McLaren", 385367],
+    72: ["Frederik Vesti", 347526, "Mercedes", 385358],
+    90: ["Ayumu Iwasa", 347538, "Red Bull Racing", 385355],
+  };
+  for (const [car, [driverName, driverId, teamName, teamId]] of Object.entries(expected)) {
+    const row = DEFAULT_NANA_MAPPING.cars[car];
+    assert.equal(row.driver_name, driverName);
+    assert.equal(row.driver_id, driverId);
+    assert.equal(row.team_name, teamName);
+    assert.equal(row.team_id, teamId);
+  }
+});
+
 test("exposes all 2026 meetings and stage ids from the supplied workbook", () => {
   const meetings = namiMeetingRows(2026);
   assert.equal(meetings.length, 24);
@@ -180,7 +201,22 @@ test("defaults live timing to Nami Dash in both deployed site copies", () => {
     assert.match(html, /option value="nami-dash" selected>纳米-dash<\/option>/);
     assert.doesNotMatch(html, /option value="nana" selected/);
     assert.match(html, /id="namiModeSelect"/);
-    assert.match(html, /app\.js\?v=20260904-page-selected-source-v5/);
+    assert.match(html, /app\.js\?v=20260904-live-mapping-v6/);
+  }
+});
+
+test("opens and refreshes car-number mapping for every Nami live source", () => {
+  for (const file of ["../app.js", "../site/app.js"]) {
+    const script = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.match(
+      script,
+      /function nanaMappingAvailable\([^)]*\)\s*\{\s*return !STATIC_MODE && Boolean\(liveBridgeSourceName\(source\) \|\| namiLiveProvider\(source\)\);\s*\}/,
+    );
+    assert.equal(
+      (script.match(/if \(!nanaMappingAvailable\(live\.source\)/g) || []).length,
+      3,
+    );
+    assert.match(script, /namiLiveProvider\(live\.source\)\s*\? await fetchNamiLiveSnapshot/);
   }
 });
 
