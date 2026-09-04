@@ -127,6 +127,21 @@ h2 { margin: 2px 0 0; font-size: 16px; letter-spacing: 0; }
 .standings-view[hidden], .schedule-view[hidden] { display: none; }
 .live-timing-view[hidden] { display: none; }
 .live-head { margin-bottom: 0; }
+.live-control-panel { padding: 19px 22px 14px; }
+.live-control-panel .selector-row { display: grid; gap: 12px; }
+.live-control-fields { display: grid; grid-template-columns: minmax(118px, 1fr) minmax(132px, 1.1fr) minmax(230px, 2.3fr) minmax(94px, .8fr) minmax(130px, 1fr); align-items: end; gap: 10px; }
+.live-control-panel .selector-row label { min-width: 0; gap: 7px; color: #566176; font-size: 13px; font-weight: 700; line-height: 1.2; }
+.live-control-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; }
+.live-control-panel .selector-row select,
+.live-control-panel .selector-row input { width: 100%; height: 40px; min-width: 0; padding: 0 32px 0 11px; border-color: #d4dae4; font-size: 13px; font-weight: 600; }
+.live-control-panel .selector-row input { padding-right: 11px; }
+.live-control-panel #namiStageInput { background: #f8fafc; color: #263247; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; font-size: 13px; font-weight: 750; font-variant-numeric: tabular-nums; }
+.live-control-panel .primary-button,
+.live-control-panel .sync-button { flex: 0 0 auto; align-self: flex-end; justify-content: center; height: 40px; min-width: 92px; padding: 0 13px; white-space: nowrap; font-size: 13px; }
+.live-control-panel #liveLoadBtn { min-width: 102px; gap: 9px; }
+.live-control-panel #liveLoadBtn span:last-child { flex: 0 0 auto; font-size: 11px; }
+.live-control-panel #nanaMappingOpenBtn { min-width: 94px; }
+.live-control-panel .selector-hint { margin: 13px 0 0; padding-top: 11px; border-top: 1px solid #edf0f4; color: #778296; font-size: 12px; line-height: 1.55; }
 .live-results-table { min-width: 1480px; }
 .live-results-table .driver-cell { white-space: nowrap; }
 .live-results-table .driver-cell strong { margin-right: 7px; }
@@ -318,6 +333,10 @@ h2 { margin: 2px 0 0; font-size: 16px; letter-spacing: 0; }
   .selector-row label { flex: 1 1 190px; }
   .primary-button { margin-top: 0; }
 }
+@media (max-width: 1000px) and (min-width: 721px) {
+  .live-control-fields { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .live-control-panel #namiMeetingControl { grid-column: span 2; }
+}
 @media (max-width: 720px) {
   body { font-size: 14px; }
   .topbar { height: 56px; padding: 0 14px; }
@@ -356,4 +375,18 @@ h2 { margin: 2px 0 0; font-size: 16px; letter-spacing: 0; }
   .mapping-modal-header, .mapping-modal-footer { padding: 12px; }
   .mapping-modal-body { padding: 10px 12px 0; }
   .mapping-modal-table-wrap { max-height: calc(92dvh - 136px); }
+  .live-control-panel { padding: 15px; }
+  .live-control-panel .selector-row { gap: 13px; }
+  .live-control-fields { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 10px; }
+  .live-control-panel .selector-row label,
+  .live-control-panel .selector-row label:first-child,
+  .live-control-panel #namiModeControl,
+  .live-control-panel #namiNodeControl { width: 100%; min-width: 0; }
+  .live-control-panel #namiMeetingControl,
+  .live-control-panel #namiStageControl { grid-column: 1 / -1; width: 100%; min-width: 0; }
+  .live-control-panel .primary-button,
+  .live-control-panel .sync-button { width: 100%; min-width: 0; }
+  .live-control-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .live-control-panel #liveLoadBtn { grid-column: 1 / -1; }
+  .live-control-panel .selector-hint { margin-top: 14px; }
 }
