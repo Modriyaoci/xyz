@@ -16,6 +16,7 @@ import {
 import {
   fetchNamiSnapshot,
   namiBackendSnapshot,
+  namiLiveTargetAt,
   namiMeetingRows,
   namiProvider,
   namiSessionData,
@@ -63,6 +64,7 @@ const feedProbeIntervalMs = 5 * 60 * 1000;
 const fastF1SessionInFlight = new Map();
 const namiRequestInFlight = new Map();
 const namiLiveStates = new Map();
+const namiLiveStateLimit = 12;
 let fastF1WorkQueue = Promise.resolve();
 let fastF1MeetingCatalogPromise = null;
 const liveBridges = {
@@ -1278,8 +1280,23 @@ async function namiLiveData(stageId, provider) {
       payload_kind: "backend",
     },
   });
-  namiLiveStates.set(key, { data, sequence, recordTime: result.recordTime });
+  namiLiveStates.delete(key);
+  namiLiveStates.set(key, { data, sequence, recordTime: result.recordTime, updatedAt: Date.now() });
+  while (namiLiveStates.size > namiLiveStateLimit) namiLiveStates.delete(namiLiveStates.keys().next().value);
   return { data, source: `nami-${result.provider.key}`, live: true, sequence, changed, cache: false };
+}
+
+function namiAutoLiveStatus(value = Date.now()) {
+  const target = namiLiveTargetAt(value);
+  return {
+    enabled: Boolean(namiHistoryToken),
+    source: "nami-auto-node",
+    mode: "page-selected",
+    background_polling: false,
+    active: Boolean(target?.polling),
+    target,
+    checked_at: new Date(Number.isFinite(Number(value)) ? Number(value) : Date.now()).toISOString(),
+  };
 }
 
 async function sessionData(meetingKey, sessionKey, { force = false, source = "openf1", provider = null } = {}) {
@@ -1401,6 +1418,7 @@ const server = http.createServer(async (req, res) => {
         ok: true,
         service: "f1-live-bridge",
         sources: ["nana", "dash", "nami-radar", "nami-dash", "nami-official"],
+        nami_auto: namiAutoLiveStatus(),
         checked_at: new Date().toISOString(),
       });
     }
@@ -1483,6 +1501,9 @@ const server = http.createServer(async (req, res) => {
         : namiMeetingRows(url.searchParams.get("year") || 2026);
       return json(res, 200, { data, source: "nami-catalog" });
     }
+    if (url.pathname === "/api/public/nami/auto" && req.method === "GET") {
+      return json(res, 200, namiAutoLiveStatus());
+    }
     if (url.pathname === "/api/public/nami/live" && req.method === "GET") {
       return json(res, 200, await namiLiveData(url.searchParams.get("stage_id"), url.searchParams.get("provider")));
     }
@@ -1493,7 +1514,10 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/standings" && req.method === "GET") return json(res, 200, await officialStandings(url.searchParams.get("year")));
     if (url.pathname === "/api/sync-standings" && req.method === "POST") return json(res, 200, await syncOfficialStandings());
     if (url.pathname === "/api/live-session-data" && req.method === "GET") return json(res, 200, await liveSessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")));
-    if (url.pathname === "/api/nami/live" && req.method === "GET") return json(res, 200, await namiLiveData(url.searchParams.get("stage_id"), url.searchParams.get("provider")));
+    if (url.pathname === "/api/nami/auto" && req.method === "GET") return json(res, 200, namiAutoLiveStatus());
+    if (url.pathname === "/api/nami/live" && req.method === "GET") {
+      return json(res, 200, await namiLiveData(url.searchParams.get("stage_id"), url.searchParams.get("provider")));
+    }
     if (url.pathname === "/api/session-data") return json(res, 200, await sessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"), { source: url.searchParams.get("source"), provider: url.searchParams.get("provider") }));
     if (url.pathname === "/api/sync-session-data" && req.method === "POST") {
       const body = await readBody(req);

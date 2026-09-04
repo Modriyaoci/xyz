@@ -60,6 +60,13 @@ export const NAMI_STAGE_LIST = Object.freeze(rawCatalog.meetings.flatMap((meetin
 
 export const NAMI_STAGES = Object.freeze(Object.fromEntries(NAMI_STAGE_LIST.map((stage) => [String(stage.stage_id), stage])));
 
+const NAMI_AUTO_STAGE_LIST = Object.freeze(NAMI_STAGE_LIST
+  .filter((stage) => !stage.session_phase)
+  .slice()
+  .sort((a, b) => Date.parse(a.date_start) - Date.parse(b.date_start)));
+const DEFAULT_AUTO_LEAD_MS = 15 * 60 * 1000;
+const DEFAULT_AUTO_GRACE_MS = 45 * 60 * 1000;
+
 const text = (value) => value === null || value === undefined ? "" : String(value).trim();
 const numeric = (value) => value === null || value === undefined || value === "" || !Number.isFinite(Number(value)) ? null : Number(value);
 
@@ -94,6 +101,47 @@ export function namiSessionRows(meetingKey) {
     location: stage.location,
     circuit_short_name: stage.circuit_short_name,
   }));
+}
+
+export function namiLiveTargetAt(value = Date.now(), { leadMs = DEFAULT_AUTO_LEAD_MS, graceMs = DEFAULT_AUTO_GRACE_MS } = {}) {
+  const parsed = value instanceof Date
+    ? value.getTime()
+    : typeof value === "number"
+      ? value
+      : Date.parse(String(value));
+  const now = Number.isFinite(parsed) ? parsed : Date.now();
+  const lead = Math.max(0, Number(leadMs) || 0);
+  const grace = Math.max(0, Number(graceMs) || 0);
+  const active = NAMI_AUTO_STAGE_LIST.find((stage) => {
+    const start = Date.parse(stage.date_start);
+    const end = Date.parse(stage.date_end);
+    return now >= start - lead && now <= end + grace;
+  });
+  if (active) {
+    const start = Date.parse(active.date_start);
+    const end = Date.parse(active.date_end);
+    const autoState = now < start ? "prestart" : now <= end ? "active" : "post-session";
+    return {
+      ...active,
+      auto_state: autoState,
+      polling: true,
+      starts_in_ms: start - now,
+      ends_in_ms: end - now,
+    };
+  }
+  const previous = NAMI_AUTO_STAGE_LIST.slice().reverse().find((stage) => Date.parse(stage.date_end) < now) || null;
+  const next = NAMI_AUTO_STAGE_LIST.find((stage) => Date.parse(stage.date_start) > now) || null;
+  const previousDistance = previous ? now - Date.parse(previous.date_end) : Infinity;
+  const nextDistance = next ? Date.parse(next.date_start) - now : Infinity;
+  const nearest = previousDistance <= nextDistance ? previous : next;
+  if (!nearest) return null;
+  return {
+    ...nearest,
+    auto_state: nearest === previous ? "previous" : "next",
+    polling: false,
+    starts_in_ms: Date.parse(nearest.date_start) - now,
+    ends_in_ms: Date.parse(nearest.date_end) - now,
+  };
 }
 
 export function decodeNamiData(value) {

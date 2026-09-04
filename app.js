@@ -35,6 +35,12 @@ const state = {
     namiMeetings: [],
     namiSessions: [],
     namiCatalogLoading: false,
+    nodeMode: "auto",
+    autoStatus: null,
+    autoTimer: null,
+    autoPaused: false,
+    autoRefreshing: false,
+    autoMonitorToken: 0,
     meetingKey: null,
     sessionKey: null,
     meetingName: "",
@@ -1093,13 +1099,19 @@ function renderLiveMeetingMeta(data = state.liveTiming.data) {
   const live = state.liveTiming;
   const meeting = data?.meeting || {};
   const session = data?.session || {};
+  const catalogMeeting = namiLiveProvider(live.source)
+    ? live.namiMeetings.find((item) => Number(item.meeting_key) === Number(live.namiMeetingKey)) || {}
+    : {};
+  const catalogSession = namiLiveProvider(live.source)
+    ? live.namiSessions.find((item) => Number(item.stage_id) === Number(live.stageId)) || {}
+    : {};
   const backend = liveBackendPayload(data);
-  const country = meeting.country_name || "";
-  const title = meeting.meeting_name || country || (isBackendLivePayload(data) ? `${data?.source_name || state.liveTiming.source || "实时"} 实时推送` : "实时推送");
+  const country = meeting.country_name || catalogMeeting.country_name || "";
+  const title = meeting.meeting_name || catalogMeeting.meeting_name || country || (isBackendLivePayload(data) ? `${data?.source_name || state.liveTiming.source || "实时"} 实时推送` : "实时推送");
   const backendType = String(backend.type || backend.name || "").toLowerCase();
   const backendSessionName = backendType.includes("sprint") ? "Sprint" : backendType.includes("race") ? "Race" : "";
-  const sessionName = session.session_name || backendSessionName || live.sessionName;
-  const subtitle = [country, meeting.location, sessionName ? sessionLabel(sessionName) : ""].filter(Boolean).join(" · ") || "连接后显示当前实时会话";
+  const sessionName = session.session_name || backendSessionName || catalogSession.session_name || live.sessionName;
+  const subtitle = [country, meeting.location || catalogMeeting.location, sessionName ? sessionLabel(sessionName) : ""].filter(Boolean).join(" · ") || "连接后显示当前实时会话";
   const titleNode = $("liveTimingTitle");
   const subtitleNode = $("liveTimingSubtitle");
   if (titleNode) titleNode.textContent = title;
@@ -1395,6 +1407,8 @@ function renderLiveSourceControl() {
   const sourceLabel = provider ? `纳米-${provider.label}` : bridgeName || "F1 Telemetry";
   if (select) select.value = live.source;
   const stageControl = $("namiStageControl");
+  const modeControl = $("namiModeControl");
+  const modeSelect = $("namiModeSelect");
   const meetingControl = $("namiMeetingControl");
   const nodeControl = $("namiNodeControl");
   const meetingSelect = $("namiMeetingSelect");
@@ -1403,15 +1417,17 @@ function renderLiveSourceControl() {
   if (meetingControl) meetingControl.hidden = !provider;
   if (nodeControl) nodeControl.hidden = !provider;
   if (stageControl) stageControl.hidden = !provider;
+  if (modeControl) modeControl.hidden = !provider;
+  if (modeSelect) modeSelect.value = live.nodeMode;
   if (meetingSelect && provider) {
-    meetingSelect.disabled = live.namiCatalogLoading || !live.namiMeetings.length;
+    meetingSelect.disabled = live.nodeMode === "auto" || live.namiCatalogLoading || !live.namiMeetings.length;
     meetingSelect.innerHTML = live.namiMeetings.length
       ? live.namiMeetings.map((meeting) => `<option value="${esc(meeting.meeting_key)}">${esc(`第 ${meeting.round} 站 · ${meeting.meeting_name}`)}</option>`).join("")
       : `<option value="">${live.namiCatalogLoading ? "正在读取分站" : "暂无分站"}</option>`;
     meetingSelect.value = live.namiMeetingKey == null ? "" : String(live.namiMeetingKey);
   }
   if (nodeSelect && provider) {
-    nodeSelect.disabled = live.namiCatalogLoading || !live.namiSessions.length;
+    nodeSelect.disabled = live.nodeMode === "auto" || live.namiCatalogLoading || !live.namiSessions.length;
     nodeSelect.innerHTML = live.namiSessions.length
       ? live.namiSessions.map((session) => `<option value="${esc(session.stage_id)}">${esc(sessionLabel(session.session_name))}</option>`).join("")
       : `<option value="">${live.namiCatalogLoading ? "正在读取节点" : "暂无节点"}</option>`;
@@ -1420,8 +1436,10 @@ function renderLiveSourceControl() {
   if (stageInput) stageInput.value = String(live.stageId || 103697);
   const selectedMeeting = live.namiMeetings.find((meeting) => Number(meeting.meeting_key) === Number(live.namiMeetingKey));
   const selectedSession = live.namiSessions.find((session) => Number(session.stage_id) === Number(live.stageId));
+  const automatic = provider && live.nodeMode === "auto";
+  const automaticLabel = namiAutoStateLabel(live.autoStatus?.target?.auto_state);
   if (hint) hint.textContent = provider
-    ? `数据源：${sourceLabel}；${selectedMeeting?.meeting_name || "等待选择分站"} · ${sessionLabel(selectedSession?.session_name)} · Stage ${live.stageId || "--"}；每 5 秒读取一次当前记录。`
+    ? `数据源：${sourceLabel}；${selectedMeeting?.meeting_name || "等待选择分站"} · ${sessionLabel(selectedSession?.session_name)} · Stage ${live.stageId || "--"}；${automatic ? `自动模式 · ${automaticLabel}` : "手动模式"}，当前页面只请求所选数据源。`
     : bridgeName
       ? `数据源：${bridgeName}；另一套后台 POST 增量快照，本页面通过 SSE 接收独立的合并状态，未推字段保留，不保存历史。`
       : "数据源：F1 Telemetry 实时接口；不区分历史分站和节点，只覆盖当前实时快照，不写入本地缓存。";
@@ -1439,7 +1457,7 @@ async function loadNamiLiveSessions(meetingKey, preferredStageId = null) {
   live.stageId = selected?.stage_id ?? null;
 }
 
-async function loadNamiLiveCatalog() {
+async function loadNamiLiveCatalog(preferredTarget = null) {
   const live = state.liveTiming;
   if (live.namiCatalogLoading) return;
   live.namiCatalogLoading = true;
@@ -1447,13 +1465,14 @@ async function loadNamiLiveCatalog() {
   try {
     const payload = await api("/api/meetings?year=2026&source=nami");
     live.namiMeetings = (payload.data || []).slice().sort((a, b) => (a.round ?? 999) - (b.round ?? 999));
-    const meeting = live.namiMeetings.find((item) => Number(item.meeting_key) === Number(live.namiMeetingKey))
+    const meeting = live.namiMeetings.find((item) => Number(item.meeting_key) === Number(preferredTarget?.meeting_key))
+      || live.namiMeetings.find((item) => Number(item.meeting_key) === Number(live.namiMeetingKey))
       || live.namiMeetings.find((item) => item.meeting_name === "Dutch Grand Prix")
       || live.namiMeetings[0]
       || null;
     live.namiMeetingKey = meeting?.meeting_key ?? null;
     live.namiSessions = [];
-    if (meeting) await loadNamiLiveSessions(meeting.meeting_key, live.stageId);
+    if (meeting) await loadNamiLiveSessions(meeting.meeting_key, preferredTarget?.stage_id ?? live.stageId);
   } catch (error) {
     live.namiMeetings = [];
     live.namiSessions = [];
@@ -1469,6 +1488,99 @@ function namiLiveProvider(source = state.liveTiming.source) {
   if (!value.startsWith("nami-")) return null;
   const key = value.slice("nami-".length);
   return NAMI_PROVIDERS.find((item) => item.key === key) || null;
+}
+
+function namiAutoStateLabel(value) {
+  return ({
+    prestart: "即将开始",
+    active: "当前进行中",
+    "post-session": "刚结束",
+    previous: "最近已结束节点",
+    next: "下一节点",
+  })[String(value || "")] || "正在判断最近节点";
+}
+
+async function fetchNamiAutoStatus() {
+  const path = `/api/${STATIC_MODE ? "public/" : ""}nami/auto`;
+  const url = STATIC_MODE ? new URL(path, STATIC_NAMI_API_BASE).href : path;
+  const response = await fetch(url, { cache: "no-store", headers: { accept: "application/json" } });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `自动节点读取失败 ${response.status}`);
+  return payload;
+}
+
+async function ensureNamiLiveTarget(target) {
+  const live = state.liveTiming;
+  if (!target) return false;
+  if (!live.namiMeetings.length) {
+    await loadNamiLiveCatalog(target);
+  } else {
+    const meetingChanged = Number(live.namiMeetingKey) !== Number(target.meeting_key);
+    const targetLoaded = !meetingChanged && live.namiSessions.some((session) => Number(session.stage_id) === Number(target.stage_id));
+    live.namiMeetingKey = Number(target.meeting_key);
+    if (!targetLoaded) {
+      live.namiCatalogLoading = true;
+      renderLiveSourceControl();
+      try {
+        await loadNamiLiveSessions(target.meeting_key, target.stage_id);
+      } finally {
+        live.namiCatalogLoading = false;
+      }
+    } else {
+      live.stageId = Number(target.stage_id);
+    }
+  }
+  live.meetingName = target.meeting_name || "";
+  live.sessionName = target.session_name || "";
+  return Number(live.stageId) === Number(target.stage_id);
+}
+
+async function refreshNamiAutoTarget() {
+  const live = state.liveTiming;
+  if (!namiLiveProvider(live.source) || live.nodeMode !== "auto" || live.autoRefreshing) return false;
+  live.autoRefreshing = true;
+  try {
+    const status = await fetchNamiAutoStatus();
+    if (!namiLiveProvider(live.source) || live.nodeMode !== "auto") return false;
+    const target = status?.target || null;
+    const targetChanged = Number(target?.stage_id) !== Number(live.autoStatus?.target?.stage_id);
+    live.autoStatus = status;
+    if (!target) {
+      renderLiveTiming();
+      return false;
+    }
+    if (targetChanged) resetLiveTiming();
+    await ensureNamiLiveTarget(target);
+    if (live.autoPaused) {
+      stopLivePolling();
+    } else if (target.polling && state.activeView === "liveTiming") {
+      startLivePolling();
+    } else {
+      stopLivePolling();
+      if (target.auto_state === "previous" && (targetChanged || !live.data)) {
+        await loadNamiLiveTimingOnce();
+      }
+    }
+    renderLiveTiming();
+    return true;
+  } catch (error) {
+    live.logs = [{ sequence: 1, title: "自动节点读取失败", detail: error.message || "无法判断当前赛程节点", ok: false, at: new Date().toISOString() }];
+    renderLiveTiming();
+    return false;
+  } finally {
+    live.autoRefreshing = false;
+  }
+}
+
+function startNamiAutoMonitor() {
+  const live = state.liveTiming;
+  if (live.autoTimer) window.clearTimeout(live.autoTimer);
+  const monitorToken = ++live.autoMonitorToken;
+  const tick = async () => {
+    await refreshNamiAutoTarget();
+    if (monitorToken === live.autoMonitorToken) live.autoTimer = window.setTimeout(tick, 30000);
+  };
+  window.queueMicrotask(tick);
 }
 
 function liveBridgeSourceName(source = state.liveTiming.source) {
@@ -1713,17 +1825,34 @@ function renderLiveTiming() {
   renderLiveDriverDetails();
   renderLiveWeather();
   renderLiveTyres();
-  $("liveStatusTitle").textContent = live.loading ? "正在更新" : live.running ? "实时更新中" : live.received ? "已停止" : "等待连接";
+  const namiAutomatic = Boolean(namiLiveProvider(live.source) && live.nodeMode === "auto");
+  const automaticState = live.autoStatus?.target?.auto_state;
+  $("liveStatusTitle").textContent = live.loading
+    ? "正在更新"
+    : namiAutomatic && live.autoPaused
+      ? "自动更新已暂停"
+      : live.running
+        ? "实时更新中"
+        : namiAutomatic && automaticState === "previous"
+          ? "显示最近节点"
+          : namiAutomatic
+            ? "等待节点开始"
+            : live.received ? "已停止" : "等待连接";
   $("liveStatusPulse").classList.toggle("connected", live.running);
-  const transport = namiLiveProvider(live.source) ? "每 5 秒读取" : liveBridgeSourceName(live.source) ? "SSE 持续连接" : "WebSocket 持续连接";
-  $("liveStatusMeta").textContent = live.lastAt ? `最后更新 ${liveClock(live.lastAt)} · ${transport}${live.errors ? ` · ${live.errors} 个字段失败` : ""}` : "尚未接收到消息";
+  const transport = namiLiveProvider(live.source) ? "当前页面每 5 秒读取所选源" : liveBridgeSourceName(live.source) ? "SSE 持续连接" : "WebSocket 持续连接";
+  $("liveStatusMeta").textContent = live.lastAt
+    ? `最后更新 ${liveClock(live.lastAt)} · ${transport}${live.errors ? ` · ${live.errors} 个字段失败` : ""}`
+    : namiAutomatic ? `${namiAutoStateLabel(automaticState)} · ${live.autoPaused ? "不会自动读取" : "节点变化时自动切换"}` : "尚未接收到消息";
   const liveConnected = live.running || Boolean(live.stream);
-  $("liveLoadBtn").innerHTML = `<span>${liveConnected ? "停止实时" : "开始实时"}</span><span aria-hidden="true">${liveConnected ? "■" : "▶"}</span>`;
-  $("liveLoadBtn").disabled = live.loading && !liveConnected;
-  $("liveLoadBtn").setAttribute("aria-pressed", liveConnected ? "true" : "false");
-  $("liveLoadBtn").title = liveConnected ? "停止实时推送" : "开始实时推送";
+  const controlEnabled = namiAutomatic ? !live.autoPaused : liveConnected;
+  $("liveLoadBtn").innerHTML = `<span>${namiAutomatic ? (live.autoPaused ? "开启自动" : "暂停自动") : (liveConnected ? "停止实时" : "开始实时")}</span><span aria-hidden="true">${controlEnabled ? "■" : "▶"}</span>`;
+  $("liveLoadBtn").disabled = live.loading && !controlEnabled;
+  $("liveLoadBtn").setAttribute("aria-pressed", controlEnabled ? "true" : "false");
+  $("liveLoadBtn").title = namiAutomatic ? (live.autoPaused ? "恢复自动节点和实时更新" : "暂停自动节点的实时更新") : liveConnected ? "停止实时推送" : "开始实时推送";
   $("liveSyncBtn").disabled = live.loading;
-  $("liveCacheLabel").textContent = live.lastAt ? `实时状态：${live.running ? "连接中" : "已停止"}` : "实时状态：等待数据";
+  $("liveCacheLabel").textContent = namiAutomatic
+    ? `自动节点：${live.autoPaused ? "已暂停" : namiAutoStateLabel(automaticState)}`
+    : live.lastAt ? `实时状态：${live.running ? "连接中" : "已停止"}` : "实时状态：等待数据";
 }
 
 function renderLiveDriverDetails() {
@@ -1849,9 +1978,19 @@ function openLiveBridgeStream({ source, onState, onError, onClose } = {}) {
   };
 }
 
-function openNamiLivePolling({ source, stageId, onState, onError, onClose } = {}) {
+async function fetchNamiLiveSnapshot({ source, stageId } = {}) {
   const provider = namiLiveProvider(source);
   if (!provider) throw new Error("请选择有效的纳米实时源");
+  const path = `/api/${STATIC_MODE ? "public/" : ""}nami/live?stage_id=${encodeURIComponent(stageId)}&provider=${encodeURIComponent(provider.key)}`;
+  const url = STATIC_MODE ? new URL(path, STATIC_NAMI_API_BASE).href : path;
+  const response = await fetch(url, { cache: "no-store", headers: { accept: "application/json" } });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `纳米-${provider.label} 读取失败 ${response.status}`);
+  if (!payload.data) throw new Error(`纳米-${provider.label} 尚无实时数据`);
+  return payload.data;
+}
+
+function openNamiLivePolling({ source, stageId, onState, onError, onClose } = {}) {
   let closed = false;
   let timer = null;
   let inFlight = false;
@@ -1859,13 +1998,7 @@ function openNamiLivePolling({ source, stageId, onState, onError, onClose } = {}
     if (closed || inFlight) return false;
     inFlight = true;
     try {
-      const path = `/api/${STATIC_MODE ? "public/" : ""}nami/live?stage_id=${encodeURIComponent(stageId)}&provider=${encodeURIComponent(provider.key)}`;
-      const url = STATIC_MODE ? new URL(path, STATIC_NAMI_API_BASE).href : path;
-      const response = await fetch(url, { cache: "no-store", headers: { accept: "application/json" } });
-      const payload = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(payload.error || `纳米-${provider.label} 读取失败 ${response.status}`);
-      if (!payload.data) throw new Error(`纳米-${provider.label} 尚无实时数据`);
-      onState?.(payload.data);
+      onState?.(await fetchNamiLiveSnapshot({ source, stageId }));
       return true;
     } catch (error) {
       onError?.(error instanceof Error ? error : new Error(String(error)));
@@ -1887,6 +2020,58 @@ function openNamiLivePolling({ source, stageId, onState, onError, onClose } = {}
       onClose?.();
     },
   };
+}
+
+function acceptLiveTimingSnapshot(data, token, sourceLabel) {
+  const live = state.liveTiming;
+  if (token !== live.token) return false;
+  live.data = isBackendLivePayload(data) ? data : enrichBackendMapping(data || {});
+  renderLiveMeetingMeta(live.data);
+  setConnection(true, sourceLabel ? `${sourceLabel} 已连接` : "实时接口已连接");
+  live.rows = buildLiveRows(live.data);
+  live.events = buildLiveEvents(live.data);
+  live.logs = buildLiveLogs(live.data);
+  live.received += 1;
+  live.errors = Array.isArray(live.data.live_errors) ? live.data.live_errors.length : 0;
+  live.sequence = numeric(live.data?.live_bridge?.sequence) ?? live.sequence + 1;
+  live.lastAt = live.data.fetched_at || new Date().toISOString();
+  live.loading = false;
+  renderLiveTiming();
+  return true;
+}
+
+function rejectLiveTimingSnapshot(error, token) {
+  const live = state.liveTiming;
+  if (token !== live.token) return false;
+  setConnection(false, "实时接口连接失败");
+  live.errors = 1;
+  live.loading = false;
+  live.logs = [{ sequence: 1, title: "更新失败", detail: error.message || "数据源请求失败", ok: false, at: new Date().toISOString() }];
+  renderLiveTiming();
+  return false;
+}
+
+async function loadNamiLiveTimingOnce() {
+  const live = state.liveTiming;
+  const provider = namiLiveProvider(live.source);
+  if (!provider || live.loading) return false;
+  const token = live.token;
+  const sourceLabel = `纳米-${provider.label}`;
+  live.loading = true;
+  setConnection(false, `正在读取 ${sourceLabel}`);
+  renderLiveTiming();
+  try {
+    const data = await fetchNamiLiveSnapshot({ source: live.source, stageId: live.stageId });
+    return acceptLiveTimingSnapshot(data, token, sourceLabel);
+  } catch (error) {
+    return rejectLiveTimingSnapshot(error, token);
+  } finally {
+    if (token === live.token) {
+      live.loading = false;
+      live.running = false;
+      renderLiveTiming();
+    }
+  }
 }
 
 async function loadLiveTimingData() {
@@ -1914,27 +2099,10 @@ async function loadLiveTimingData() {
       requestedSessionKey: null,
       timeoutMs: 30000,
       onState: (data) => {
-        if (token !== live.token) return;
-        live.data = isBackendLivePayload(data) ? data : enrichBackendMapping(data || {});
-        renderLiveMeetingMeta(live.data);
-        setConnection(true, sourceLabel ? `${sourceLabel} 已连接` : "实时接口已连接");
-        live.rows = buildLiveRows(live.data);
-        live.events = buildLiveEvents(live.data);
-        live.logs = buildLiveLogs(live.data);
-        live.received += 1;
-        live.errors = Array.isArray(live.data.live_errors) ? live.data.live_errors.length : 0;
-        live.sequence = numeric(live.data?.live_bridge?.sequence) ?? live.sequence + 1;
-        live.lastAt = live.data.fetched_at || new Date().toISOString();
-        live.loading = false;
-        renderLiveTiming();
+        acceptLiveTimingSnapshot(data, token, sourceLabel);
       },
       onError: (error) => {
-        if (token !== live.token) return;
-        setConnection(false, "实时接口连接失败");
-        live.errors = 1;
-        live.loading = false;
-        live.logs = [{ sequence: 1, title: "更新失败", detail: error.message || "数据源请求失败", ok: false, at: new Date().toISOString() }];
-        renderLiveTiming();
+        rejectLiveTimingSnapshot(error, token);
       },
       onClose: () => {
         if (token !== live.token) return;
@@ -2005,6 +2173,7 @@ function setActiveView(view) {
   if (state.activeView === "liveTiming") {
     renderLiveTimingSelectors();
     renderLiveTiming();
+    if (namiLiveProvider(state.liveTiming.source) && state.liveTiming.nodeMode === "auto") void refreshNamiAutoTarget();
   } else if (!liveBridgeSourceName(state.liveTiming.source)) {
     stopLivePolling();
   }
@@ -2802,13 +2971,37 @@ $("liveSessionSelect")?.addEventListener("change", (event) => {
   renderLiveTimingSelectors();
 });
 $("liveSourceSelect")?.addEventListener("change", async (event) => {
+  const live = state.liveTiming;
   const source = ["nana", "dash", "nami-radar", "nami-dash", "nami-official"].includes(event.target.value) ? event.target.value : "f1telemetry";
-  if (source === state.liveTiming.source) return;
-  state.liveTiming.source = source;
-  state.liveTiming.mappingOpen = false;
+  if (source === live.source) return;
+  live.source = source;
+  live.mappingOpen = false;
   resetLiveTiming();
   renderLiveTiming();
-  if (namiLiveProvider(source) && !state.liveTiming.namiMeetings.length) await loadNamiLiveCatalog();
+  if (namiLiveProvider(source)) {
+    if (live.nodeMode === "auto") {
+      live.autoPaused = false;
+      startNamiAutoMonitor();
+    }
+    else {
+      if (!live.namiMeetings.length) await loadNamiLiveCatalog();
+      if (state.activeView === "liveTiming") startLivePolling();
+    }
+  } else if (state.activeView === "liveTiming") {
+    startLivePolling();
+  }
+});
+$("namiModeSelect")?.addEventListener("change", async (event) => {
+  const live = state.liveTiming;
+  live.nodeMode = event.target.value === "manual" ? "manual" : "auto";
+  stopLivePolling();
+  if (live.nodeMode === "auto") {
+    live.autoPaused = false;
+    await refreshNamiAutoTarget();
+  } else if (state.activeView === "liveTiming") {
+    startLivePolling();
+  }
+  renderLiveTiming();
 });
 $("namiMeetingSelect")?.addEventListener("change", async (event) => {
   const meetingKey = Number(event.target.value);
@@ -2824,6 +3017,7 @@ $("namiMeetingSelect")?.addEventListener("change", async (event) => {
   } finally {
     state.liveTiming.namiCatalogLoading = false;
     renderLiveTiming();
+    if (state.liveTiming.nodeMode === "manual" && state.activeView === "liveTiming" && state.liveTiming.namiSessions.length) startLivePolling();
   }
 });
 $("namiNodeSelect")?.addEventListener("change", (event) => {
@@ -2831,8 +3025,19 @@ $("namiNodeSelect")?.addEventListener("change", (event) => {
   if (!Number.isInteger(stageId) || stageId <= 0 || stageId === Number(state.liveTiming.stageId)) return;
   state.liveTiming.stageId = stageId;
   resetLiveTiming();
+  if (state.liveTiming.nodeMode === "manual" && state.activeView === "liveTiming") startLivePolling();
 });
 $("liveLoadBtn")?.addEventListener("click", () => {
+  if (namiLiveProvider(state.liveTiming.source) && state.liveTiming.nodeMode === "auto") {
+    state.liveTiming.autoPaused = !state.liveTiming.autoPaused;
+    if (state.liveTiming.autoPaused) {
+      stopLivePolling();
+      renderLiveTiming();
+    } else {
+      void refreshNamiAutoTarget();
+    }
+    return;
+  }
   if (state.liveTiming.running) {
     stopLivePolling();
     renderLiveTiming();
@@ -2840,7 +3045,12 @@ $("liveLoadBtn")?.addEventListener("click", () => {
     startLivePolling();
   }
 });
-$("liveSyncBtn")?.addEventListener("click", () => loadLiveTimingData());
+$("liveSyncBtn")?.addEventListener("click", () => {
+  const live = state.liveTiming;
+  const automatic = Boolean(namiLiveProvider(live.source) && live.nodeMode === "auto");
+  if (automatic && !live.autoStatus?.target?.polling) void loadNamiLiveTimingOnce();
+  else void loadLiveTimingData();
+});
 $("liveDriverSearch")?.addEventListener("input", (event) => { state.liveTiming.search = event.target.value; renderLiveTiming(); });
 $("liveClearSearch")?.addEventListener("click", () => { $("liveDriverSearch").value = ""; state.liveTiming.search = ""; renderLiveTiming(); });
 $("liveWeatherView")?.addEventListener("change", (event) => { state.liveTiming.weatherView = event.target.value; renderLiveWeather(); });
@@ -2877,9 +3087,7 @@ resetDataPanels();
 initialiseScheduleCatalog();
 const defaultLiveSource = state.liveTiming.source;
 if (namiLiveProvider(defaultLiveSource)) {
-  void loadNamiLiveCatalog().then(() => {
-    if (state.liveTiming.source === defaultLiveSource) startLivePolling();
-  });
+  startNamiAutoMonitor();
 } else if (!STATIC_MODE && liveBridgeSourceName(defaultLiveSource)) {
   startLivePolling();
 }
