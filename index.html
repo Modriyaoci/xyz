@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#111827" />
     <title>F1 赛后数据</title>
-    <link rel="stylesheet" href="./styles.css?v=20260903-mapping-modal-v1" />
+    <link rel="stylesheet" href="./styles.css?v=20260904-live-controls-v5" />
     <script>
       const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
       const staticPages = new URLSearchParams(window.location.search).get("static") === "1" || (!localServer && !window.location.pathname.startsWith("/site/"));
@@ -218,14 +218,18 @@
 
             <section class="selector-panel live-control-panel" aria-label="实时数据控制">
               <div class="selector-row">
-                <label class="inline-select">实时源<select id="liveSourceSelect"><option value="nami-radar">纳米-雷达</option><option value="nami-dash" selected>纳米-dash</option><option value="nami-official">纳米-官方</option><option value="f1telemetry">F1 Telemetry</option><option value="nana">nana</option><option value="dash">dash</option></select></label>
-                <label class="inline-select" id="namiModeControl">节点模式<select id="namiModeSelect"><option value="auto" selected>按赛程自动</option><option value="manual">手动选择</option></select></label>
-                <label class="inline-select" id="namiMeetingControl" hidden>分站<select id="namiMeetingSelect"><option value="103689">第 14 站 · Dutch Grand Prix</option></select></label>
-                <label class="inline-select" id="namiNodeControl" hidden>节点<select id="namiNodeSelect"><option value="103697">正赛</option></select></label>
-                <label class="inline-select" id="namiStageControl" hidden>Stage ID<input id="namiStageInput" type="number" inputmode="numeric" min="1" value="103697" readonly /></label>
-                <button class="primary-button" id="liveLoadBtn" type="button"><span>开始实时</span><span aria-hidden="true">▶</span></button>
-                <button class="ghost-button sync-button" id="liveSyncBtn" type="button"><span>立即刷新</span><span aria-hidden="true">↻</span></button>
-                <button class="ghost-button sync-button" id="nanaMappingOpenBtn" type="button" hidden>车号映射</button>
+                <div class="live-control-fields">
+                  <label class="inline-select">实时源<select id="liveSourceSelect"><option value="nami-radar">纳米-雷达</option><option value="nami-dash" selected>纳米-dash</option><option value="nami-official">纳米-官方</option><option value="f1telemetry">F1 Telemetry</option><option value="nana">nana</option><option value="dash">dash</option></select></label>
+                  <label class="inline-select" id="namiModeControl">节点模式<select id="namiModeSelect"><option value="auto" selected>按赛程自动</option><option value="manual">手动选择</option></select></label>
+                  <label class="inline-select" id="namiMeetingControl" hidden>分站<select id="namiMeetingSelect"><option value="103689">第 14 站 · Dutch Grand Prix</option></select></label>
+                  <label class="inline-select" id="namiNodeControl" hidden>节点<select id="namiNodeSelect"><option value="103697">正赛</option></select></label>
+                  <label class="inline-select" id="namiStageControl" hidden>Stage ID<input id="namiStageInput" type="number" inputmode="numeric" min="1" value="103697" readonly /></label>
+                </div>
+                <div class="live-control-actions">
+                  <button class="primary-button" id="liveLoadBtn" type="button"><span>开始实时</span><span aria-hidden="true">▶</span></button>
+                  <button class="ghost-button sync-button" id="liveSyncBtn" type="button"><span>立即刷新</span><span aria-hidden="true">↻</span></button>
+                  <button class="ghost-button sync-button" id="nanaMappingOpenBtn" type="button" hidden>车号映射</button>
+                </div>
               </div>
               <div class="selector-hint" id="liveTimingHint">数据源：纳米-dash；正在按赛程判断最近节点，当前页面只请求所选数据源。</div>
             </section>
