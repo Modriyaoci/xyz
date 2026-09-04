@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { encode } from "@msgpack/msgpack";
 import { DEFAULT_NANA_MAPPING } from "../nana-mapping.mjs";
 import {
@@ -124,4 +125,18 @@ test("exposes all 2026 meetings and stage ids from the supplied workbook", () =>
   assert.deepEqual(namiSessionRows(103689).map((row) => row.session_name), ["Practice 1", "Sprint Qualifying", "Sprint Qualifying Q1", "Sprint Qualifying Q2", "Sprint Qualifying Q3", "Sprint", "Qualifying", "Qualifying Q1", "Qualifying Q2", "Qualifying Q3", "Race"]);
   assert.equal(namiSessionRows(103689).at(-1).stage_id, 103697);
   assert.equal(namiSessionRows(103689).at(-1).season_id, 103557);
+});
+
+test("defaults live timing to Nami Dash in both deployed site copies", () => {
+  for (const file of ["../app.js", "../site/app.js"]) {
+    const script = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.match(script, /liveTiming:\s*\{\s*source: "nami-dash"/);
+    assert.match(script, /loadNamiLiveCatalog\(\)\.then/);
+  }
+  for (const file of ["../index.html", "../site/index.html"]) {
+    const html = readFileSync(new URL(file, import.meta.url), "utf8");
+    assert.match(html, /option value="nami-dash" selected>纳米-dash<\/option>/);
+    assert.doesNotMatch(html, /option value="nana" selected/);
+    assert.match(html, /app\.js\?v=20260904-nami-live-default-v3/);
+  }
 });
