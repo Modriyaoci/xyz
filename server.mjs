@@ -57,6 +57,10 @@ const authPasswordHash = crypto.scryptSync(authPassword, authSalt, 32);
 const liveBridgeToken = String(process.env.LIVE_TIMING_BRIDGE_TOKEN || crypto.createHash("sha256").update(authPasswordHash).digest("hex"));
 const dashLiveBridgeToken = String(process.env.DASH_LIVE_TIMING_BRIDGE_TOKEN || crypto.createHash("sha256").update(`dash:${liveBridgeToken}`).digest("hex"));
 const authSessions = new Map();
+// Render may restart or route consecutive requests through a different
+// process. Keep the session verifiable from the cookie itself instead of
+// relying only on this process-local map.
+const authCookieSecret = crypto.createHash("sha256").update(Buffer.concat([authPasswordHash, Buffer.from("f1-auth-cookie-v1")])).digest();
 const sessionSyncInFlight = new Map();
 const sessionMaxAgeMs = 8 * 60 * 60 * 1000;
 const feedProbeAt = new Map();
@@ -722,10 +726,13 @@ function parseCookies(req) {
 
 function authenticated(req) {
   const token = parseCookies(req).f1_session;
+  if (!token) return false;
   const expires = authSessions.get(token);
-  if (!expires) return false;
-  if (expires < Date.now()) { authSessions.delete(token); return false; }
-  return true;
+  if (expires) {
+    if (expires < Date.now()) { authSessions.delete(token); return false; }
+    return true;
+  }
+  return validSignedAuthToken(token);
 }
 
 function passwordMatches(password) {
@@ -733,8 +740,32 @@ function passwordMatches(password) {
   return crypto.timingSafeEqual(candidate, authPasswordHash);
 }
 
-function authCookie(token, maxAge = 8 * 60 * 60) {
-  return `f1_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}`;
+function signAuthPayload(payload) {
+  return crypto.createHmac("sha256", authCookieSecret).update(payload).digest("base64url");
+}
+
+function createAuthToken() {
+  const expires = Date.now() + sessionMaxAgeMs;
+  const payload = `${expires}.${crypto.randomBytes(24).toString("hex")}`;
+  return `${payload}.${signAuthPayload(payload)}`;
+}
+
+function validSignedAuthToken(token) {
+  const parts = String(token || "").split(".");
+  if (parts.length !== 3) return false;
+  const [expiresText, nonce, signature] = parts;
+  const expires = Number(expiresText);
+  if (!/^\d+$/.test(expiresText) || !nonce || !/^[-_A-Za-z0-9]+$/.test(signature) || expires < Date.now()) return false;
+  const expected = signAuthPayload(`${expiresText}.${nonce}`);
+  const actualBuffer = Buffer.from(signature, "base64url");
+  const expectedBuffer = Buffer.from(expected, "base64url");
+  return actualBuffer.length === expectedBuffer.length && crypto.timingSafeEqual(actualBuffer, expectedBuffer);
+}
+
+function authCookie(token, maxAge = 8 * 60 * 60, req = null) {
+  const forwardedProto = String(req?.headers?.["x-forwarded-proto"] || "").split(",")[0].trim().toLowerCase();
+  const secure = forwardedProto === "https" || Boolean(req?.socket?.encrypted);
+  return `f1_session=${encodeURIComponent(token)}; HttpOnly; Path=/; SameSite=Lax; Max-Age=${maxAge}${secure ? "; Secure" : ""}`;
 }
 
 async function readBody(req) {
@@ -1404,7 +1435,9 @@ async function serveStatic(req, res, pathname) {
       const body = await fs.readFile(candidate);
       const ext = path.extname(candidate);
       const type = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".mjs": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".png": "image/png" }[ext] || "application/octet-stream";
-      res.writeHead(200, { "content-type": type }); res.end(body); return;
+      const headers = { "content-type": type };
+      if (ext === ".html") headers["cache-control"] = "no-store, max-age=0";
+      res.writeHead(200, headers); res.end(body); return;
     } catch { /* try the root or site fallback */ }
   }
   json(res, 404, { error: "not found" });
@@ -1426,14 +1459,14 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/login" && req.method === "POST") {
       const body = await readBody(req);
       if (body.username !== authUsername || !passwordMatches(body.password)) return json(res, 401, { error: "账户名或密码不正确" });
-      const token = crypto.randomBytes(32).toString("hex");
+      const token = createAuthToken();
       authSessions.set(token, Date.now() + sessionMaxAgeMs);
-      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "set-cookie": authCookie(token) }); res.end(JSON.stringify({ authenticated: true, username: authUsername })); return;
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "set-cookie": authCookie(token, 8 * 60 * 60, req) }); res.end(JSON.stringify({ authenticated: true, username: authUsername })); return;
     }
     if (url.pathname === "/api/logout" && req.method === "POST") {
       const token = parseCookies(req).f1_session;
       if (token) authSessions.delete(token);
-      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "set-cookie": authCookie("", 0) }); res.end(JSON.stringify({ authenticated: false })); return;
+      res.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store", "set-cookie": authCookie("", 0, req) }); res.end(JSON.stringify({ authenticated: false })); return;
     }
     const liveBridge = liveBridgeForPath(url.pathname);
     if (liveBridge && url.pathname.endsWith("/entry") && req.method === "GET") {

@@ -30,7 +30,7 @@
       const staticMode = new URLSearchParams(window.location.search).get("static") === "1" || githubPages;
       const homePath = staticMode ? "./" : "/";
       if (staticMode && window.localStorage.getItem("f1-static-auth") === "1") window.location.replace(homePath);
-      if (!staticMode) fetch("/api/me").then((response) => response.json()).then((payload) => { if (payload.authenticated) window.location.replace(homePath); }).catch(() => {});
+      if (!staticMode) fetch("/api/me", { credentials: "same-origin", cache: "no-store" }).then((response) => response.json()).then((payload) => { if (payload.authenticated) window.location.replace(homePath); }).catch(() => {});
       form.addEventListener("submit", async (event) => {
         event.preventDefault();
         error.textContent = "";
@@ -42,7 +42,7 @@
             if (credentials.username !== "nana" || credentials.password !== "123456") throw new Error("账户名或密码不正确");
             window.localStorage.setItem("f1-static-auth", "1");
           } else {
-            const response = await fetch("/api/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(credentials) });
+            const response = await fetch("/api/login", { method: "POST", credentials: "same-origin", cache: "no-store", headers: { "content-type": "application/json" }, body: JSON.stringify(credentials) });
             const payload = await response.json();
             if (!response.ok) throw new Error(payload.error || "登录失败");
           }
