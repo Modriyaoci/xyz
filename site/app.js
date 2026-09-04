@@ -948,7 +948,7 @@ async function api(path, options = {}) {
     if (url.pathname === "/api/sync-standings") return staticStandings({ force: true });
     return { authenticated: true, username: "用户" };
   }
-  const response = await fetch(path, options);
+  const response = await fetch(path, { ...options, credentials: options.credentials || "same-origin" });
   const payload = await response.json().catch(() => ({}));
   if (response.status === 401) { window.location.replace("login"); throw new Error("登录已失效"); }
   if (!response.ok) throw new Error(payload.error || `请求失败 ${response.status}`);
