@@ -1609,13 +1609,17 @@ function nanaMappingRows() {
     .sort((a, b) => a.car - b.car);
 }
 
+function nanaMappingAvailable(source = state.liveTiming.source) {
+  return !STATIC_MODE && Boolean(liveBridgeSourceName(source) || namiLiveProvider(source));
+}
+
 function renderNanaMapping() {
   const live = state.liveTiming;
   const openButton = $("nanaMappingOpenBtn");
   const modal = $("nanaMappingModal");
   const table = $("nanaMappingTable");
   if (!modal || !table) return;
-  const available = !STATIC_MODE && Boolean(liveBridgeSourceName(live.source) || namiLiveProvider(live.source));
+  const available = nanaMappingAvailable(live.source);
   if (openButton) openButton.hidden = !available;
   const open = available && live.mappingOpen;
   modal.hidden = !open;
@@ -1649,7 +1653,7 @@ function renderNanaMapping() {
 
 async function openNanaMapping() {
   const live = state.liveTiming;
-  if (STATIC_MODE || !liveBridgeSourceName(live.source)) return;
+  if (!nanaMappingAvailable(live.source)) return;
   live.mappingOpen = true;
   renderNanaMapping();
   if (!live.mapping) await loadNanaMapping();
@@ -1665,7 +1669,7 @@ function closeNanaMapping() {
 
 async function loadNanaMapping() {
   const live = state.liveTiming;
-  if (STATIC_MODE || !liveBridgeSourceName(live.source) || live.mappingLoading) return false;
+  if (!nanaMappingAvailable(live.source) || live.mappingLoading) return false;
   live.mappingLoading = true;
   live.mappingError = null;
   renderNanaMapping();
@@ -1708,7 +1712,7 @@ function nanaMappingFromInputs() {
 
 async function saveNanaMapping() {
   const live = state.liveTiming;
-  if (STATIC_MODE || !liveBridgeSourceName(live.source) || live.mappingSaving) return false;
+  if (!nanaMappingAvailable(live.source) || live.mappingSaving) return false;
   live.mappingSaving = true;
   live.mappingError = null;
   renderNanaMapping();
@@ -1724,9 +1728,11 @@ async function saveNanaMapping() {
     // the realtime stream is currently stopped.
     if (live.stream) await live.stream.requestState();
     else if (live.data) {
-      const current = await api(liveBridgeApiPath(live.source));
-      if (current?.data) {
-        live.data = current.data;
+      const currentData = namiLiveProvider(live.source)
+        ? await fetchNamiLiveSnapshot({ source: live.source, stageId: live.stageId })
+        : (await api(liveBridgeApiPath(live.source)))?.data;
+      if (currentData) {
+        live.data = currentData;
         live.rows = buildLiveRows(live.data);
       }
     }
