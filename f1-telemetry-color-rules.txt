@@ -1,0 +1,263 @@
+F1 Telemetry 颜色采集规则
+=========================
+
+一、数据连接
+
+WebSocket：wss://api.f1telemetry.com/
+
+连接成功后发送 CBOR 编码的消息：
+
+  { "type": "get:state" }
+
+服务返回 CBOR 数据。解码后完整状态位于：
+
+  response.R
+
+
+二、颜色相关字段
+
+每位车手的数据位于：
+
+  R.TimingData.Lines[车号]
+
+需要读取：
+
+  LastLapTime                         上一圈
+  BestLapTime                         车手最快圈
+  Sectors[0]                          S1
+  Sectors[1]                          S2
+  Sectors[2]                          S3
+  Sectors[i].Segments[j].Status       小计时段状态码
+
+车手个人最佳计时段位于：
+
+  R.TimingStats.Lines[车号].BestSectors[0..2]
+
+
+三、重要注意事项
+
+不要使用以下字段判断上一圈或 S1/S2/S3 的颜色：
+
+  LastLapTime.Status
+  Sectors[i].Status
+
+这些 Status 经常是 0，并不代表整圈或整个计时段的成绩颜色。
+
+上一圈和当前计时段应读取：
+
+  OverallFastest
+  PersonalFastest
+
+只有小计时段才使用：
+
+  Sectors[i].Segments[j].Status
+
+
+四、上一圈颜色
+
+字段：
+
+  R.TimingData.Lines[车号].LastLapTime
+
+规则：
+
+  没有 Value                         gray
+  OverallFastest === true            purple
+  PersonalFastest === true           green
+  有 Value，但以上两个字段都不是 true yellow
+
+
+五、最快圈颜色
+
+字段：
+
+  R.TimingData.Lines[车号].BestLapTime.Value
+
+BestLapTime 通常没有 OverallFastest 和 PersonalFastest，因此需要比较全场车手：
+
+  没有最快圈                         gray
+  等于全场最小 BestLapTime.Value      purple
+  其他有效的个人最快圈                green
+
+也可以参考：
+
+  R.TimingStats.Lines[车号].PersonalBestLapTime.Position
+
+Position === 1 表示全场最快，但建议仍保留全场最小值比较作为兜底。
+
+
+六、S1/S2/S3 当前计时段颜色
+
+字段：
+
+  R.TimingData.Lines[车号].Sectors[i]
+
+规则与上一圈相同：
+
+  没有 Value                         gray
+  OverallFastest === true            purple
+  PersonalFastest === true           green
+  有 Value，但以上两个字段都不是 true yellow
+
+如果 Value 为空而使用 PreviousValue，不能直接套用当前的布尔标记；应将
+PreviousValue 与个人最佳、全场最佳数值比较后再确定颜色。
+
+
+七、S1/S2/S3 个人最佳颜色
+
+字段：
+
+  R.TimingStats.Lines[车号].BestSectors[i]
+
+规则：
+
+  没有 Value                         gray
+  Position === 1                     purple
+  其他有效成绩                        green
+
+也可以分别取所有车手 BestSectors[i].Value 的最小值进行比较。
+
+
+八、小计时段颜色
+
+字段：
+
+  R.TimingData.Lines[车号].Sectors[i].Segments[j].Status
+
+状态码映射：
+
+  0       red
+  2048    yellow
+  2049    green
+  2051    purple
+  2052    gray
+  2064    blue
+  其他     gray
+
+
+九、JavaScript 参考实现
+
+const SEGMENT_COLORS = Object.freeze({
+  0: "red",
+  2048: "yellow",
+  2049: "green",
+  2051: "purple",
+  2052: "gray",
+  2064: "blue",
+});
+
+function timeToMs(value) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value * 1000 : null;
+  const parts = String(value).trim().split(":").map(Number);
+  if (!parts.length || parts.some((part) => !Number.isFinite(part))) return null;
+  let seconds = 0;
+  for (const part of parts) seconds = seconds * 60 + part;
+  return Math.round(seconds * 1000);
+}
+
+function currentTimeColor(item, personalBestMs = null, sessionBestMs = null) {
+  if (item?.Value) {
+    if (item.OverallFastest === true) return "purple";
+    if (item.PersonalFastest === true) return "green";
+    return "yellow";
+  }
+
+  const previousMs = timeToMs(item?.PreviousValue);
+  if (previousMs === null) return "gray";
+  if (previousMs === sessionBestMs) return "purple";
+  if (previousMs === personalBestMs) return "green";
+  return "yellow";
+}
+
+function miniSectorColor(status) {
+  return SEGMENT_COLORS[Number(status)] || "gray";
+}
+
+function minimumTime(values) {
+  const times = values.map(timeToMs).filter((value) => value !== null);
+  return times.length ? Math.min(...times) : null;
+}
+
+function collectTelemetryColors(state) {
+  const timingLines = state?.TimingData?.Lines || {};
+  const statsLines = state?.TimingStats?.Lines || {};
+  const entries = Object.entries(timingLines)
+    .filter(([car, line]) => car !== "_kf" && line && typeof line === "object");
+
+  const sessionBestLap = minimumTime(
+    entries.map(([, line]) => line.BestLapTime?.Value)
+  );
+
+  const sessionBestSectors = [0, 1, 2].map((sectorIndex) => minimumTime(
+    entries.map(([car]) => statsLines[car]?.BestSectors?.[sectorIndex]?.Value)
+  ));
+
+  return Object.fromEntries(entries.map(([car, line]) => {
+    const stats = statsLines[car] || {};
+    const bestLapValue = line.BestLapTime?.Value || "";
+    const bestLapMs = timeToMs(bestLapValue);
+    const bestLapPosition = Number(stats.PersonalBestLapTime?.Position);
+
+    const sectors = [0, 1, 2].map((sectorIndex) => {
+      const sector = line.Sectors?.[sectorIndex] || {};
+      const bestSector = stats.BestSectors?.[sectorIndex] || {};
+      const bestSectorMs = timeToMs(bestSector.Value);
+      const currentSectorValue = sector.Value || sector.PreviousValue || "";
+
+      return {
+        sector: sectorIndex + 1,
+        time: currentSectorValue,
+        time_color: currentTimeColor(
+          sector,
+          bestSectorMs,
+          sessionBestSectors[sectorIndex]
+        ),
+        best_time: bestSector.Value || "",
+        best_time_color: bestSectorMs === null
+          ? "gray"
+          : Number(bestSector.Position) === 1
+            || bestSectorMs === sessionBestSectors[sectorIndex]
+            ? "purple"
+            : "green",
+      };
+    });
+
+    const miniSectors = [0, 1, 2].map((sectorIndex) => ({
+      sector: sectorIndex + 1,
+      mini_sectors: (line.Sectors?.[sectorIndex]?.Segments || []).map((segment, index) => ({
+        mini_sector: index + 1,
+        status: Number(segment?.Status),
+        color: miniSectorColor(segment?.Status),
+      })),
+    }));
+
+    return [car, {
+      last_lap_time: line.LastLapTime?.Value || "",
+      last_lap_time_color: currentTimeColor(line.LastLapTime),
+      fastest_lap_time: bestLapValue,
+      best_lap_time_color: bestLapMs === null
+        ? "gray"
+        : bestLapPosition === 1 || bestLapMs === sessionBestLap
+          ? "purple"
+          : "green",
+      sectors,
+      mini_sectors: miniSectors,
+    }];
+  }));
+}
+
+调用方式：
+
+  const colorsByCar = collectTelemetryColors(decodedMessage.R);
+
+
+十、更新规则
+
+1. 每次收到新的完整状态包，都重新读取颜色字段。
+2. 先处理所有车手，算出全场最快圈和三个全场最快计时段。
+3. 再为每位车手生成上一圈、最快圈、计时段和小计时段颜色。
+4. 时间统一转换成整数毫秒后比较，避免字符串格式和浮点误差。
+5. 最快圈和个人最佳计时段只有 purple、green、gray，不应出现 yellow。
+6. 上一圈和当前计时段可以出现 purple、green、yellow、gray。
+7. 小计时段颜色只按 Segments[j].Status 映射。

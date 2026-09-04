@@ -13,6 +13,14 @@ import {
   normaliseNanaMapping,
   normaliseNanaSnapshot,
 } from "./nana-mapping.mjs";
+import {
+  fetchNamiSnapshot,
+  namiBackendSnapshot,
+  namiMeetingRows,
+  namiProvider,
+  namiSessionData,
+  namiSessionRows,
+} from "./nami-source.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 // Cloud hosts provide PORT; keep F1_PORT for local and existing deployments.
@@ -43,6 +51,7 @@ const execFileAsync = promisify(execFile);
 const authUsername = String(process.env.F1_AUTH_USERNAME || "nana");
 const authSalt = "f1-openf1-local-auth";
 const authPassword = String(process.env.F1_AUTH_PASSWORD || "123456");
+const namiHistoryToken = String(process.env.NANA_HISTORY_TOKEN || "");
 const authPasswordHash = crypto.scryptSync(authPassword, authSalt, 32);
 const liveBridgeToken = String(process.env.LIVE_TIMING_BRIDGE_TOKEN || crypto.createHash("sha256").update(authPasswordHash).digest("hex"));
 const dashLiveBridgeToken = String(process.env.DASH_LIVE_TIMING_BRIDGE_TOKEN || crypto.createHash("sha256").update(`dash:${liveBridgeToken}`).digest("hex"));
@@ -52,6 +61,8 @@ const sessionMaxAgeMs = 8 * 60 * 60 * 1000;
 const feedProbeAt = new Map();
 const feedProbeIntervalMs = 5 * 60 * 1000;
 const fastF1SessionInFlight = new Map();
+const namiRequestInFlight = new Map();
+const namiLiveStates = new Map();
 let fastF1WorkQueue = Promise.resolve();
 let fastF1MeetingCatalogPromise = null;
 const liveBridges = {
@@ -657,7 +668,9 @@ async function catalogSessions(meetingKey) {
 }
 
 async function seasons(source = "openf1") {
-  if (normaliseDataSource(source) === "fastf1") return { data: await fastF1Seasons(), source: "fastf1-catalog" };
+  const selectedSource = normaliseDataSource(source);
+  if (selectedSource === "fastf1") return { data: await fastF1Seasons(), source: "fastf1-catalog" };
+  if (selectedSource === "nami") return { data: [2026], source: "nami-catalog" };
   const payload = await meetingCatalog();
   const listed = Array.isArray(payload.seasons) ? payload.seasons : [];
   const derived = (Array.isArray(payload.meetings) ? payload.meetings : []).map((meeting) => meeting.year);
@@ -768,7 +781,8 @@ async function resolveFastF1Python() {
 }
 
 function normaliseDataSource(value) {
-  return String(value || "openf1").toLowerCase() === "fastf1" ? "fastf1" : "openf1";
+  const source = String(value || "openf1").toLowerCase();
+  return ["openf1", "fastf1", "nami"].includes(source) ? source : "openf1";
 }
 
 async function fastF1Catalog() {
@@ -950,9 +964,11 @@ async function cachedJson(file, endpoint, fallback, { preferFallback = false } =
 }
 
 async function meetings(year, source = "openf1") {
-  if (normaliseDataSource(source) === "fastf1") {
+  const selectedSource = normaliseDataSource(source);
+  if (selectedSource === "fastf1") {
     return { data: await fastF1Meetings(year), source: "fastf1-catalog" };
   }
+  if (selectedSource === "nami") return { data: namiMeetingRows(year), source: "nami-catalog" };
   const localFile = path.join(cacheDir, `meetings_${year}.json`);
   const catalogRows = await catalogMeetings(year);
   const result = catalogRows.length
@@ -973,10 +989,12 @@ async function meetings(year, source = "openf1") {
 }
 
 async function sessions(meetingKey, source = "openf1") {
-  if (normaliseDataSource(source) === "fastf1") {
+  const selectedSource = normaliseDataSource(source);
+  if (selectedSource === "fastf1") {
     const data = await fastF1Sessions(meetingKey);
     return { data, source: "fastf1-catalog" };
   }
+  if (selectedSource === "nami") return { data: namiSessionRows(meetingKey), source: "nami-catalog" };
   const key = Number(meetingKey);
   const cacheFile = path.join(cacheDir, `sessions_${key}.json`);
   if (await exists(cacheFile)) {
@@ -1205,8 +1223,69 @@ async function fetchSessionFeeds(sessionKey, cached, sessionName) {
   return { values, failures, unavailable, retained };
 }
 
-async function sessionData(meetingKey, sessionKey, { force = false, source = "openf1" } = {}) {
-  if (normaliseDataSource(source) === "fastf1") return fastF1SessionData(meetingKey, sessionKey, { force });
+async function fetchNamiRequest(provider, stageId, live) {
+  const selectedProvider = namiProvider(provider);
+  if (!selectedProvider) throw new Error("请选择纳米的雷达、dash 或官方节点");
+  const key = `${live ? 1 : 0}:${selectedProvider.key}:${Number(stageId)}`;
+  let task = namiRequestInFlight.get(key);
+  if (!task) {
+    task = fetchNamiSnapshot({ token: namiHistoryToken, provider: selectedProvider.key, stageId, live, timeoutMs: upstreamTimeoutMs });
+    namiRequestInFlight.set(key, task);
+    task.finally(() => {
+      if (namiRequestInFlight.get(key) === task) namiRequestInFlight.delete(key);
+    }).catch(() => {});
+  }
+  return task;
+}
+
+async function namiHistoricalSessionData(stageId, provider) {
+  const result = await fetchNamiRequest(provider, stageId, false);
+  const data = namiSessionData(result.data, nanaMapping, {
+    provider: result.provider.key,
+    stageId: result.stage.stage_id,
+    live: false,
+    recordCount: result.recordCount,
+    recordTime: result.recordTime,
+    recordTimeIso: result.recordTimeIso,
+    recordTimes: result.recordTimes,
+  });
+  return { data, source: `nami-${result.provider.key}`, cache: false };
+}
+
+async function namiLiveData(stageId, provider) {
+  const result = await fetchNamiRequest(provider, stageId, true);
+  const key = `${result.provider.key}:${result.stage.stage_id}`;
+  const previous = namiLiveStates.get(key) || { data: null, sequence: 0, recordTime: null };
+  const receivedAt = new Date().toISOString();
+  const incoming = canonicalBackendSnapshot(namiBackendSnapshot(result.data, nanaMapping, {
+    provider: result.provider.key,
+    stageId: result.stage.stage_id,
+    live: true,
+    recordCount: result.recordCount,
+    recordTime: result.recordTime,
+    recordTimeIso: result.recordTimeIso,
+    recordTimes: result.recordTimes,
+  }));
+  const changed = previous.recordTime !== result.recordTime;
+  const sequence = changed || !previous.data ? previous.sequence + 1 : previous.sequence;
+  const data = mergeLiveBridgeSnapshot(previous.data, {
+    ...incoming,
+    live: true,
+    live_bridge: {
+      sequence,
+      received_at: receivedAt,
+      source: `nami-${result.provider.key}`,
+      payload_kind: "backend",
+    },
+  });
+  namiLiveStates.set(key, { data, sequence, recordTime: result.recordTime });
+  return { data, source: `nami-${result.provider.key}`, live: true, sequence, changed, cache: false };
+}
+
+async function sessionData(meetingKey, sessionKey, { force = false, source = "openf1", provider = null } = {}) {
+  const selectedSource = normaliseDataSource(source);
+  if (selectedSource === "fastf1") return fastF1SessionData(meetingKey, sessionKey, { force });
+  if (selectedSource === "nami") return namiHistoricalSessionData(sessionKey, provider);
   const requestedSessionKey = Number(sessionKey);
   if (!Number.isInteger(requestedSessionKey)) throw new Error("该节点尚未获得数据源会话键，请在接口可用时重新加载分站目录");
   const cacheFile = path.join(cacheDir, `session_${requestedSessionKey}.json`);
@@ -1321,7 +1400,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         ok: true,
         service: "f1-live-bridge",
-        sources: ["nana", "dash"],
+        sources: ["nana", "dash", "nami-radar", "nami-dash", "nami-official"],
         checked_at: new Date().toISOString(),
       });
     }
@@ -1394,6 +1473,19 @@ const server = http.createServer(async (req, res) => {
         { force: url.searchParams.get("force") === "1" },
       ));
     }
+    if (url.pathname === "/api/public/nami/session-data" && req.method === "GET") {
+      return json(res, 200, await namiHistoricalSessionData(url.searchParams.get("stage_id"), url.searchParams.get("provider")));
+    }
+    if (url.pathname === "/api/public/nami/catalog" && req.method === "GET") {
+      const meetingKey = url.searchParams.get("meeting_key");
+      const data = meetingKey
+        ? namiSessionRows(meetingKey)
+        : namiMeetingRows(url.searchParams.get("year") || 2026);
+      return json(res, 200, { data, source: "nami-catalog" });
+    }
+    if (url.pathname === "/api/public/nami/live" && req.method === "GET") {
+      return json(res, 200, await namiLiveData(url.searchParams.get("stage_id"), url.searchParams.get("provider")));
+    }
     if (url.pathname.startsWith("/api/") && !authenticated(req)) return json(res, 401, { error: "需要登录" });
     if (url.pathname === "/api/seasons") return json(res, 200, await seasons(url.searchParams.get("source")));
     if (url.pathname === "/api/meetings") return json(res, 200, await meetings(url.searchParams.get("year") || "2026", url.searchParams.get("source")));
@@ -1401,14 +1493,16 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/api/standings" && req.method === "GET") return json(res, 200, await officialStandings(url.searchParams.get("year")));
     if (url.pathname === "/api/sync-standings" && req.method === "POST") return json(res, 200, await syncOfficialStandings());
     if (url.pathname === "/api/live-session-data" && req.method === "GET") return json(res, 200, await liveSessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")));
-    if (url.pathname === "/api/session-data") return json(res, 200, await sessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"), { source: url.searchParams.get("source") }));
+    if (url.pathname === "/api/nami/live" && req.method === "GET") return json(res, 200, await namiLiveData(url.searchParams.get("stage_id"), url.searchParams.get("provider")));
+    if (url.pathname === "/api/session-data") return json(res, 200, await sessionData(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"), { source: url.searchParams.get("source"), provider: url.searchParams.get("provider") }));
     if (url.pathname === "/api/sync-session-data" && req.method === "POST") {
       const body = await readBody(req);
       const source = normaliseDataSource(body.source);
-      const syncKey = `${source}:${Number(body.meeting_key)}:${Number(body.session_key)}`;
+      const provider = source === "nami" ? namiProvider(body.provider)?.key : null;
+      const syncKey = `${source}:${provider || "default"}:${Number(body.meeting_key)}:${Number(body.session_key)}`;
       let task = sessionSyncInFlight.get(syncKey);
       if (!task) {
-        task = sessionData(body.meeting_key, body.session_key, { force: true, source });
+        task = sessionData(body.meeting_key, body.session_key, { force: true, source, provider });
         sessionSyncInFlight.set(syncKey, task);
         task.finally(() => {
           if (sessionSyncInFlight.get(syncKey) === task) sessionSyncInFlight.delete(syncKey);

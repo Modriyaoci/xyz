@@ -1,0 +1,462 @@
+{
+  "season": 2026,
+  "season_id": 103557,
+  "meetings": [
+    {
+      "meeting_key": 103563,
+      "meeting_name": "Australian Grand Prix",
+      "country_name": "Australia",
+      "country_code": "AUS",
+      "location": "Melbourne",
+      "circuit_short_name": "Melbourne",
+      "round": 1,
+      "date_start": "2026-03-06T01:30:00.000Z",
+      "date_end": "2026-03-08T06:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-03-06T01:30:00.000Z", "2026-03-06T02:30:00.000Z"],
+        "Practice 2": ["2026-03-06T05:00:00.000Z", "2026-03-06T06:00:00.000Z"],
+        "Practice 3": ["2026-03-07T01:30:00.000Z", "2026-03-07T02:30:00.000Z"],
+        "Qualifying": ["2026-03-07T05:00:00.000Z", "2026-03-07T06:00:00.000Z"],
+        "Race": ["2026-03-08T04:00:00.000Z", "2026-03-08T06:00:00.000Z"]
+      },
+      "stages": [[103569, "Practice 1"], [103570, "Practice 2"], [103571, "Practice 3"], [103572, "Qualifying"], [103600, "Qualifying Q1"], [103601, "Qualifying Q2"], [103602, "Qualifying Q3"], [103573, "Race"]]
+    },
+    {
+      "meeting_key": 103564,
+      "meeting_name": "Chinese Grand Prix",
+      "country_name": "China",
+      "country_code": "CHN",
+      "location": "Shanghai",
+      "circuit_short_name": "Shanghai",
+      "round": 2,
+      "date_start": "2026-03-13T03:30:00.000Z",
+      "date_end": "2026-03-15T09:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-03-13T03:30:00.000Z", "2026-03-13T04:30:00.000Z"],
+        "Sprint Qualifying": ["2026-03-13T07:30:00.000Z", "2026-03-13T08:14:00.000Z"],
+        "Sprint": ["2026-03-14T03:00:00.000Z", "2026-03-14T04:00:00.000Z"],
+        "Qualifying": ["2026-03-14T07:00:00.000Z", "2026-03-14T08:00:00.000Z"],
+        "Race": ["2026-03-15T07:00:00.000Z", "2026-03-15T09:00:00.000Z"]
+      },
+      "stages": [[103574, "Practice 1"], [103576, "Sprint Qualifying"], [103606, "Sprint Qualifying Q1"], [103607, "Sprint Qualifying Q2"], [103608, "Sprint Qualifying Q3"], [103577, "Sprint"], [103575, "Qualifying"], [103603, "Qualifying Q1"], [103604, "Qualifying Q2"], [103605, "Qualifying Q3"], [103578, "Race"]]
+    },
+    {
+      "meeting_key": 103565,
+      "meeting_name": "Japanese Grand Prix",
+      "country_name": "Japan",
+      "country_code": "JPN",
+      "location": "Suzuka",
+      "circuit_short_name": "Suzuka",
+      "round": 3,
+      "date_start": "2026-03-27T02:30:00.000Z",
+      "date_end": "2026-03-29T07:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-03-27T02:30:00.000Z", "2026-03-27T03:30:00.000Z"],
+        "Practice 2": ["2026-03-27T06:00:00.000Z", "2026-03-27T07:00:00.000Z"],
+        "Practice 3": ["2026-03-28T02:30:00.000Z", "2026-03-28T03:30:00.000Z"],
+        "Qualifying": ["2026-03-28T06:00:00.000Z", "2026-03-28T07:00:00.000Z"],
+        "Race": ["2026-03-29T05:00:00.000Z", "2026-03-29T07:00:00.000Z"]
+      },
+      "stages": [[103579, "Practice 1"], [103580, "Practice 2"], [103581, "Practice 3"], [103582, "Qualifying"], [103609, "Qualifying Q1"], [103610, "Qualifying Q2"], [103611, "Qualifying Q3"], [103583, "Race"]]
+    },
+    {
+      "meeting_key": 103566,
+      "meeting_name": "Bahrain Grand Prix",
+      "country_name": "Bahrain",
+      "country_code": "BRN",
+      "location": "Sakhir",
+      "circuit_short_name": "Sakhir",
+      "round": 4,
+      "date_start": "2026-04-10T11:30:00.000Z",
+      "date_end": "2026-04-12T17:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-04-10T11:30:00.000Z", "2026-04-10T12:30:00.000Z"],
+        "Practice 2": ["2026-04-10T15:00:00.000Z", "2026-04-10T16:00:00.000Z"],
+        "Practice 3": ["2026-04-11T12:30:00.000Z", "2026-04-11T13:30:00.000Z"],
+        "Qualifying": ["2026-04-11T16:00:00.000Z", "2026-04-11T17:00:00.000Z"],
+        "Race": ["2026-04-12T15:00:00.000Z", "2026-04-12T17:00:00.000Z"]
+      },
+      "stages": [[103584, "Practice 1"], [103585, "Practice 2"], [103586, "Practice 3"], [103587, "Qualifying"], [103612, "Qualifying Q1"], [103613, "Qualifying Q2"], [103614, "Qualifying Q3"], [103588, "Race"]]
+    },
+    {
+      "meeting_key": 103567,
+      "meeting_name": "Saudi Arabian Grand Prix",
+      "country_name": "Saudi Arabia",
+      "country_code": "KSA",
+      "location": "Jeddah",
+      "circuit_short_name": "Jeddah",
+      "round": 5,
+      "date_start": "2026-04-17T13:30:00.000Z",
+      "date_end": "2026-04-19T19:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-04-17T13:30:00.000Z", "2026-04-17T14:30:00.000Z"],
+        "Practice 2": ["2026-04-17T17:00:00.000Z", "2026-04-17T18:00:00.000Z"],
+        "Practice 3": ["2026-04-18T13:30:00.000Z", "2026-04-18T14:30:00.000Z"],
+        "Qualifying": ["2026-04-18T17:00:00.000Z", "2026-04-18T18:00:00.000Z"],
+        "Race": ["2026-04-19T17:00:00.000Z", "2026-04-19T19:00:00.000Z"]
+      },
+      "stages": [[103589, "Practice 1"], [103590, "Practice 2"], [103591, "Practice 3"], [103592, "Qualifying"], [103615, "Qualifying Q1"], [103616, "Qualifying Q2"], [103617, "Qualifying Q3"], [103593, "Race"]]
+    },
+    {
+      "meeting_key": 103568,
+      "meeting_name": "Miami Grand Prix",
+      "country_name": "United States",
+      "country_code": "USA",
+      "location": "Miami Gardens",
+      "circuit_short_name": "Miami",
+      "round": 6,
+      "date_start": "2026-05-01T16:00:00.000Z",
+      "date_end": "2026-05-03T19:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-05-01T16:00:00.000Z", "2026-05-01T17:30:00.000Z"],
+        "Sprint Qualifying": ["2026-05-01T20:30:00.000Z", "2026-05-01T21:14:00.000Z"],
+        "Sprint": ["2026-05-02T16:00:00.000Z", "2026-05-02T17:00:00.000Z"],
+        "Qualifying": ["2026-05-02T20:00:00.000Z", "2026-05-02T21:00:00.000Z"],
+        "Race": ["2026-05-03T17:00:00.000Z", "2026-05-03T19:00:00.000Z"]
+      },
+      "stages": [[103594, "Practice 1"], [103596, "Sprint Qualifying"], [103621, "Sprint Qualifying Q1"], [103622, "Sprint Qualifying Q2"], [103623, "Sprint Qualifying Q3"], [103597, "Sprint"], [103595, "Qualifying"], [103618, "Qualifying Q1"], [103619, "Qualifying Q2"], [103620, "Qualifying Q3"], [103598, "Race"]]
+    },
+    {
+      "meeting_key": 103599,
+      "meeting_name": "Canadian Grand Prix",
+      "country_name": "Canada",
+      "country_code": "CAN",
+      "location": "Montreal",
+      "circuit_short_name": "Montreal",
+      "round": 7,
+      "date_start": "2026-05-22T16:30:00.000Z",
+      "date_end": "2026-05-24T22:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-05-22T16:30:00.000Z", "2026-05-22T17:30:00.000Z"],
+        "Sprint Qualifying": ["2026-05-22T20:30:00.000Z", "2026-05-22T21:14:00.000Z"],
+        "Sprint": ["2026-05-23T16:00:00.000Z", "2026-05-23T17:00:00.000Z"],
+        "Qualifying": ["2026-05-23T20:00:00.000Z", "2026-05-23T21:00:00.000Z"],
+        "Race": ["2026-05-24T20:00:00.000Z", "2026-05-24T22:00:00.000Z"]
+      },
+      "stages": [[103624, "Practice 1"], [103626, "Sprint Qualifying"], [103632, "Sprint Qualifying Q1"], [103633, "Sprint Qualifying Q2"], [103634, "Sprint Qualifying Q3"], [103627, "Sprint"], [103625, "Qualifying"], [103629, "Qualifying Q1"], [103630, "Qualifying Q2"], [103631, "Qualifying Q3"], [103628, "Race"]]
+    },
+    {
+      "meeting_key": 103635,
+      "meeting_name": "Monaco Grand Prix",
+      "country_name": "Monaco",
+      "country_code": "MON",
+      "location": "Monte Carlo",
+      "circuit_short_name": "Monte Carlo",
+      "round": 8,
+      "date_start": "2026-06-05T11:30:00.000Z",
+      "date_end": "2026-06-07T15:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-06-05T11:30:00.000Z", "2026-06-05T12:30:00.000Z"],
+        "Practice 2": ["2026-06-05T15:00:00.000Z", "2026-06-05T16:00:00.000Z"],
+        "Practice 3": ["2026-06-06T10:30:00.000Z", "2026-06-06T11:30:00.000Z"],
+        "Qualifying": ["2026-06-06T14:00:00.000Z", "2026-06-06T15:00:00.000Z"],
+        "Race": ["2026-06-07T13:00:00.000Z", "2026-06-07T15:00:00.000Z"]
+      },
+      "stages": [[103637, "Practice 1"], [103638, "Practice 2"], [103639, "Practice 3"], [103640, "Qualifying"], [103650, "Qualifying Q1"], [103651, "Qualifying Q2"], [103652, "Qualifying Q3"], [103641, "Race"]]
+    },
+    {
+      "meeting_key": 103636,
+      "meeting_name": "Barcelona Grand Prix",
+      "country_name": "Spain",
+      "country_code": "ESP",
+      "location": "Barcelona",
+      "circuit_short_name": "Catalunya",
+      "round": 9,
+      "date_start": "2026-06-12T11:30:00.000Z",
+      "date_end": "2026-06-14T15:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-06-12T11:30:00.000Z", "2026-06-12T12:30:00.000Z"],
+        "Practice 2": ["2026-06-12T15:00:00.000Z", "2026-06-12T16:00:00.000Z"],
+        "Practice 3": ["2026-06-13T10:30:00.000Z", "2026-06-13T11:30:00.000Z"],
+        "Qualifying": ["2026-06-13T14:00:00.000Z", "2026-06-13T15:00:00.000Z"],
+        "Race": ["2026-06-14T13:00:00.000Z", "2026-06-14T15:00:00.000Z"]
+      },
+      "stages": [[103642, "Practice 1"], [103643, "Practice 2"], [103644, "Practice 3"], [103645, "Qualifying"], [103653, "Qualifying Q1"], [103654, "Qualifying Q2"], [103655, "Qualifying Q3"], [103646, "Race"]]
+    },
+    {
+      "meeting_key": 103647,
+      "meeting_name": "Austrian Grand Prix",
+      "country_name": "Austria",
+      "country_code": "AUT",
+      "location": "Spielberg",
+      "circuit_short_name": "Spielberg",
+      "round": 10,
+      "date_start": "2026-06-26T11:30:00.000Z",
+      "date_end": "2026-06-28T15:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-06-26T11:30:00.000Z", "2026-06-26T12:30:00.000Z"],
+        "Practice 2": ["2026-06-26T15:00:00.000Z", "2026-06-26T16:00:00.000Z"],
+        "Practice 3": ["2026-06-27T10:30:00.000Z", "2026-06-27T11:30:00.000Z"],
+        "Qualifying": ["2026-06-27T14:00:00.000Z", "2026-06-27T15:00:00.000Z"],
+        "Race": ["2026-06-28T13:00:00.000Z", "2026-06-28T15:00:00.000Z"]
+      },
+      "stages": [[103656, "Practice 1"], [103657, "Practice 2"], [103658, "Practice 3"], [103659, "Qualifying"], [103672, "Qualifying Q1"], [103673, "Qualifying Q2"], [103674, "Qualifying Q3"], [103660, "Race"]]
+    },
+    {
+      "meeting_key": 103648,
+      "meeting_name": "British Grand Prix",
+      "country_name": "United Kingdom",
+      "country_code": "GBR",
+      "location": "Silverstone",
+      "circuit_short_name": "Silverstone",
+      "round": 11,
+      "date_start": "2026-07-03T11:30:00.000Z",
+      "date_end": "2026-07-05T16:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-07-03T11:30:00.000Z", "2026-07-03T12:30:00.000Z"],
+        "Sprint Qualifying": ["2026-07-03T15:30:00.000Z", "2026-07-03T16:14:00.000Z"],
+        "Sprint": ["2026-07-04T11:00:00.000Z", "2026-07-04T12:00:00.000Z"],
+        "Qualifying": ["2026-07-04T15:00:00.000Z", "2026-07-04T16:00:00.000Z"],
+        "Race": ["2026-07-05T14:00:00.000Z", "2026-07-05T16:00:00.000Z"]
+      },
+      "stages": [[103661, "Practice 1"], [103663, "Sprint Qualifying"], [103678, "Sprint Qualifying Q1"], [103679, "Sprint Qualifying Q2"], [103680, "Sprint Qualifying Q3"], [103664, "Sprint"], [103662, "Qualifying"], [103675, "Qualifying Q1"], [103676, "Qualifying Q2"], [103677, "Qualifying Q3"], [103665, "Race"]]
+    },
+    {
+      "meeting_key": 103649,
+      "meeting_name": "Belgian Grand Prix",
+      "country_name": "Belgium",
+      "country_code": "BEL",
+      "location": "Spa-Francorchamps",
+      "circuit_short_name": "Spa-Francorchamps",
+      "round": 12,
+      "date_start": "2026-07-17T11:30:00.000Z",
+      "date_end": "2026-07-19T15:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-07-17T11:30:00.000Z", "2026-07-17T12:30:00.000Z"],
+        "Practice 2": ["2026-07-17T15:00:00.000Z", "2026-07-17T16:00:00.000Z"],
+        "Practice 3": ["2026-07-18T10:30:00.000Z", "2026-07-18T11:30:00.000Z"],
+        "Qualifying": ["2026-07-18T14:00:00.000Z", "2026-07-18T15:00:00.000Z"],
+        "Race": ["2026-07-19T13:00:00.000Z", "2026-07-19T15:00:00.000Z"]
+      },
+      "stages": [[103666, "Practice 1"], [103667, "Practice 2"], [103668, "Practice 3"], [103669, "Qualifying"], [103681, "Qualifying Q1"], [103682, "Qualifying Q2"], [103683, "Qualifying Q3"], [103670, "Race"]]
+    },
+    {
+      "meeting_key": 103671,
+      "meeting_name": "Hungarian Grand Prix",
+      "country_name": "Hungary",
+      "country_code": "HUN",
+      "location": "Budapest",
+      "circuit_short_name": "Hungaroring",
+      "round": 13,
+      "date_start": "2026-07-24T11:30:00.000Z",
+      "date_end": "2026-07-26T15:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-07-24T11:30:00.000Z", "2026-07-24T12:30:00.000Z"],
+        "Practice 2": ["2026-07-24T15:00:00.000Z", "2026-07-24T16:00:00.000Z"],
+        "Practice 3": ["2026-07-25T10:30:00.000Z", "2026-07-25T11:30:00.000Z"],
+        "Qualifying": ["2026-07-25T14:00:00.000Z", "2026-07-25T15:00:00.000Z"],
+        "Race": ["2026-07-26T13:00:00.000Z", "2026-07-26T15:00:00.000Z"]
+      },
+      "stages": [[103684, "Practice 1"], [103685, "Practice 2"], [103686, "Practice 3"], [103687, "Qualifying"], [103690, "Qualifying Q1"], [103691, "Qualifying Q2"], [103692, "Qualifying Q3"], [103688, "Race"]]
+    },
+    {
+      "meeting_key": 103689,
+      "meeting_name": "Dutch Grand Prix",
+      "country_name": "Netherlands",
+      "country_code": "NED",
+      "location": "Zandvoort",
+      "circuit_short_name": "Zandvoort",
+      "round": 14,
+      "date_start": "2026-08-21T10:30:00.000Z",
+      "date_end": "2026-08-23T15:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-08-21T10:30:00.000Z", "2026-08-21T11:30:00.000Z"],
+        "Sprint Qualifying": ["2026-08-21T14:30:00.000Z", "2026-08-21T15:14:00.000Z"],
+        "Sprint": ["2026-08-22T10:00:00.000Z", "2026-08-22T11:00:00.000Z"],
+        "Qualifying": ["2026-08-22T14:00:00.000Z", "2026-08-22T15:00:00.000Z"],
+        "Race": ["2026-08-23T13:00:00.000Z", "2026-08-23T15:00:00.000Z"]
+      },
+      "stages": [[103693, "Practice 1"], [103695, "Sprint Qualifying"], [103704, "Sprint Qualifying Q1"], [103705, "Sprint Qualifying Q2"], [103706, "Sprint Qualifying Q3"], [103696, "Sprint"], [103694, "Qualifying"], [103701, "Qualifying Q1"], [103702, "Qualifying Q2"], [103703, "Qualifying Q3"], [103697, "Race"]]
+    },
+    {
+      "meeting_key": 103698,
+      "meeting_name": "Italian Grand Prix",
+      "country_name": "Italy",
+      "country_code": "ITA",
+      "location": "Monza",
+      "circuit_short_name": "Monza",
+      "round": 15,
+      "date_start": "2026-09-04T10:30:00.000Z",
+      "date_end": "2026-09-06T15:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-09-04T10:30:00.000Z", "2026-09-04T11:30:00.000Z"],
+        "Practice 2": ["2026-09-04T14:00:00.000Z", "2026-09-04T15:00:00.000Z"],
+        "Practice 3": ["2026-09-05T10:30:00.000Z", "2026-09-05T11:30:00.000Z"],
+        "Qualifying": ["2026-09-05T14:00:00.000Z", "2026-09-05T15:00:00.000Z"],
+        "Race": ["2026-09-06T13:00:00.000Z", "2026-09-06T15:00:00.000Z"]
+      },
+      "stages": [[103707, "Practice 1"], [103708, "Practice 2"], [103709, "Practice 3"], [103710, "Qualifying"], [103725, "Qualifying Q1"], [103726, "Qualifying Q2"], [103727, "Qualifying Q3"], [103711, "Race"]]
+    },
+    {
+      "meeting_key": 103699,
+      "meeting_name": "Spanish Grand Prix",
+      "country_name": "Spain",
+      "country_code": "ESP",
+      "location": "Madrid",
+      "circuit_short_name": "Madring",
+      "round": 16,
+      "date_start": "2026-09-11T11:30:00.000Z",
+      "date_end": "2026-09-13T15:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-09-11T11:30:00.000Z", "2026-09-11T12:30:00.000Z"],
+        "Practice 2": ["2026-09-11T15:00:00.000Z", "2026-09-11T16:00:00.000Z"],
+        "Practice 3": ["2026-09-12T10:30:00.000Z", "2026-09-12T11:30:00.000Z"],
+        "Qualifying": ["2026-09-12T14:00:00.000Z", "2026-09-12T15:00:00.000Z"],
+        "Race": ["2026-09-13T13:00:00.000Z", "2026-09-13T15:00:00.000Z"]
+      },
+      "stages": [[103712, "Practice 1"], [103713, "Practice 2"], [103714, "Practice 3"], [103715, "Qualifying"], [103728, "Qualifying Q1"], [103729, "Qualifying Q2"], [103730, "Qualifying Q3"], [103716, "Race"]]
+    },
+    {
+      "meeting_key": 103700,
+      "meeting_name": "Azerbaijan Grand Prix",
+      "country_name": "Azerbaijan",
+      "country_code": "AZE",
+      "location": "Baku",
+      "circuit_short_name": "Baku",
+      "round": 17,
+      "date_start": "2026-09-24T08:30:00.000Z",
+      "date_end": "2026-09-26T13:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-09-24T08:30:00.000Z", "2026-09-24T09:30:00.000Z"],
+        "Practice 2": ["2026-09-24T12:00:00.000Z", "2026-09-24T13:00:00.000Z"],
+        "Practice 3": ["2026-09-25T08:30:00.000Z", "2026-09-25T09:30:00.000Z"],
+        "Qualifying": ["2026-09-25T12:00:00.000Z", "2026-09-25T13:00:00.000Z"],
+        "Race": ["2026-09-26T11:00:00.000Z", "2026-09-26T13:00:00.000Z"]
+      },
+      "stages": [[103717, "Practice 1"], [103718, "Practice 2"], [103719, "Practice 3"], [103720, "Qualifying"], [103731, "Qualifying Q1"], [103732, "Qualifying Q2"], [103733, "Qualifying Q3"], [103721, "Race"]]
+    },
+    {
+      "meeting_key": 103722,
+      "meeting_name": "Singapore Grand Prix",
+      "country_name": "Singapore",
+      "country_code": "SGP",
+      "location": "Marina Bay",
+      "circuit_short_name": "Singapore",
+      "round": 18,
+      "date_start": "2026-10-09T08:30:00.000Z",
+      "date_end": "2026-10-11T14:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-10-09T08:30:00.000Z", "2026-10-09T09:30:00.000Z"],
+        "Sprint Qualifying": ["2026-10-09T12:30:00.000Z", "2026-10-09T13:14:00.000Z"],
+        "Sprint": ["2026-10-10T09:00:00.000Z", "2026-10-10T10:00:00.000Z"],
+        "Qualifying": ["2026-10-10T13:00:00.000Z", "2026-10-10T14:00:00.000Z"],
+        "Race": ["2026-10-11T12:00:00.000Z", "2026-10-11T14:00:00.000Z"]
+      },
+      "stages": [[103734, "Practice 1"], [103736, "Sprint Qualifying"], [103754, "Sprint Qualifying Q1"], [103755, "Sprint Qualifying Q2"], [103756, "Sprint Qualifying Q3"], [103737, "Sprint"], [103735, "Qualifying"], [103751, "Qualifying Q1"], [103752, "Qualifying Q2"], [103753, "Qualifying Q3"], [103738, "Race"]]
+    },
+    {
+      "meeting_key": 103723,
+      "meeting_name": "United States Grand Prix",
+      "country_name": "United States",
+      "country_code": "USA",
+      "location": "Austin",
+      "circuit_short_name": "Austin",
+      "round": 19,
+      "date_start": "2026-10-23T17:30:00.000Z",
+      "date_end": "2026-10-25T22:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-10-23T17:30:00.000Z", "2026-10-23T18:30:00.000Z"],
+        "Practice 2": ["2026-10-23T21:00:00.000Z", "2026-10-23T22:00:00.000Z"],
+        "Practice 3": ["2026-10-24T17:30:00.000Z", "2026-10-24T18:30:00.000Z"],
+        "Qualifying": ["2026-10-24T21:00:00.000Z", "2026-10-24T22:00:00.000Z"],
+        "Race": ["2026-10-25T20:00:00.000Z", "2026-10-25T22:00:00.000Z"]
+      },
+      "stages": [[103739, "Practice 1"], [103740, "Practice 2"], [103741, "Practice 3"], [103742, "Qualifying"], [103757, "Qualifying Q1"], [103758, "Qualifying Q2"], [103759, "Qualifying Q3"], [103743, "Race"]]
+    },
+    {
+      "meeting_key": 103724,
+      "meeting_name": "Mexico City Grand Prix",
+      "country_name": "Mexico",
+      "country_code": "MEX",
+      "location": "Mexico City",
+      "circuit_short_name": "Mexico City",
+      "round": 20,
+      "date_start": "2026-10-30T18:30:00.000Z",
+      "date_end": "2026-11-01T22:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-10-30T18:30:00.000Z", "2026-10-30T19:30:00.000Z"],
+        "Practice 2": ["2026-10-30T22:00:00.000Z", "2026-10-30T23:00:00.000Z"],
+        "Practice 3": ["2026-10-31T17:30:00.000Z", "2026-10-31T18:30:00.000Z"],
+        "Qualifying": ["2026-10-31T21:00:00.000Z", "2026-10-31T22:00:00.000Z"],
+        "Race": ["2026-11-01T20:00:00.000Z", "2026-11-01T22:00:00.000Z"]
+      },
+      "stages": [[103744, "Practice 1"], [103745, "Practice 2"], [103746, "Practice 3"], [103747, "Qualifying"], [103760, "Qualifying Q1"], [103761, "Qualifying Q2"], [103762, "Qualifying Q3"], [103748, "Race"]]
+    },
+    {
+      "meeting_key": 103749,
+      "meeting_name": "Sao Paulo Grand Prix",
+      "country_name": "Brazil",
+      "country_code": "BRA",
+      "location": "Sao Paulo",
+      "circuit_short_name": "Interlagos",
+      "round": 21,
+      "date_start": "2026-11-06T15:30:00.000Z",
+      "date_end": "2026-11-08T19:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-11-06T15:30:00.000Z", "2026-11-06T16:30:00.000Z"],
+        "Practice 2": ["2026-11-06T19:00:00.000Z", "2026-11-06T20:00:00.000Z"],
+        "Practice 3": ["2026-11-07T14:30:00.000Z", "2026-11-07T15:30:00.000Z"],
+        "Qualifying": ["2026-11-07T18:00:00.000Z", "2026-11-07T19:00:00.000Z"],
+        "Race": ["2026-11-08T17:00:00.000Z", "2026-11-08T19:00:00.000Z"]
+      },
+      "stages": [[103763, "Practice 1"], [103764, "Practice 2"], [103765, "Practice 3"], [103766, "Qualifying"], [103775, "Qualifying Q1"], [103776, "Qualifying Q2"], [103777, "Qualifying Q3"], [103767, "Race"]]
+    },
+    {
+      "meeting_key": 103750,
+      "meeting_name": "Las Vegas Grand Prix",
+      "country_name": "United States",
+      "country_code": "USA",
+      "location": "Las Vegas",
+      "circuit_short_name": "Las Vegas",
+      "round": 22,
+      "date_start": "2026-11-20T00:30:00.000Z",
+      "date_end": "2026-11-22T06:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-11-20T00:30:00.000Z", "2026-11-20T01:30:00.000Z"],
+        "Practice 2": ["2026-11-20T04:00:00.000Z", "2026-11-20T05:00:00.000Z"],
+        "Practice 3": ["2026-11-21T00:30:00.000Z", "2026-11-21T01:30:00.000Z"],
+        "Qualifying": ["2026-11-21T04:00:00.000Z", "2026-11-21T05:00:00.000Z"],
+        "Race": ["2026-11-22T04:00:00.000Z", "2026-11-22T06:00:00.000Z"]
+      },
+      "stages": [[103768, "Practice 1"], [103769, "Practice 2"], [103770, "Practice 3"], [103771, "Qualifying"], [103778, "Qualifying Q1"], [103779, "Qualifying Q2"], [103780, "Qualifying Q3"], [103772, "Race"]]
+    },
+    {
+      "meeting_key": 103773,
+      "meeting_name": "Qatar Grand Prix",
+      "country_name": "Qatar",
+      "country_code": "QAT",
+      "location": "Lusail",
+      "circuit_short_name": "Lusail",
+      "round": 23,
+      "date_start": "2026-11-27T13:30:00.000Z",
+      "date_end": "2026-11-29T18:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-11-27T13:30:00.000Z", "2026-11-27T14:30:00.000Z"],
+        "Practice 2": ["2026-11-27T17:00:00.000Z", "2026-11-27T18:00:00.000Z"],
+        "Practice 3": ["2026-11-28T14:30:00.000Z", "2026-11-28T15:30:00.000Z"],
+        "Qualifying": ["2026-11-28T18:00:00.000Z", "2026-11-28T19:00:00.000Z"],
+        "Race": ["2026-11-29T16:00:00.000Z", "2026-11-29T18:00:00.000Z"]
+      },
+      "stages": [[103781, "Practice 1"], [103782, "Practice 2"], [103783, "Practice 3"], [103784, "Qualifying"], [103791, "Qualifying Q1"], [103792, "Qualifying Q2"], [103793, "Qualifying Q3"], [103785, "Race"]]
+    },
+    {
+      "meeting_key": 103774,
+      "meeting_name": "Abu Dhabi Grand Prix",
+      "country_name": "United Arab Emirates",
+      "country_code": "UAE",
+      "location": "Yas Marina",
+      "circuit_short_name": "Yas Marina Circuit",
+      "round": 24,
+      "date_start": "2026-12-04T09:30:00.000Z",
+      "date_end": "2026-12-06T15:00:00.000Z",
+      "windows": {
+        "Practice 1": ["2026-12-04T09:30:00.000Z", "2026-12-04T10:30:00.000Z"],
+        "Practice 2": ["2026-12-04T13:00:00.000Z", "2026-12-04T14:00:00.000Z"],
+        "Practice 3": ["2026-12-05T10:30:00.000Z", "2026-12-05T11:30:00.000Z"],
+        "Qualifying": ["2026-12-05T14:00:00.000Z", "2026-12-05T15:00:00.000Z"],
+        "Race": ["2026-12-06T13:00:00.000Z", "2026-12-06T15:00:00.000Z"]
+      },
+      "stages": [[103786, "Practice 1"], [103787, "Practice 2"], [103788, "Practice 3"], [103789, "Qualifying"], [103794, "Qualifying Q1"], [103795, "Qualifying Q2"], [103796, "Qualifying Q3"], [103790, "Race"]]
+    }
+  ]
+}

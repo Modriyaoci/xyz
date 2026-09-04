@@ -30,6 +30,11 @@ const state = {
   dataRequestId: 0,
   liveTiming: {
     source: "nana",
+    stageId: 103697,
+    namiMeetingKey: 103689,
+    namiMeetings: [],
+    namiSessions: [],
+    namiCatalogLoading: false,
     meetingKey: null,
     sessionKey: null,
     meetingName: "",
@@ -72,6 +77,13 @@ const STATIC_API_BASE = "https://api.openf1.org/v1";
 const STATIC_CACHE_VERSION = "20260902-independent-sources-v1";
 const STATIC_FASTF1_CATALOG_URL = new URL("./fastf1-meetings.json", import.meta.url).href;
 const STATIC_FASTF1_API_BASE = "https://f1-nana-bridge.onrender.com";
+const STATIC_NAMI_API_BASE = localServer ? window.location.origin : "https://f1-nana-bridge.onrender.com";
+const NAMI_PROVIDERS = Object.freeze([
+  Object.freeze({ key: "radar", label: "雷达" }),
+  Object.freeze({ key: "dash", label: "dash" }),
+  Object.freeze({ key: "official", label: "官方" }),
+]);
+const NAMI_SCHEDULE_SOURCES = Object.freeze(NAMI_PROVIDERS.map((provider) => `nami-${provider.key}`));
 const staticRequestTimeoutMs = 30000;
 const staticRequestIntervalMs = 400;
 let staticNextRequestAt = 0;
@@ -87,8 +99,64 @@ const staticSleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const staticFeedProbeAt = new Map();
 const staticFeedProbeIntervalMs = 5 * 60 * 1000;
 let staticFastF1CatalogPromise = null;
+const staticNamiCatalogPromises = new Map();
 
-const dataSourceLabel = (source) => source === "fastf1" ? "FastF1" : "OpenF1";
+const namiScheduleProvider = (source = state.dataSource) => {
+  const key = String(source || "").replace(/^nami-/, "");
+  return String(source || "").startsWith("nami-") ? NAMI_PROVIDERS.find((provider) => provider.key === key) || null : null;
+};
+const isNamiScheduleSource = (source = state.dataSource) => Boolean(namiScheduleProvider(source));
+const apiDataSource = (source = state.dataSource) => isNamiScheduleSource(source) ? "nami" : source;
+const dataSourceLabel = (source) => {
+  if (source === "fastf1") return "FastF1";
+  const provider = namiScheduleProvider(source);
+  return provider ? `纳米-${provider.label}` : "OpenF1";
+};
+
+function staticNamiSeasons() {
+  return [2026];
+}
+
+async function staticNamiCatalog(params = {}) {
+  const query = new URLSearchParams(params);
+  const key = query.toString();
+  if (!staticNamiCatalogPromises.has(key)) {
+    const url = new URL("/api/public/nami/catalog", STATIC_NAMI_API_BASE);
+    for (const [name, value] of query) url.searchParams.set(name, value);
+    const task = fetch(url, { cache: "no-store", headers: { accept: "application/json" } })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(payload.error || `Render 纳米目录请求失败 ${response.status}`);
+        return payload;
+      })
+      .catch((error) => {
+        staticNamiCatalogPromises.delete(key);
+        throw error;
+      });
+    staticNamiCatalogPromises.set(key, task);
+  }
+  return staticNamiCatalogPromises.get(key);
+}
+
+async function staticNamiMeetings(year) {
+  return (await staticNamiCatalog({ year: String(year) })).data || [];
+}
+
+async function staticNamiSessions(meetingKey) {
+  return (await staticNamiCatalog({ meeting_key: String(meetingKey) })).data || [];
+}
+
+async function staticNamiSessionSnapshot(stageId, provider) {
+  const source = NAMI_PROVIDERS.find((item) => item.key === provider);
+  if (!Number.isInteger(Number(stageId)) || !source) throw new Error("请选择有效的纳米节点和数据源");
+  const url = new URL("/api/public/nami/session-data", STATIC_NAMI_API_BASE);
+  url.searchParams.set("stage_id", String(stageId));
+  url.searchParams.set("provider", source.key);
+  const response = await fetch(url, { cache: "no-store", headers: { accept: "application/json" } });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload.error || `Render 纳米请求失败 ${response.status}`);
+  return payload;
+}
 
 function openStaticDb() {
   if (staticDb.promise) return staticDb.promise;
@@ -729,10 +797,10 @@ function raceControlMessageParts(row) {
 
 const syncTimestampText = (data) => data?.synced_at ? ` · 同步于 ${dateText(data.synced_at)}` : "";
 const syncTitle = (data) => Array.isArray(data?.sync_warnings) && data.sync_warnings.length ? "同步完成（部分字段未更新）" : "同步完成";
-const sessionLabel = (name) => ({"Practice 1": "练习1", "Practice 2": "练习2", "Practice 3": "练习3", "Day 1": "测试第1天", "Day 2": "测试第2天", "Day 3": "测试第3天", "Sprint Qualifying": "冲刺排位赛", Sprint: "冲刺赛", Qualifying: "排位赛", Race: "正赛"}[name] || name || "会话");
+const sessionLabel = (name) => ({"Practice 1": "练习1", "Practice 2": "练习2", "Practice 3": "练习3", "Day 1": "测试第1天", "Day 2": "测试第2天", "Day 3": "测试第3天", "Sprint Qualifying": "冲刺排位赛", "Sprint Qualifying Q1": "冲刺排位赛 Q1", "Sprint Qualifying Q2": "冲刺排位赛 Q2", "Sprint Qualifying Q3": "冲刺排位赛 Q3", Sprint: "冲刺赛", Qualifying: "排位赛", "Qualifying Q1": "排位赛 Q1", "Qualifying Q2": "排位赛 Q2", "Qualifying Q3": "排位赛 Q3", Race: "正赛"}[name] || name || "会话");
 const statusLabel = (row) => row?.is_result_missing ? "无成绩" : row?.dsq ? "DSQ" : row?.dns ? "DNS" : row?.dnf ? "DNF" : "Finished";
 const raceSessionNames = new Set(["Race", "Sprint"]);
-const qualifyingSessionNames = new Set(["Qualifying", "Sprint Qualifying"]);
+const qualifyingSessionNames = new Set(["Qualifying", "Qualifying Q1", "Qualifying Q2", "Qualifying Q3", "Sprint Qualifying", "Sprint Qualifying Q1", "Sprint Qualifying Q2", "Sprint Qualifying Q3"]);
 const colorNames = { purple: "紫", green: "绿", yellow: "黄", red: "红", blue: "蓝", gray: "灰" };
 const colorKey = (value) => colorNames[String(value || "gray").toLowerCase()] ? String(value).toLowerCase() : "gray";
 const colorBadge = (value, prefix = "") => `<span class="color-badge color-${colorKey(value)}" title="${esc(value || "gray")}">${esc(prefix)}${colorNames[colorKey(value)]}</span>`;
@@ -849,15 +917,26 @@ const formatTime = (value) => {
 async function api(path, options = {}) {
   if (STATIC_MODE) {
     const url = new URL(path, window.location.href);
-    const source = url.searchParams.get("source") === "fastf1" ? "fastf1" : "openf1";
-    if (url.pathname === "/api/seasons") return { data: source === "fastf1" ? await staticFastF1Seasons() : await staticSeasons(), source: source === "fastf1" ? "fastf1-catalog" : "catalog" };
-    if (url.pathname === "/api/meetings") return { data: source === "fastf1" ? await staticFastF1Catalog(url.searchParams.get("year")) : await staticCatalog(url.searchParams.get("year")), source: source === "fastf1" ? "fastf1-catalog" : "catalog" };
-    if (url.pathname === "/api/sessions") return source === "fastf1" ? staticFastF1SessionList(url.searchParams.get("meeting_key")) : staticSessionList(url.searchParams.get("meeting_key"));
+    const requestedSource = url.searchParams.get("source");
+    const source = ["fastf1", "nami"].includes(requestedSource) ? requestedSource : "openf1";
+    if (url.pathname === "/api/seasons") return source === "nami"
+      ? { data: staticNamiSeasons(), source: "nami-catalog" }
+      : { data: source === "fastf1" ? await staticFastF1Seasons() : await staticSeasons(), source: source === "fastf1" ? "fastf1-catalog" : "catalog" };
+    if (url.pathname === "/api/meetings") return source === "nami"
+      ? { data: await staticNamiMeetings(url.searchParams.get("year")), source: "nami-catalog" }
+      : { data: source === "fastf1" ? await staticFastF1Catalog(url.searchParams.get("year")) : await staticCatalog(url.searchParams.get("year")), source: source === "fastf1" ? "fastf1-catalog" : "catalog" };
+    if (url.pathname === "/api/sessions") return source === "nami"
+      ? { data: await staticNamiSessions(url.searchParams.get("meeting_key")), source: "nami-catalog" }
+      : source === "fastf1" ? staticFastF1SessionList(url.searchParams.get("meeting_key")) : staticSessionList(url.searchParams.get("meeting_key"));
     if (url.pathname === "/api/live-session-data") return staticLiveSessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"));
-    if (url.pathname === "/api/session-data") return source === "fastf1" ? staticFastF1SessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")) : staticSessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"));
+    if (url.pathname === "/api/session-data") return source === "nami"
+      ? staticNamiSessionSnapshot(url.searchParams.get("session_key"), url.searchParams.get("provider"))
+      : source === "fastf1" ? staticFastF1SessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key")) : staticSessionSnapshot(url.searchParams.get("meeting_key"), url.searchParams.get("session_key"));
     if (url.pathname === "/api/sync-session-data") {
       const body = JSON.parse(options.body || "{}");
-      return body.source === "fastf1" ? staticFastF1SessionSnapshot(body.meeting_key, body.session_key, { force: true }) : staticSessionSnapshot(body.meeting_key, body.session_key, { force: true });
+      return body.source === "nami"
+        ? staticNamiSessionSnapshot(body.session_key, body.provider)
+        : body.source === "fastf1" ? staticFastF1SessionSnapshot(body.meeting_key, body.session_key, { force: true }) : staticSessionSnapshot(body.meeting_key, body.session_key, { force: true });
     }
     if (url.pathname === "/api/standings") return staticStandings();
     if (url.pathname === "/api/sync-standings") return staticStandings({ force: true });
@@ -1312,11 +1391,84 @@ function renderLiveSourceControl() {
   const hint = $("liveTimingHint");
   const footer = $("liveSourceFooter");
   const bridgeName = liveBridgeSourceName(live.source);
-  if (select) select.value = bridgeName || "f1telemetry";
-  if (hint) hint.textContent = bridgeName
-    ? `数据源：${bridgeName}；另一套后台 POST 增量快照，本页面通过 SSE 接收独立的合并状态，未推字段保留，不保存历史。`
-    : "数据源：F1 Telemetry 实时接口；不区分历史分站和节点，只覆盖当前实时快照，不写入本地缓存。";
-  if (footer) footer.textContent = bridgeName ? `数据源：${bridgeName}` : "数据源：F1 Telemetry 实时接口";
+  const provider = namiLiveProvider(live.source);
+  const sourceLabel = provider ? `纳米-${provider.label}` : bridgeName || "F1 Telemetry";
+  if (select) select.value = live.source;
+  const stageControl = $("namiStageControl");
+  const meetingControl = $("namiMeetingControl");
+  const nodeControl = $("namiNodeControl");
+  const meetingSelect = $("namiMeetingSelect");
+  const nodeSelect = $("namiNodeSelect");
+  const stageInput = $("namiStageInput");
+  if (meetingControl) meetingControl.hidden = !provider;
+  if (nodeControl) nodeControl.hidden = !provider;
+  if (stageControl) stageControl.hidden = !provider;
+  if (meetingSelect && provider) {
+    meetingSelect.disabled = live.namiCatalogLoading || !live.namiMeetings.length;
+    meetingSelect.innerHTML = live.namiMeetings.length
+      ? live.namiMeetings.map((meeting) => `<option value="${esc(meeting.meeting_key)}">${esc(`第 ${meeting.round} 站 · ${meeting.meeting_name}`)}</option>`).join("")
+      : `<option value="">${live.namiCatalogLoading ? "正在读取分站" : "暂无分站"}</option>`;
+    meetingSelect.value = live.namiMeetingKey == null ? "" : String(live.namiMeetingKey);
+  }
+  if (nodeSelect && provider) {
+    nodeSelect.disabled = live.namiCatalogLoading || !live.namiSessions.length;
+    nodeSelect.innerHTML = live.namiSessions.length
+      ? live.namiSessions.map((session) => `<option value="${esc(session.stage_id)}">${esc(sessionLabel(session.session_name))}</option>`).join("")
+      : `<option value="">${live.namiCatalogLoading ? "正在读取节点" : "暂无节点"}</option>`;
+    nodeSelect.value = String(live.stageId || "");
+  }
+  if (stageInput) stageInput.value = String(live.stageId || 103697);
+  const selectedMeeting = live.namiMeetings.find((meeting) => Number(meeting.meeting_key) === Number(live.namiMeetingKey));
+  const selectedSession = live.namiSessions.find((session) => Number(session.stage_id) === Number(live.stageId));
+  if (hint) hint.textContent = provider
+    ? `数据源：${sourceLabel}；${selectedMeeting?.meeting_name || "等待选择分站"} · ${sessionLabel(selectedSession?.session_name)} · Stage ${live.stageId || "--"}；每 5 秒读取一次当前记录。`
+    : bridgeName
+      ? `数据源：${bridgeName}；另一套后台 POST 增量快照，本页面通过 SSE 接收独立的合并状态，未推字段保留，不保存历史。`
+      : "数据源：F1 Telemetry 实时接口；不区分历史分站和节点，只覆盖当前实时快照，不写入本地缓存。";
+  if (footer) footer.textContent = `数据源：${sourceLabel}`;
+}
+
+async function loadNamiLiveSessions(meetingKey, preferredStageId = null) {
+  const live = state.liveTiming;
+  const payload = await api(`/api/sessions?meeting_key=${encodeURIComponent(meetingKey)}&source=nami`);
+  live.namiSessions = payload.data || [];
+  const selected = live.namiSessions.find((session) => Number(session.stage_id) === Number(preferredStageId))
+    || live.namiSessions.find((session) => session.session_name === "Race")
+    || live.namiSessions[0]
+    || null;
+  live.stageId = selected?.stage_id ?? null;
+}
+
+async function loadNamiLiveCatalog() {
+  const live = state.liveTiming;
+  if (live.namiCatalogLoading) return;
+  live.namiCatalogLoading = true;
+  renderLiveSourceControl();
+  try {
+    const payload = await api("/api/meetings?year=2026&source=nami");
+    live.namiMeetings = (payload.data || []).slice().sort((a, b) => (a.round ?? 999) - (b.round ?? 999));
+    const meeting = live.namiMeetings.find((item) => Number(item.meeting_key) === Number(live.namiMeetingKey))
+      || live.namiMeetings.find((item) => item.meeting_name === "Dutch Grand Prix")
+      || live.namiMeetings[0]
+      || null;
+    live.namiMeetingKey = meeting?.meeting_key ?? null;
+    live.namiSessions = [];
+    if (meeting) await loadNamiLiveSessions(meeting.meeting_key, live.stageId);
+  } catch (error) {
+    live.namiMeetings = [];
+    live.namiSessions = [];
+    live.logs = [{ sequence: 1, title: "节点目录读取失败", detail: error.message || "无法读取纳米节点目录", ok: false, at: new Date().toISOString() }];
+  } finally {
+    live.namiCatalogLoading = false;
+    renderLiveTiming();
+  }
+}
+
+function namiLiveProvider(source = state.liveTiming.source) {
+  const value = String(source || "");
+  if (!value.startsWith("nami-")) return null;
+  const key = value.slice("nami-".length);
+  return NAMI_PROVIDERS.find((item) => item.key === key) || null;
 }
 
 function liveBridgeSourceName(source = state.liveTiming.source) {
@@ -1351,7 +1503,7 @@ function renderNanaMapping() {
   const modal = $("nanaMappingModal");
   const table = $("nanaMappingTable");
   if (!modal || !table) return;
-  const available = !STATIC_MODE && Boolean(liveBridgeSourceName(live.source));
+  const available = !STATIC_MODE && Boolean(liveBridgeSourceName(live.source) || namiLiveProvider(live.source));
   if (openButton) openButton.hidden = !available;
   const open = available && live.mappingOpen;
   modal.hidden = !open;
@@ -1369,7 +1521,7 @@ function renderNanaMapping() {
         ? "正在读取车号映射…"
         : live.mappingSaving
           ? "正在保存映射…"
-          : live.mapping ? "按车号匹配；修改后保存即可应用到当前及后续 Nana、Dash 数据。" : "尚未读取车号映射";
+          : live.mapping ? "按车号匹配；修改后保存即可应用到当前及后续 Nana、Dash、纳米数据。" : "尚未读取车号映射";
   }
   const rows = nanaMappingRows();
   const signature = JSON.stringify(rows);
@@ -1563,7 +1715,7 @@ function renderLiveTiming() {
   renderLiveTyres();
   $("liveStatusTitle").textContent = live.loading ? "正在更新" : live.running ? "实时更新中" : live.received ? "已停止" : "等待连接";
   $("liveStatusPulse").classList.toggle("connected", live.running);
-  const transport = liveBridgeSourceName(live.source) ? "SSE 持续连接" : "WebSocket 持续连接";
+  const transport = namiLiveProvider(live.source) ? "每 5 秒读取" : liveBridgeSourceName(live.source) ? "SSE 持续连接" : "WebSocket 持续连接";
   $("liveStatusMeta").textContent = live.lastAt ? `最后更新 ${liveClock(live.lastAt)} · ${transport}${live.errors ? ` · ${live.errors} 个字段失败` : ""}` : "尚未接收到消息";
   const liveConnected = live.running || Boolean(live.stream);
   $("liveLoadBtn").innerHTML = `<span>${liveConnected ? "停止实时" : "开始实时"}</span><span aria-hidden="true">${liveConnected ? "■" : "▶"}</span>`;
@@ -1697,6 +1849,46 @@ function openLiveBridgeStream({ source, onState, onError, onClose } = {}) {
   };
 }
 
+function openNamiLivePolling({ source, stageId, onState, onError, onClose } = {}) {
+  const provider = namiLiveProvider(source);
+  if (!provider) throw new Error("请选择有效的纳米实时源");
+  let closed = false;
+  let timer = null;
+  let inFlight = false;
+  const requestState = async () => {
+    if (closed || inFlight) return false;
+    inFlight = true;
+    try {
+      const path = `/api/${STATIC_MODE ? "public/" : ""}nami/live?stage_id=${encodeURIComponent(stageId)}&provider=${encodeURIComponent(provider.key)}`;
+      const url = STATIC_MODE ? new URL(path, STATIC_NAMI_API_BASE).href : path;
+      const response = await fetch(url, { cache: "no-store", headers: { accept: "application/json" } });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(payload.error || `纳米-${provider.label} 读取失败 ${response.status}`);
+      if (!payload.data) throw new Error(`纳米-${provider.label} 尚无实时数据`);
+      onState?.(payload.data);
+      return true;
+    } catch (error) {
+      onError?.(error instanceof Error ? error : new Error(String(error)));
+      return false;
+    } finally {
+      inFlight = false;
+    }
+  };
+  const tick = async () => {
+    await requestState();
+    if (!closed) timer = window.setTimeout(tick, 5000);
+  };
+  window.queueMicrotask(tick);
+  return {
+    requestState,
+    close() {
+      closed = true;
+      if (timer) window.clearTimeout(timer);
+      onClose?.();
+    },
+  };
+}
+
 async function loadLiveTimingData() {
   const live = state.liveTiming;
   if (live.stream) {
@@ -1709,12 +1901,15 @@ async function loadLiveTimingData() {
   const token = live.token;
   live.loading = true;
   const bridgeName = liveBridgeSourceName(live.source);
-  setConnection(false, bridgeName ? `正在连接 ${bridgeName}` : "正在连接实时接口");
+  const namiProvider = namiLiveProvider(live.source);
+  const sourceLabel = namiProvider ? `纳米-${namiProvider.label}` : bridgeName;
+  setConnection(false, sourceLabel ? `正在连接 ${sourceLabel}` : "正在连接实时接口");
   renderLiveTiming();
   try {
-    const openStream = bridgeName ? openLiveBridgeStream : openF1TelemetryStream;
+    const openStream = namiProvider ? openNamiLivePolling : bridgeName ? openLiveBridgeStream : openF1TelemetryStream;
     live.stream = openStream({
-      source: bridgeName,
+      source: namiProvider ? live.source : bridgeName,
+      stageId: live.stageId,
       requestedMeetingKey: null,
       requestedSessionKey: null,
       timeoutMs: 30000,
@@ -1722,13 +1917,13 @@ async function loadLiveTimingData() {
         if (token !== live.token) return;
         live.data = isBackendLivePayload(data) ? data : enrichBackendMapping(data || {});
         renderLiveMeetingMeta(live.data);
-        setConnection(true, bridgeName ? `${bridgeName} 已连接` : "实时接口已连接");
+        setConnection(true, sourceLabel ? `${sourceLabel} 已连接` : "实时接口已连接");
         live.rows = buildLiveRows(live.data);
         live.events = buildLiveEvents(live.data);
         live.logs = buildLiveLogs(live.data);
         live.received += 1;
         live.errors = Array.isArray(live.data.live_errors) ? live.data.live_errors.length : 0;
-        live.sequence += 1;
+        live.sequence = numeric(live.data?.live_bridge?.sequence) ?? live.sequence + 1;
         live.lastAt = live.data.fetched_at || new Date().toISOString();
         live.loading = false;
         renderLiveTiming();
@@ -1743,7 +1938,7 @@ async function loadLiveTimingData() {
       },
       onClose: () => {
         if (token !== live.token) return;
-        setConnection(false, bridgeName ? `${bridgeName} 推送已断开` : "实时接口已断开");
+        setConnection(false, sourceLabel ? `${sourceLabel} 已断开` : "实时接口已断开");
         live.stream = null;
         live.running = false;
         live.loading = false;
@@ -1855,9 +2050,12 @@ function renderDataSourceControl() {
   if (select) select.value = state.dataSource;
   const hint = $("selectorHint");
   if (hint) {
+    const provider = namiScheduleProvider();
     hint.textContent = state.dataSource === "fastf1"
       ? "FastF1 独立数据源：读取 FastF1 自己的赛历和会话数据，不与 OpenF1 合并。"
-      : "OpenF1 独立数据源：读取 OpenF1 的 Meeting / Session 和会话 feeds。";
+      : provider
+        ? `纳米-${provider.label} 独立数据源：选择分站和节点后读取该节点最近的推送记录，不缓存历史。`
+        : "OpenF1 独立数据源：读取 OpenF1 的 Meeting / Session 和会话 feeds。";
   }
 }
 
@@ -1881,7 +2079,7 @@ function sessionNodes() {
   const nodes = [];
   state.sessions.forEach((session, index) => {
     nodes.push({ key: sessionNodeKey(session, index), label: sessionLabel(session.session_name), session, phase: null, index });
-    if (["Qualifying", "Sprint Qualifying"].includes(session.session_name)) {
+    if (!isNamiScheduleSource() && ["Qualifying", "Sprint Qualifying"].includes(session.session_name)) {
       for (const phase of ["q1", "q2", "q3"]) nodes.push({ key: sessionNodeKey(session, index, phase), label: `${sessionLabel(session.session_name)} · ${phaseLabel(phase)}`, session, phase, index });
     }
   });
@@ -1905,6 +2103,9 @@ function renderSessionControls() {
   const activeKey = activeNode?.key || nodes[0]?.key;
   if (activeKey) select.value = activeKey;
   $("syncBtn").disabled = state.activeSession?.session_key == null;
+  $("syncBtn").innerHTML = isNamiScheduleSource()
+    ? "<span>查看最近记录</span><span aria-hidden=\"true\">↻</span>"
+    : "<span>同步数据源</span><span aria-hidden=\"true\">↻</span>";
   $("refreshBtn").disabled = false;
   $("sessionTabs").innerHTML = nodes.map((node) => `<button class="session-tab${node.phase ? " phase" : ""}${node.key === activeKey ? " active" : ""}" data-session-node="${esc(node.key)}">${esc(node.label)}</button>`).join("");
   $("sessionTabs").querySelectorAll("button").forEach((button) => button.addEventListener("click", () => selectSessionNode(button.dataset.sessionNode)));
@@ -1921,7 +2122,8 @@ function setMeetingMeta(meeting, session) {
   const name = meeting?.meeting_name || meeting?.country_name || "分站";
   $("pageTitle").textContent = name;
   const phase = state.activePhase ? ` · ${phaseLabel(state.activePhase)}` : "";
-  $("pageSubtitle").textContent = `${meeting?.country_name || ""}${meeting?.location ? ` · ${meeting.location}` : ""} · ${session ? sessionLabel(session.session_name) : "选择一个会话节点"}${phase}`;
+  const sourceLabel = isNamiScheduleSource() ? ` · ${dataSourceLabel(state.dataSource)}` : "";
+  $("pageSubtitle").textContent = `${meeting?.country_name || ""}${meeting?.location ? ` · ${meeting.location}` : ""} · ${session ? sessionLabel(session.session_name) : "选择一个会话节点"}${sourceLabel}${phase}`;
   $("meetingKeyLabel").textContent = meeting?.meeting_key ?? "--";
   $("sessionKeyLabel").textContent = session?.session_key ?? "--";
 }
@@ -1945,9 +2147,9 @@ async function loadMeetings() {
   renderSeasonOptions();
   let meetingError = null;
   try {
-    const payload = await api(`/api/meetings?year=${state.season}&source=${state.dataSource}`);
+    const payload = await api(`/api/meetings?year=${state.season}&source=${apiDataSource()}`);
     state.meetings = (payload.data || []).slice().sort((a, b) => (a.round ?? 999) - (b.round ?? 999) || Date.parse(a.date_start || 0) - Date.parse(b.date_start || 0));
-    setConnection(payload.source === "openf1" || payload.source === "fastf1-catalog" || payload.source === "cache", payload.source === "fastf1-catalog" ? "FastF1 赛季目录" : payload.source === "openf1" ? "OpenF1 数据源已连接" : payload.source === "catalog" ? "OpenF1 本地赛季目录" : "本地缓存");
+    setConnection(["openf1", "fastf1-catalog", "nami-catalog", "cache"].includes(payload.source), payload.source === "fastf1-catalog" ? "FastF1 赛季目录" : payload.source === "nami-catalog" ? "纳米节点目录" : payload.source === "openf1" ? "OpenF1 数据源已连接" : payload.source === "catalog" ? "OpenF1 本地赛季目录" : "本地缓存");
   } catch (error) {
     state.meetings = [];
     meetingError = error;
@@ -1964,7 +2166,7 @@ async function loadMeetings() {
 
 async function loadSeasons() {
   try {
-    const payload = await api(`/api/seasons?source=${state.dataSource}`);
+    const payload = await api(`/api/seasons?source=${apiDataSource()}`);
     const years = [...new Set((payload.data || []).map(Number).filter(Number.isInteger))].sort((a, b) => b - a);
     state.seasons = years.length ? years : [state.season];
     if (!state.seasons.includes(state.season)) state.season = state.seasons[0];
@@ -1987,10 +2189,11 @@ async function loadSessions(meetingKey) {
     return;
   }
   try {
-    const payload = await api(`/api/sessions?meeting_key=${meetingKey}&source=${state.dataSource}`);
+    const payload = await api(`/api/sessions?meeting_key=${meetingKey}&source=${apiDataSource()}`);
     state.sessions = payload.data || [];
     if (payload.source === "openf1") setConnection(true, "OpenF1 数据源已连接");
     else if (payload.source === "fastf1-catalog") setConnection(true, "FastF1 节点目录");
+    else if (payload.source === "nami-catalog") setConnection(true, "纳米节点目录");
     else if (payload.source === "cache" || payload.source === "local") setConnection(true, "本地缓存");
     else if (payload.source === "catalog") setConnection(false, "本地节点目录 · 待接口获取");
   } catch (error) {
@@ -2001,7 +2204,12 @@ async function loadSessions(meetingKey) {
   state.activePhase = null;
   renderSessionControls();
   setMeetingMeta(state.activeMeeting, state.activeSession);
-  if (state.activeSession) await loadCurrentData();
+  if (state.activeSession && isNamiScheduleSource()) {
+    state.data = null;
+    resetDataPanels("点击“查看最近记录”读取当前纳米节点");
+    setStatus("等待读取纳米记录", `${dataSourceLabel(state.dataSource)} · ${sessionLabel(state.activeSession.session_name)}`, false);
+    $("cachePathLabel").textContent = "缓存状态：不缓存";
+  } else if (state.activeSession) await loadCurrentData();
 }
 
 async function selectSessionNode(key) {
@@ -2010,6 +2218,14 @@ async function selectSessionNode(key) {
   state.activePhase = node?.phase || null;
   renderSessionControls();
   setMeetingMeta(state.activeMeeting, state.activeSession);
+  if (isNamiScheduleSource()) {
+    state.dataRequestId += 1;
+    state.data = null;
+    resetDataPanels("点击“查看最近记录”读取当前纳米节点");
+    setStatus("等待读取纳米记录", `${dataSourceLabel(state.dataSource)} · ${sessionLabel(state.activeSession?.session_name)}`, false);
+    $("cachePathLabel").textContent = "缓存状态：不缓存";
+    return;
+  }
   await loadCurrentData();
 }
 
@@ -2270,7 +2486,7 @@ function finalIntervalMap() {
 function intervalToPrevious(row, rowIndex, rows, intervalMap) {
   if (rowIndex === 0) return "--";
   const source = intervalMap.get(row.car)?.interval;
-  if (numeric(source) != null) return displayGap(source);
+  if (source !== null && source !== undefined && source !== "" && source !== "-") return displayGap(source);
   const currentGap = numeric(row.gap);
   const previous = rows[rowIndex - 1];
   const previousGap = Number(previous?.raw?.position) === 1 ? 0 : numeric(previous?.gap);
@@ -2445,6 +2661,7 @@ async function loadCurrentData() {
   const requestId = ++state.dataRequestId;
   const meetingKey = state.activeMeeting?.meeting_key;
   const sessionKey = state.activeSession?.session_key;
+  const provider = namiScheduleProvider()?.key || null;
   if (!state.activeSession) { resetDataPanels(); return; }
   setStatus("正在同步数据", `${sessionLabel(state.activeSession.session_name)} · ${sessionKey}`, true);
   resetDataPanels("正在从本地缓存或数据源获取数据…");
@@ -2457,11 +2674,14 @@ async function loadCurrentData() {
     return;
   }
   try {
-    const payload = await api(`/api/session-data?meeting_key=${meetingKey}&session_key=${sessionKey}&source=${state.dataSource}`);
-    if (requestId !== state.dataRequestId || meetingKey !== state.activeMeeting?.meeting_key || sessionKey !== state.activeSession?.session_key) return;
+    const providerQuery = provider ? `&provider=${encodeURIComponent(provider)}` : "";
+    const payload = await api(`/api/session-data?meeting_key=${meetingKey}&session_key=${sessionKey}&source=${apiDataSource()}${providerQuery}`);
+    if (requestId !== state.dataRequestId || meetingKey !== state.activeMeeting?.meeting_key || sessionKey !== state.activeSession?.session_key || provider !== (namiScheduleProvider()?.key || null)) return;
     state.data = enrichBackendMapping(payload.data || {});
     state.selectedDriver = null;
-    const sourceLabel = payload.data?.data_source === "fastf1"
+    const sourceLabel = payload.data?.data_source === "nami"
+      ? `纳米-${payload.data?.nami?.provider_label || provider || "节点"} 最近记录（不缓存）`
+      : payload.data?.data_source === "fastf1"
       ? (payload.source === "fastf1-cache" ? "FastF1 本地缓存" : payload.cache === false ? "FastF1 数据源刚刚拉取（Render 不缓存）" : "FastF1 数据源刚刚拉取并已缓存")
       : payload.source === "cache" ? "OpenF1 本地缓存" : payload.source === "local" ? "OpenF1 本地快照" : payload.cache === false ? "OpenF1 数据源刚刚拉取（Render 不缓存）" : "OpenF1 数据源刚刚拉取并已缓存";
     setStatus("数据已就绪", `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}${syncTimestampText(state.data)}${syncWarningText(state.data.sync_warnings)}`, false);
@@ -2484,7 +2704,7 @@ $("meetingSelect").addEventListener("change", async (event) => {
   await loadSessions(state.activeMeeting?.meeting_key);
 });
 $("dataSourceSelect")?.addEventListener("change", async (event) => {
-  const source = event.target.value === "fastf1" ? "fastf1" : "openf1";
+  const source = ["fastf1", ...NAMI_SCHEDULE_SOURCES].includes(event.target.value) ? event.target.value : "openf1";
   if (source === state.dataSource) return;
   state.dataSource = source;
   state.data = null;
@@ -2502,6 +2722,7 @@ $("refreshBtn").addEventListener("click", loadCurrentData);
 $("syncBtn").addEventListener("click", async () => {
   const meetingKey = state.activeMeeting?.meeting_key;
   const sessionKey = state.activeSession?.session_key;
+  const provider = namiScheduleProvider()?.key || null;
   const button = $("syncBtn");
   if (meetingKey == null || sessionKey == null || button.disabled) return;
   const requestId = ++state.dataRequestId;
@@ -2509,11 +2730,13 @@ $("syncBtn").addEventListener("click", async () => {
   button.innerHTML = "↻ <span>同步中…</span>";
   setStatus("正在同步数据", `${sessionLabel(state.activeSession.session_name)} · ${sessionKey}`, true);
   try {
-    const payload = await api("/api/sync-session-data", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ meeting_key: meetingKey, session_key: sessionKey, source: state.dataSource }) });
-    if (requestId !== state.dataRequestId || meetingKey !== state.activeMeeting?.meeting_key || sessionKey !== state.activeSession?.session_key) return;
+    const payload = await api("/api/sync-session-data", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ meeting_key: meetingKey, session_key: sessionKey, source: apiDataSource(), provider }) });
+    if (requestId !== state.dataRequestId || meetingKey !== state.activeMeeting?.meeting_key || sessionKey !== state.activeSession?.session_key || provider !== (namiScheduleProvider()?.key || null)) return;
     state.data = enrichBackendMapping(payload.data || {});
     state.selectedDriver = null;
-    const sourceLabel = payload.cache === false
+    const sourceLabel = isNamiScheduleSource()
+      ? `纳米-${payload.data?.nami?.provider_label || provider || "节点"} 最近记录（不缓存）`
+      : payload.cache === false
       ? `${dataSourceLabel(state.dataSource)} 已同步（Render 不缓存）`
       : `${dataSourceLabel(state.dataSource)} 已同步并更新缓存`;
     setStatus(syncTitle(state.data), `${sourceLabel} · ${state.data.session?.date_start ? dateText(state.data.session.date_start) : ""}${syncTimestampText(state.data)}${syncWarningText(state.data.sync_warnings)}`, false);
@@ -2528,7 +2751,9 @@ $("syncBtn").addEventListener("click", async () => {
     $("cachePathLabel").textContent = `缓存状态：未更新 · ${error.message || "请稍后重试"}`;
   } finally {
     button.disabled = false;
-    button.innerHTML = "↻ <span>同步数据源</span>";
+    button.innerHTML = isNamiScheduleSource()
+      ? "<span>查看最近记录</span><span aria-hidden=\"true\">↻</span>"
+      : "<span>同步数据源</span><span aria-hidden=\"true\">↻</span>";
   }
 });
 $("logoutBtn").addEventListener("click", async () => {
@@ -2576,13 +2801,36 @@ $("liveSessionSelect")?.addEventListener("change", (event) => {
   resetLiveTiming();
   renderLiveTimingSelectors();
 });
-$("liveSourceSelect")?.addEventListener("change", (event) => {
-  const source = ["nana", "dash"].includes(event.target.value) ? event.target.value : "f1telemetry";
+$("liveSourceSelect")?.addEventListener("change", async (event) => {
+  const source = ["nana", "dash", "nami-radar", "nami-dash", "nami-official"].includes(event.target.value) ? event.target.value : "f1telemetry";
   if (source === state.liveTiming.source) return;
   state.liveTiming.source = source;
   state.liveTiming.mappingOpen = false;
   resetLiveTiming();
   renderLiveTiming();
+  if (namiLiveProvider(source) && !state.liveTiming.namiMeetings.length) await loadNamiLiveCatalog();
+});
+$("namiMeetingSelect")?.addEventListener("change", async (event) => {
+  const meetingKey = Number(event.target.value);
+  if (!Number.isInteger(meetingKey) || meetingKey === Number(state.liveTiming.namiMeetingKey)) return;
+  state.liveTiming.namiMeetingKey = meetingKey;
+  state.liveTiming.namiCatalogLoading = true;
+  resetLiveTiming();
+  try {
+    await loadNamiLiveSessions(meetingKey);
+  } catch (error) {
+    state.liveTiming.namiSessions = [];
+    state.liveTiming.logs = [{ sequence: 1, title: "节点目录读取失败", detail: error.message || "无法读取纳米节点目录", ok: false, at: new Date().toISOString() }];
+  } finally {
+    state.liveTiming.namiCatalogLoading = false;
+    renderLiveTiming();
+  }
+});
+$("namiNodeSelect")?.addEventListener("change", (event) => {
+  const stageId = Number(event.target.value);
+  if (!Number.isInteger(stageId) || stageId <= 0 || stageId === Number(state.liveTiming.stageId)) return;
+  state.liveTiming.stageId = stageId;
+  resetLiveTiming();
 });
 $("liveLoadBtn")?.addEventListener("click", () => {
   if (state.liveTiming.running) {

@@ -40,6 +40,7 @@ const NAMED_COLORS = new Set(["purple", "green", "yellow", "red", "blue", "gray"
 function colour(value, status = null) {
   const raw = text(value).toLowerCase();
   if (NAMED_COLORS.has(raw)) return raw === "grey" ? "gray" : raw;
+  if (status === null || status === undefined || status === "") return "gray";
   return STATUS_COLORS[Number(status)] || "gray";
 }
 

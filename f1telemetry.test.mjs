@@ -1,8 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { adaptF1TelemetryState } from "../f1telemetry.mjs";
-import { mapOpenF1ToBackend } from "../backend-fields.mjs";
+import { adaptF1TelemetryState } from "./f1telemetry.mjs";
+import { mapOpenF1ToBackend } from "./backend-fields.mjs";
 
 test("converts tyre ages into per-stint and cumulative race laps", () => {
   const data = adaptF1TelemetryState({

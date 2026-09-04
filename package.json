@@ -8,5 +8,8 @@
   },
   "engines": {
     "node": ">=20"
+  },
+  "dependencies": {
+    "@msgpack/msgpack": "3.1.2"
   }
 }
