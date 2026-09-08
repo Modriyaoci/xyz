@@ -508,6 +508,10 @@ export function namiSessionData(decoded, mapping, metadata = {}) {
       meeting_key: stage.meeting_key,
       session_key: stage.stage_id,
       driver_number: row.car_number,
+      // Nana supplies the starting order as `grid` for race/sprint snapshots.
+      // Keep the OpenF1-compatible field in session_result so downstream
+      // backends can ingest it without reading the raw mapped payload.
+      grid: numeric(row.grid ?? row.starting_grid ?? row.grid_position),
       position: numeric(row.position),
       number_of_laps: missing ? null : numeric(row.laps),
       duration: missing
