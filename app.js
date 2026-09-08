@@ -664,6 +664,8 @@ const raceControlPhraseTranslations = [
   ["UNSAFE RELEASE", "不安全释放"],
   ["UNSAFE RE-JOIN", "不安全回场"],
   ["UNSAFE CONDITION", "赛道存在安全隐患"],
+  ["PIT LANE INFRINGEMENT", "维修区违规"],
+  ["WILL BE REINSTATED", "予以恢复"],
   ["PIT ENTRY VIOLATION", "维修区入口违规"],
   ["LEAVING PIT EXIT ON RED LIGHT", "维修区出口红灯状态下驶出"],
   ["SPEEDING IN THE PIT LANE", "维修区超速"],
