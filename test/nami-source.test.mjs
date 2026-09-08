@@ -2,7 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { encode } from "@msgpack/msgpack";
-import { DEFAULT_NANA_MAPPING } from "../nana-mapping.mjs";
+import {
+  DEFAULT_NANA_MAPPING,
+  normaliseNanaSnapshot,
+  normaliseNanaWeather,
+  timestampIso,
+  timestampMs,
+} from "../nana-mapping.mjs";
 import {
   NAMI_STAGES,
   decodeNamiData,
@@ -45,7 +51,7 @@ test("decodes the Base64 MessagePack payload", () => {
   assert.deepEqual(decodeNamiData(encoded), snapshot);
 });
 
-test("requests schedule history from the Nami cache", async () => {
+test("requests only the selected provider's latest snapshot for the schedule", async () => {
   const encoded = Buffer.from(encode(snapshot)).toString("base64");
   let requestedUrl;
   const result = await fetchNamiSnapshot({
@@ -58,12 +64,255 @@ test("requests schedule history from the Nami cache", async () => {
       return { ok: true, status: 200, json: async () => [{ time: "2026-09-03 17:53:32", data: encoded }] };
     },
   });
-  assert.equal(requestedUrl.searchParams.get("pid"), "103");
-  assert.equal(requestedUrl.searchParams.get("live"), null);
-  assert.equal(requestedUrl.searchParams.get("nm"), "1");
+  assert.equal(requestedUrl.searchParams.get("pid"), "138");
+  assert.equal(requestedUrl.searchParams.get("live"), "1");
+  assert.equal(requestedUrl.searchParams.get("nm"), null);
   assert.equal(requestedUrl.searchParams.get("stage_id"), "103697");
   assert.equal(result.recordTimeIso, "2026-09-03T09:53:32.000Z");
   await assert.rejects(() => fetchNamiSnapshot({ token: "x", provider: "dash", stageId: 999, fetchImpl: async () => null }), /不在.*目录/);
+});
+
+test("falls back to the Nami node cache when a qualifying phase has no provider record", async () => {
+  const phaseSnapshot = {
+    id: 103725,
+    parent_id: 103710,
+    type: "qualificationpart",
+    competitors: [{ id: 347499, team_id: 385366, position: 1, laps: 6, status: 302, fastest_lap_time: "1:22.612" }],
+  };
+  const encoded = Buffer.from(encode(phaseSnapshot)).toString("base64");
+  const requestedUrls = [];
+  const result = await fetchNamiSnapshot({
+    token: "server-only-token",
+    provider: "dash",
+    stageId: 103725,
+    live: true,
+    fetchImpl: async (url) => {
+      requestedUrls.push(new URL(url));
+      return {
+        ok: true,
+        status: 200,
+        json: async () => requestedUrls.length === 1 ? {} : [{ time: "", data: encoded }],
+      };
+    },
+  });
+  assert.equal(requestedUrls[0].searchParams.get("pid"), "138");
+  assert.equal(requestedUrls[0].searchParams.get("live"), "1");
+  assert.equal(requestedUrls[1].searchParams.get("pid"), "103");
+  assert.equal(requestedUrls[1].searchParams.get("nm"), "1");
+  assert.equal(result.fallback, "nami-cache");
+  assert.equal(result.upstreamPid, 103);
+  assert.match(result.recordVersion, /^[a-f0-9]{64}$/);
+});
+
+test("uses the more complete Nami cache after a qualifying phase ends", async () => {
+  const incomplete = Buffer.from(encode({
+    id: 103726,
+    type: "qualification",
+    competitors: [{ id: 347520, position: 12, fastest_lap_time: "1:22.756" }],
+  })).toString("base64");
+  const complete = Buffer.from(encode({
+    id: 103726,
+    type: "qualificationpart",
+    winner: { id: 347534, position: 1, fastest_lap_time: "1:21.882" },
+    competitors: Array.from({ length: 16 }, (_, index) => ({
+      id: index === 0 ? 347534 : 400000 + index,
+      position: index + 1,
+      fastest_lap_time: `1:2${index}.000`,
+    })),
+  })).toString("base64");
+  const requestedUrls = [];
+  const result = await fetchNamiSnapshot({
+    token: "server-only-token",
+    provider: "official",
+    stageId: 103726,
+    live: true,
+    fetchImpl: async (url) => {
+      requestedUrls.push(new URL(url));
+      return { ok: true, status: 200, json: async () => [{ data: requestedUrls.length === 1 ? incomplete : complete }] };
+    },
+  });
+  assert.equal(requestedUrls.length, 2);
+  assert.equal(result.fallback, "nami-cache");
+  assert.equal(result.data.competitors.length, 16);
+});
+
+test("clears Q2 timing remnants for positions 17-22", () => {
+  const cars = Object.keys(DEFAULT_NANA_MAPPING.cars).slice(0, 22).map(Number);
+  const competitors = cars.map((car, index) => ({
+    car_number: car,
+    position: index + 1,
+    laps: 5,
+    status: 302,
+    fastest_lap_time: `1:${String(20 + index).padStart(2, "0")}.000`,
+    time: { value: `1:${String(20 + index).padStart(2, "0")}.000` },
+    gap_to_leader: index ? `+${index}.000` : "",
+    interval: index ? "+1.000" : "",
+    last_lap_time: "1:24.000",
+    last_lap_time_color: "yellow",
+    best_lap_time_color: "green",
+    sectors: [{ sector: 1, time: "28.000", time_color: "yellow" }],
+    mini_sectors: [{ sector: 1, mini_sectors: [{ mini_sector: 1, status: 2048, color: "yellow" }] }],
+    tire_history: [{ compound: "SOFT", total_laps: 5 }],
+    track_limits: 2,
+  }));
+  const data = namiSessionData({
+    id: 103726,
+    parent_id: 103710,
+    type: "qualificationpart",
+    time: 0,
+    start_time: 0,
+    end_time: 0,
+    competitors,
+    extra: {
+      last_lap_time: Object.fromEntries(cars.map((car) => [car, "1:24.000"])),
+      last_lap_time_color: Object.fromEntries(cars.map((car) => [car, "yellow"])),
+      best_lap_time_color: Object.fromEntries(cars.map((car) => [car, "green"])),
+      sectors: Object.fromEntries(cars.map((car) => [car, [{ sector: 1, time: "28.000", time_color: "yellow" }]])),
+      mini_sectors: Object.fromEntries(cars.map((car) => [car, [{ sector: 1, mini_sectors: [{ mini_sector: 1, status: 2048 }] }]])),
+      tire_info: Object.fromEntries(cars.map((car) => [car, { compound: "SOFT", total_laps: 5 }])),
+      tire_history: Object.fromEntries(cars.map((car) => [car, [{ compound: "SOFT", total_laps: 5 }]])),
+      track_limits: Object.fromEntries(cars.map((car) => [car, 2])),
+    },
+  }, DEFAULT_NANA_MAPPING, { provider: "dash", stageId: 103726 });
+
+  assert.equal(data.session_result.filter((row) => !row.is_result_missing).length, 16);
+  assert.equal(data.session_result.filter((row) => row.is_result_missing).length, 6);
+  const excludedResult = data.session_result.find((row) => row.position === 17);
+  assert.equal(excludedResult.number_of_laps, null);
+  assert.equal(excludedResult.duration, null);
+  assert.equal(excludedResult.gap_to_leader, null);
+  assert.equal(excludedResult.dnf, false);
+  assert.equal(excludedResult.dns, false);
+  assert.equal(excludedResult.dsq, false);
+  const excluded = data.mapped.competitors.find((row) => row.position === 17);
+  const key = String(excluded._id);
+  assert.equal(excluded.status, null);
+  assert.equal(excluded.laps, null);
+  assert.equal(excluded.fastest_lap_time, "");
+  assert.equal(excluded.time, null);
+  assert.equal(excluded.interval, null);
+  assert.equal(excluded.gap_to_leader, null);
+  assert.deepEqual(excluded.sectors, []);
+  assert.deepEqual(excluded.mini_sectors, []);
+  assert.equal(data.mapped.extra.last_lap_time[key], "");
+  assert.equal(data.mapped.extra.last_lap_time_color[key], "");
+  assert.equal(data.mapped.extra.best_lap_time_color[key], "");
+  assert.deepEqual(data.mapped.extra.sectors[key], []);
+  assert.deepEqual(data.mapped.extra.mini_sectors[key], []);
+  assert.deepEqual(data.mapped.extra.tire_history[key], []);
+  assert.equal(data.mapped.extra.tire_info[key], null);
+  assert.equal(data.mapped.extra.track_limits[key], 0);
+  assert.equal(data.laps.some((row) => row.driver_number === excluded.car_number), false);
+  assert.equal(data.stints.some((row) => row.driver_number === excluded.car_number), false);
+  assert.equal(data.weather.length, 0);
+  assert.equal(data.mapped.start_time_utc, null);
+  assert.equal(data.mapped.end_time_utc, null);
+});
+
+test("marks zero-position Q2 rows as missing instead of treating their array index as a result", () => {
+  const data = namiSessionData({
+    id: 103726,
+    competitors: [
+      { car_number: 1, position: 0, laps: 4, fastest_lap_time: "1:21.000", status: 302 },
+      { car_number: 3, position: 2, laps: 4, fastest_lap_time: "1:21.100", status: 302 },
+    ],
+  }, DEFAULT_NANA_MAPPING, { provider: "official", stageId: 103726 });
+  assert.equal(data.session_result[0].is_result_missing, true);
+  assert.equal(data.session_result[0].duration, null);
+  assert.equal(data.session_result[1].is_result_missing, false);
+});
+
+test("replaces a stale Q3 snapshot with a newer final snapshot from the same provider parent", async () => {
+  const rows = (winner, winnerTime) => Array.from({ length: 22 }, (_, index) => ({
+    id: index === 0 ? winner : 500000 + index,
+    position: index + 1,
+    laps: 5,
+    status: 302,
+    fastest_lap_time: index === 0 ? winnerTime : index < 10 ? `1:22.${String(index).padStart(3, "0")}` : "1:24.000",
+  }));
+  const stale = Buffer.from(encode({
+    id: 103727,
+    parent_id: 103710,
+    type: "qualificationpart",
+    competitors: rows(347501, "1:21.929"),
+  })).toString("base64");
+  const final = Buffer.from(encode({
+    id: 103710,
+    parent_id: 103698,
+    type: "qualification",
+    competitors: rows(347499, "1:21.786"),
+  })).toString("base64");
+  const requestedUrls = [];
+  const result = await fetchNamiSnapshot({
+    token: "server-only-token",
+    provider: "dash",
+    stageId: 103727,
+    live: true,
+    fetchImpl: async (url) => {
+      requestedUrls.push(new URL(url));
+      const parent = url.searchParams.get("stage_id") === "103710";
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [{ time: parent ? "2026-09-05 23:04:14" : "2026-09-05 23:00:43", data: parent ? final : stale }],
+      };
+    },
+  });
+  assert.deepEqual(requestedUrls.map((url) => url.searchParams.get("pid")), ["138", "138"]);
+  assert.deepEqual(requestedUrls.map((url) => url.searchParams.get("stage_id")), ["103727", "103710"]);
+  assert.equal(requestedUrls.some((url) => url.searchParams.get("pid") === "103"), false);
+  assert.equal(result.fallback, "provider-parent");
+  assert.equal(result.upstreamPid, 138);
+  assert.equal(result.fallbackStageId, 103710);
+  assert.equal(result.validatedAgainstStageId, 103710);
+  assert.equal(result.data.id, 103727);
+  assert.equal(result.data.competitors[0].id, 347499);
+  assert.equal(result.data.competitors[0].fastest_lap_time, "1:21.786");
+
+  const data = namiSessionData(result.data, DEFAULT_NANA_MAPPING, { provider: "dash", stageId: 103727 });
+  assert.equal(data.session_result.filter((row) => !row.is_result_missing).length, 10);
+  assert.equal(data.session_result.filter((row) => row.is_result_missing).length, 12);
+  assert.equal(data.session_result.find((row) => row.position === 11).duration, null);
+});
+
+test("does not use a parent overall table as Q2 phase data", async () => {
+  const phaseRows = Array.from({ length: 22 }, (_, index) => ({
+    id: 600000 + index,
+    position: index + 1,
+    fastest_lap_time: index < 16 ? `1:22.${String(index).padStart(3, "0")}` : "1:25.000",
+  }));
+  const parentRows = phaseRows.map((row, index) => ({ ...row, fastest_lap_time: index < 10 ? `1:20.${String(index).padStart(3, "0")}` : row.fastest_lap_time }));
+  const phase = Buffer.from(encode({ id: 103726, parent_id: 103710, competitors: phaseRows })).toString("base64");
+  const parent = Buffer.from(encode({ id: 103710, competitors: parentRows })).toString("base64");
+  const requestedUrls = [];
+  const result = await fetchNamiSnapshot({
+    token: "server-only-token",
+    provider: "radar",
+    stageId: 103726,
+    fetchImpl: async (url) => {
+      requestedUrls.push(new URL(url));
+      const isParent = url.searchParams.get("stage_id") === "103710";
+      return { ok: true, status: 200, json: async () => [{ time: isParent ? "2026-09-05 23:05:00" : "2026-09-05 22:45:00", data: isParent ? parent : phase }] };
+    },
+  });
+  assert.equal(requestedUrls.length, 2);
+  assert.deepEqual(requestedUrls.map((url) => url.searchParams.get("pid")), ["84", "84"]);
+  assert.equal(result.fallback, null);
+  assert.equal(result.data.competitors[0].fastest_lap_time, "1:22.000");
+});
+
+test("does not invent weather or epoch dates for empty Nami fields", () => {
+  assert.deepEqual(normaliseNanaWeather(undefined, 1788423927), {});
+  assert.deepEqual(normaliseNanaWeather({}, 1788423927), {});
+  assert.equal(timestampMs(0), null);
+  assert.equal(timestampMs("0"), null);
+  assert.equal(timestampIso(0), null);
+  assert.equal(timestampIso("0"), null);
+  const mapped = normaliseNanaSnapshot({ time: 1788423927, start_time: 0, end_time: 0, competitors: [] });
+  assert.deepEqual(mapped.extra.weather, {});
+  assert.deepEqual(mapped.extra.weather_records, []);
+  assert.equal(mapped.start_time_utc, null);
+  assert.equal(mapped.end_time_utc, null);
 });
 
 test("keeps live provider requests independent", async () => {
@@ -114,6 +363,40 @@ test("keeps missing timing colours gray instead of treating them as status zero"
   const data = namiSessionData({ ...snapshot, extra: {} }, DEFAULT_NANA_MAPPING, { provider: "radar", stageId: 103697 });
   assert.equal(data.mapped.extra.last_lap_time_color["347506"], "gray");
   assert.equal(data.mapped.extra.best_lap_time_color["347506"], "gray");
+});
+
+test("maps qualifying rows without car numbers by backend driver id", () => {
+  const phaseSnapshot = {
+    id: 103725,
+    parent_id: 103710,
+    type: "qualificationpart",
+    competitors: [
+      { id: 347499, team_id: 385366, position: 1, laps: 6, status: 302, fastest_lap_time: "1:22.612" },
+      { id: 347501, team_id: 385358, position: 2, laps: 6, status: 302, fastest_lap_time: "1:22.700" },
+    ],
+  };
+  const data = namiSessionData(phaseSnapshot, DEFAULT_NANA_MAPPING, { provider: "radar", stageId: 103725 });
+  assert.deepEqual(data.drivers.map((row) => row.driver_number), [10, 63]);
+  assert.equal(data.session_result[0].duration, 82.612);
+  assert.equal(data.session_result[1].duration, 82.7);
+  assert.equal(data.mapped.competitors[0].name, "Pierre Gasly");
+});
+
+test("selects the requested phase when Q1 Q2 and Q3 arrive in one payload", () => {
+  const combined = normaliseNanaSnapshot({
+    type: "qualification",
+    competitors: [{ car_number: 3, position: 1, fastest_lap_time: "1:20.000" }],
+    extra: {
+      leaderboard_q1_data: [{ id: 347499, position: 1, fastest_lap_time: "1:22.612" }],
+      leaderboard_q2_data: [{ id: 347501, position: 1, fastest_lap_time: "1:21.882" }],
+      leaderboard_q3_data: [{ id: 347482, position: 1, fastest_lap_time: "1:20.999" }],
+    },
+  }, DEFAULT_NANA_MAPPING, { sessionPhase: "q2" });
+  assert.equal(combined.competitors[0].car_number, 63);
+  assert.equal(combined.competitors[0].fastest_lap_time, "1:21.882");
+  assert.equal(combined.winner.car_number, 63);
+  assert.equal(combined.extra.leaderboard_q1_data[0].car_number, 10);
+  assert.equal(combined.extra.leaderboard_q3_data[0].car_number, 3);
 });
 
 test("includes every supplied reserve-driver car mapping", () => {
@@ -201,7 +484,9 @@ test("defaults live timing to Nami Dash in both deployed site copies", () => {
     assert.match(html, /option value="nami-dash" selected>纳米-dash<\/option>/);
     assert.doesNotMatch(html, /option value="nana" selected/);
     assert.match(html, /id="namiModeSelect"/);
-    assert.match(html, /app\.js\?v=20260904-live-mapping-v6/);
+    assert.match(html, /app\.js\?v=20260908-nami-qualifying-v9/);
+    assert.doesNotMatch(html, /!localServer && !window\.location\.pathname\.startsWith/);
+    assert.match(html, /window\.location\.hostname\.endsWith\("\.github\.io"\)/);
   }
 });
 
