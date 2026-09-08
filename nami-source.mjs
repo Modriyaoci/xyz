@@ -1,4 +1,5 @@
 import { decode } from "@msgpack/msgpack";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { normaliseNanaSnapshot } from "./nana-mapping.mjs";
 
@@ -180,42 +181,209 @@ function responseRecords(payload) {
   return [];
 }
 
+const QUALIFYING_PHASE_LIMITS = Object.freeze({ q1: 22, q2: 16, q3: 10 });
+
+function snapshotRows(value) {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object") return [];
+  if (Array.isArray(value.data)) return value.data;
+  return Object.values(value).filter((row) => row && typeof row === "object" && !Array.isArray(row));
+}
+
+function explicitPhaseRows(value, phase) {
+  const field = `leaderboard_${phase}_data`;
+  for (const container of [value, value?.extra]) {
+    const rows = snapshotRows(container?.[field]);
+    if (rows.length) return rows;
+  }
+  return [];
+}
+
+function qualifyingRows(value, phase, { parent = false } = {}) {
+  const explicit = explicitPhaseRows(value, phase);
+  if (explicit.length) return { rows: explicit, explicit: true };
+  if (parent && phase !== "q3") return { rows: [], explicit: false };
+  const rows = snapshotRows(value?.competitors);
+  return { rows, explicit: false };
+}
+
+function qualifyingTimeSeconds(row) {
+  const value = row?.fastest_lap_time ?? row?.best_lap_time ?? row?.lap_time ?? row?.time?.value ?? row?.time;
+  if (value === null || value === undefined || value === "") return null;
+  if (Number.isFinite(Number(value))) return Number(value) > 0 ? Number(value) : null;
+  const parts = String(value).replace(/^\+/, "").split(":").map(Number);
+  if (!parts.length || parts.some((part) => !Number.isFinite(part))) return null;
+  const seconds = parts.reduce((total, part) => total * 60 + part, 0);
+  return seconds > 0 ? seconds : null;
+}
+
+function orderedPhaseRows(value, phase, options) {
+  const limit = QUALIFYING_PHASE_LIMITS[phase] ?? Infinity;
+  return qualifyingRows(value, phase, options).rows
+    .map((row, index) => ({ row, index, position: numeric(row?.position) }))
+    .filter(({ position, index }) => position !== null ? position >= 1 && position <= limit : index < limit)
+    .sort((a, b) => (a.position ?? a.index + 1) - (b.position ?? b.index + 1))
+    .slice(0, limit)
+    .map(({ row }) => row);
+}
+
+function qualifyingSnapshotQuality(value, phase, options) {
+  const rows = orderedPhaseRows(value, phase, options);
+  return {
+    rows: rows.length,
+    timed: rows.filter((row) => qualifyingTimeSeconds(row) !== null).length,
+  };
+}
+
+function severelyIncompletePhase(value, phase) {
+  const expected = QUALIFYING_PHASE_LIMITS[phase] ?? 0;
+  if (!expected) return false;
+  return qualifyingSnapshotQuality(value, phase).timed < Math.ceil(expected / 2);
+}
+
+function qualifyingRowIdentity(row) {
+  for (const value of [row?.id, row?._id, row?.car_number, row?.racing_number, row?.driver_number, row?.abbr, row?.short_name, row?.name]) {
+    if (value !== null && value !== undefined && value !== "") return String(value).trim().toUpperCase();
+  }
+  return "?";
+}
+
+function qualifyingSignature(value, phase, options) {
+  return orderedPhaseRows(value, phase, options).map((row, index) => {
+    const position = numeric(row?.position) ?? index + 1;
+    const time = qualifyingTimeSeconds(row);
+    return `${position}:${qualifyingRowIdentity(row)}:${time ?? ""}`;
+  }).join("|");
+}
+
+function upstreamRecordTime(record, decoded) {
+  const recordIso = recordTimeIso(record?.time);
+  if (recordIso) return Date.parse(recordIso);
+  const value = Number(decoded?.time);
+  if (!Number.isFinite(value) || value === 0) return null;
+  return Math.abs(value) < 1e12 ? value * 1000 : value;
+}
+
+function qualifyingParentStage(stage, decoded) {
+  const decodedParent = namiStage(decoded?.parent_id);
+  if (decodedParent && decodedParent.meeting_key === stage.meeting_key && !decodedParent.session_phase && decodedParent.session_type === "Qualifying") {
+    return decodedParent;
+  }
+  const parentName = baseSessionName(stage.session_name);
+  return NAMI_STAGE_LIST.find((candidate) => (
+    candidate.meeting_key === stage.meeting_key
+    && !candidate.session_phase
+    && candidate.session_name === parentName
+    && candidate.session_type === "Qualifying"
+  )) || null;
+}
+
 export async function fetchNamiSnapshot({ token, provider, stageId, live = false, fetchImpl = fetch, timeoutMs = 30000 } = {}) {
   const source = namiProvider(provider);
   const stage = namiStage(stageId);
   if (!source) throw new Error("纳米数据源仅支持 radar、dash、official");
   if (!stage) throw new Error("该 stage_id 不在 2026 全年纳米节点目录中");
   if (!text(token)) throw new Error("服务端缺少 NANA_HISTORY_TOKEN");
-  const url = new URL("https://api.nana1024.com/d1/api/f1/his");
-  const params = live
-    ? { token, pid: source.pid, sport_id: 30, stage_id: stage.stage_id, live: 1 }
-    : { token, pid: NAMI_HISTORY_PID, sport_id: 30, stage_id: stage.stage_id, nm: 1 };
-  Object.entries(params)
-    .forEach(([key, value]) => url.searchParams.set(key, String(value)));
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), timeoutMs);
-  let response;
-  try {
-    response = await fetchImpl(url, { cache: "no-store", headers: { accept: "application/json" }, signal: controller.signal });
-  } catch (error) {
-    if (error?.name === "AbortError") throw new Error(`纳米 ${source.label} 请求超时（${Math.round(timeoutMs / 1000)} 秒）`);
-    throw new Error(`纳米 ${source.label} 请求失败：${error.message || error}`);
-  } finally {
-    clearTimeout(timeout);
+  const requestRecords = async (params) => {
+    const url = new URL("https://api.nana1024.com/d1/api/f1/his");
+    Object.entries({ token, sport_id: 30, ...params }).forEach(([key, value]) => url.searchParams.set(key, String(value)));
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    let response;
+    try {
+      response = await fetchImpl(url, { cache: "no-store", headers: { accept: "application/json" }, signal: controller.signal });
+    } catch (error) {
+      if (error?.name === "AbortError") throw new Error(`纳米 ${source.label} 请求超时（${Math.round(timeoutMs / 1000)} 秒）`);
+      throw new Error(`纳米 ${source.label} 请求失败：${error.message || error}`);
+    } finally {
+      clearTimeout(timeout);
+    }
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) throw new Error(`纳米 ${source.label} 请求失败（HTTP ${response.status}）`);
+    return responseRecords(payload).filter((record) => record && typeof record.data === "string");
+  };
+
+  // Both live timing and the schedule view only need the most recent snapshot.
+  // Asking for live=0 can return hundreds of Base64 records (over 100 MB for a
+  // race), which is unnecessary and can exhaust a 512 MB Render instance.
+  let records = await requestRecords({ pid: source.pid, stage_id: stage.stage_id, live: 1 });
+  let fallback = null;
+  let upstreamPid = source.pid;
+  let fallbackStageId = null;
+  let validatedAgainstStageId = null;
+  let record = records.at(-1) || null;
+  let decoded = record ? decodeNamiData(record.data) : null;
+  const phaseEnded = stage.session_phase && Date.parse(stage.date_end) < Date.now();
+  const incompletePhase = phaseEnded && severelyIncompletePhase(decoded, stage.session_phase);
+  if (stage.session_phase && (!record || incompletePhase)) {
+    try {
+      const cachedRecords = await requestRecords({ pid: NAMI_HISTORY_PID, stage_id: stage.stage_id, nm: 1 });
+      const cachedRecord = cachedRecords.at(-1) || null;
+      const cachedDecoded = cachedRecord ? decodeNamiData(cachedRecord.data) : null;
+      const currentQuality = qualifyingSnapshotQuality(decoded, stage.session_phase);
+      const cachedQuality = qualifyingSnapshotQuality(cachedDecoded, stage.session_phase);
+      if (cachedRecord && (!record || cachedQuality.timed > currentQuality.timed)) {
+        records = cachedRecords;
+        record = cachedRecord;
+        decoded = cachedDecoded;
+        fallback = "nami-cache";
+        fallbackStageId = stage.stage_id;
+        upstreamPid = NAMI_HISTORY_PID;
+      }
+    } catch (error) {
+      if (!record) throw error;
+    }
   }
-  const payload = await response.json().catch(() => null);
-  if (!response.ok) throw new Error(`纳米 ${source.label} 请求失败（HTTP ${response.status}）`);
-  const records = responseRecords(payload).filter((record) => record && typeof record.data === "string");
-  if (!records.length) throw new Error(`纳米 ${source.label} 没有返回可解码记录`);
-  const record = records.at(-1);
+
+  if (record && decoded && phaseEnded && ["q2", "q3"].includes(stage.session_phase) && upstreamPid === source.pid) {
+    const parentStage = qualifyingParentStage(stage, decoded);
+    if (parentStage) {
+      validatedAgainstStageId = parentStage.stage_id;
+      try {
+        const parentRecords = await requestRecords({ pid: source.pid, stage_id: parentStage.stage_id, live: 1 });
+        const parentRecord = parentRecords.at(-1) || null;
+        const parentDecoded = parentRecord ? decodeNamiData(parentRecord.data) : null;
+        const parentRows = qualifyingRows(parentDecoded, stage.session_phase, { parent: true });
+        if (parentRecord && parentDecoded && parentRows.rows.length) {
+          const currentQuality = qualifyingSnapshotQuality(decoded, stage.session_phase);
+          const parentQuality = qualifyingSnapshotQuality(parentDecoded, stage.session_phase, { parent: true });
+          const currentTime = upstreamRecordTime(record, decoded);
+          const parentTime = upstreamRecordTime(parentRecord, parentDecoded);
+          const newer = parentTime !== null && (currentTime === null || parentTime > currentTime);
+          const moreComplete = parentQuality.timed > currentQuality.timed;
+          const differs = qualifyingSignature(parentDecoded, stage.session_phase, { parent: true }) !== qualifyingSignature(decoded, stage.session_phase);
+          if (differs && (newer || moreComplete)) {
+            records = parentRecords;
+            record = parentRecord;
+            decoded = {
+              ...parentDecoded,
+              id: stage.stage_id,
+              parent_id: parentStage.stage_id,
+            };
+            fallback = "provider-parent";
+            fallbackStageId = parentStage.stage_id;
+          }
+        }
+      } catch {
+        // Parent validation is advisory; a valid phase snapshot must remain usable.
+      }
+    }
+  }
+  if (!record || !decoded) throw new Error(`纳米 ${source.label} 没有返回可解码记录`);
+  const recordVersion = createHash("sha256").update(JSON.stringify(decoded)).digest("hex");
   return {
-    data: decodeNamiData(record.data),
+    data: decoded,
     provider: source,
     stage,
     live: Boolean(live),
     recordCount: records.length,
     recordTime: record.time || null,
     recordTimeIso: recordTimeIso(record.time),
+    recordVersion,
+    upstreamPid,
+    fallback,
+    fallbackStageId,
+    validatedAgainstStageId,
     recordTimes: records.map((item) => ({ time: item.time || null, time_utc: recordTimeIso(item.time) })),
   };
 }
@@ -269,8 +437,8 @@ function stintRows(competitor, extra, stage) {
 }
 
 export function namiBackendSnapshot(decoded, mapping, metadata = {}) {
-  const source = normaliseNanaSnapshot(decoded, mapping);
   const stage = namiStage(metadata.stageId ?? decoded?.id ?? 103697) || NAMI_STAGES[103697];
+  const source = normaliseNanaSnapshot(decoded, mapping, { sessionPhase: stage.session_phase });
   const provider = namiProvider(metadata.provider) || NAMI_PROVIDERS.radar;
   return {
     ...source,
@@ -311,6 +479,10 @@ export function namiBackendSnapshot(decoded, mapping, metadata = {}) {
       record_count: metadata.recordCount ?? 1,
       record_time: metadata.recordTime || null,
       record_time_utc: metadata.recordTimeIso || null,
+      upstream_pid: metadata.upstreamPid ?? provider.pid,
+      fallback: metadata.fallback || null,
+      fallback_stage_id: metadata.fallbackStageId ?? null,
+      validated_against_stage_id: metadata.validatedAgainstStageId ?? null,
       records: metadata.recordTimes || [],
     },
   };
@@ -330,17 +502,25 @@ export function namiSessionData(decoded, mapping, metadata = {}) {
     name_acronym: row.abbr || "",
     team_name: row.teamname || "",
   }));
-  const sessionResult = competitors.map((row) => ({
-    meeting_key: stage.meeting_key,
-    session_key: stage.stage_id,
-    driver_number: row.car_number,
-    position: numeric(row.position),
-    number_of_laps: numeric(row.laps),
-    duration: Number(row.position) === 1 ? durationSeconds(row.time?.value) : null,
-    gap_to_leader: Number(row.position) === 1 ? null : (row.gap_to_leader ?? row.time?.value ?? null),
-    points: numeric(row.points),
-    ...resultFlags(row.status),
-  }));
+  const sessionResult = competitors.map((row) => {
+    const missing = Boolean(row.is_result_missing);
+    return {
+      meeting_key: stage.meeting_key,
+      session_key: stage.stage_id,
+      driver_number: row.car_number,
+      position: numeric(row.position),
+      number_of_laps: missing ? null : numeric(row.laps),
+      duration: missing
+        ? null
+        : stage.session_type === "Qualifying"
+          ? durationSeconds(row.fastest_lap_time ?? row.time?.value)
+          : Number(row.position) === 1 ? durationSeconds(row.time?.value) : null,
+      gap_to_leader: missing || Number(row.position) === 1 ? null : (row.gap_to_leader ?? row.time?.value ?? null),
+      points: numeric(row.points),
+      is_result_missing: missing,
+      ...resultFlags(missing ? null : row.status),
+    };
+  });
   const recordDate = metadata.recordTimeIso || mapped.fetched_at || stage.date_end;
   const laps = competitors.map((row) => {
     const key = row._id === null || row._id === undefined ? null : String(row._id);

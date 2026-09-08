@@ -1,13 +1,13 @@
 {
   "season": 2026,
-  "captured_at": "2026-09-07T00:13:01.835Z",
+  "captured_at": "2026-09-08T01:14:37.418Z",
   "sync_status": {
     "status": "success",
-    "trigger": "automatic",
-    "attempted_at": "2026-09-07T00:13:01.835Z",
-    "last_success_at": "2026-09-07T00:13:01.835Z",
+    "trigger": "manual",
+    "attempted_at": "2026-09-08T01:14:37.418Z",
+    "last_success_at": "2026-09-08T01:14:37.418Z",
     "last_automatic_at": "2026-09-07T00:13:01.835Z",
-    "last_manual_at": "2026-08-31T02:20:31.474Z"
+    "last_manual_at": "2026-09-08T01:14:37.418Z"
   },
   "source": {
     "drivers": "https://www.formula1.com/en/results/2026/drivers",
@@ -91,7 +91,7 @@
       "name": "Liam Lawson",
       "code": "LAW",
       "nationality": "NZL",
-      "team": "Red Bull Racing",
+      "team": "Racing Bulls",
       "points": 51,
       "url": "https://www.formula1.com/en/results/2026/drivers/LIALAW01/liam-lawson"
     },

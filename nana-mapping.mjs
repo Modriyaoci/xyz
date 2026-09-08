@@ -131,6 +131,14 @@ function configuredIdentity(mapping, car) {
   return row && typeof row === "object" ? row : null;
 }
 
+function configuredIdentityByDriverId(mapping, driverId) {
+  if (driverId === null) return null;
+  for (const [car, row] of Object.entries(mapping?.cars || {})) {
+    if (asNumber(row?.driver_id) === driverId) return { car: asNumber(car), row };
+  }
+  return null;
+}
+
 function fallbackDriver(row, car) {
   return resolveBackendDriverId({
     driver_number: car,
@@ -140,13 +148,16 @@ function fallbackDriver(row, car) {
 }
 
 export function nanaIdentityFor(row, mapping = DEFAULT_NANA_MAPPING) {
-  const car = asNumber(row?.car_number ?? row?.racing_number ?? row?.driver_number);
-  const configured = car === null ? null : configuredIdentity(mapping, car);
+  let car = asNumber(row?.car_number ?? row?.racing_number ?? row?.driver_number);
+  const sourceDriverId = asNumber(row?._id ?? row?.backend_driver_id ?? row?.id);
+  const reverseIdentity = car === null ? configuredIdentityByDriverId(mapping, sourceDriverId) : null;
+  if (car === null && reverseIdentity && reverseIdentity.car !== null) car = reverseIdentity.car;
+  const configured = reverseIdentity?.row || (car === null ? null : configuredIdentity(mapping, car));
   const configuredDriverId = configured && hasOwn(configured, "driver_id") ? configured.driver_id : null;
   const configuredTeamId = configured && hasOwn(configured, "team_id") ? configured.team_id : null;
   const driverId = configured
     ? configuredDriverId
-    : asNumber(row?._id ?? row?.backend_driver_id ?? row?.id) ?? fallbackDriver(row, car);
+    : sourceDriverId ?? fallbackDriver(row, car);
   const teamId = configured
     ? configuredTeamId
     : asNumber(row?.teamuid ?? row?.backend_team_id ?? row?.team_id) ?? resolveBackendTeamId(row?.team_name ?? row?.teamname ?? row?.team);
@@ -199,7 +210,7 @@ export function timestampMs(value) {
     return Number.isFinite(parsed) ? parsed : null;
   }
   const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return null;
+  if (!Number.isFinite(numeric) || numeric === 0) return null;
   return Math.abs(numeric) < 1e12 ? numeric * 1000 : numeric;
 }
 
@@ -225,14 +236,20 @@ function rainfall(value) {
 
 export function normaliseNanaWeather(value, date = null) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
-  const output = {
-    ...source,
+  const measurements = {
     air_temperature: measurement(source.air_temperature ?? source.air_temp ?? source.air),
     track_temperature: measurement(source.track_temperature ?? source.track_temp ?? source.track),
     humidity: measurement(source.humidity),
     pressure: measurement(source.pressure),
     wind_speed: measurement(source.wind_speed ?? source.wind),
     wind_direction: measurement(source.wind_direction),
+  };
+  const hasMeasurement = Object.values(measurements).some((item) => item !== null);
+  const hasRainfall = hasOwn(source, "rainfall") && source.rainfall !== null && source.rainfall !== undefined && source.rainfall !== "";
+  if (!hasMeasurement && !hasRainfall) return {};
+  const output = {
+    ...source,
+    ...measurements,
     rainfall: rainfall(source.rainfall),
   };
   const iso = timestampIso(source.date ?? source.utc ?? date);
@@ -302,22 +319,24 @@ function mapExtraByCar(source, competitors, mapping) {
     const id = row?._id;
     if (id === null || id === undefined) continue;
     const key = String(id);
-    output.last_lap_time[key] = row.last_lap_time ?? "";
-    output.last_lap_time_color[key] = colour(row.last_lap_time_color);
-    output.best_lap_time_color[key] = colour(row.best_lap_time_color);
-    output.sectors[key] = normaliseSectorRows(row.sectors) || [];
-    output.mini_sectors[key] = normaliseMiniSectorRows(row.mini_sectors) || [];
-    const history = Array.isArray(row.tire_history) ? row.tire_history : [];
+    const missingPhaseResult = Boolean(row.is_result_missing);
+    output.last_lap_time[key] = missingPhaseResult ? "" : row.last_lap_time ?? "";
+    output.last_lap_time_color[key] = missingPhaseResult ? "" : colour(row.last_lap_time_color);
+    output.best_lap_time_color[key] = missingPhaseResult ? "" : colour(row.best_lap_time_color);
+    output.sectors[key] = missingPhaseResult ? [] : normaliseSectorRows(row.sectors) || [];
+    output.mini_sectors[key] = missingPhaseResult ? [] : normaliseMiniSectorRows(row.mini_sectors) || [];
+    output.mini_sectors_data[key] = missingPhaseResult ? [] : output.mini_sectors[key];
+    const history = missingPhaseResult ? [] : Array.isArray(row.tire_history) ? row.tire_history : [];
     output.tire_history[key] = history;
-    output.tire_info[key] = history.at(-1) || null;
-    output.track_limits[key] = row.track_limits ?? 0;
+    output.tire_info[key] = missingPhaseResult ? null : history.at(-1) || null;
+    output.track_limits[key] = missingPhaseResult ? 0 : row.track_limits ?? 0;
   }
   const sourceExtra = source && typeof source === "object" ? source : {};
   const mini = sourceExtra.mini_sectors || sourceExtra.mini_sectors_data || {};
   if (mini && typeof mini === "object" && !Array.isArray(mini)) {
     for (const [token, value] of Object.entries(mini)) {
       const row = resolveRow(token);
-      if (row?._id !== null && row?._id !== undefined) {
+      if (row?._id !== null && row?._id !== undefined && !row?.is_result_missing) {
         const normalised = normaliseMiniSectorRows(value);
         output.mini_sectors_data[String(row._id)] = normalised;
         output.mini_sectors[String(row._id)] = normalised;
@@ -328,7 +347,7 @@ function mapExtraByCar(source, competitors, mapping) {
   if (tires && typeof tires === "object" && !Array.isArray(tires)) {
     for (const [token, value] of Object.entries(tires)) {
       const row = resolveRow(token);
-      if (row?._id !== null && row?._id !== undefined) output.tire_info[String(row._id)] = value;
+      if (row?._id !== null && row?._id !== undefined && !row?.is_result_missing) output.tire_info[String(row._id)] = value;
     }
   }
   const mapFields = ["sectors", "last_lap_time", "last_lap_time_color", "best_lap_time_color", "tire_history", "track_limits"];
@@ -338,6 +357,7 @@ function mapExtraByCar(source, competitors, mapping) {
     for (const [token, value] of Object.entries(values)) {
       const row = resolveRow(token);
       if (row?._id === null || row?._id === undefined) continue;
+      if (row.is_result_missing) continue;
       const key = String(row._id);
       if (field === "sectors") output.sectors[key] = normaliseSectorRows(value);
       else if (field.endsWith("_color")) output[field][key] = colour(value);
@@ -348,20 +368,105 @@ function mapExtraByCar(source, competitors, mapping) {
   return output;
 }
 
-export function normaliseNanaSnapshot(value, mapping = DEFAULT_NANA_MAPPING) {
+function snapshotRows(value) {
+  if (Array.isArray(value)) return value;
+  if (!value || typeof value !== "object") return [];
+  if (Array.isArray(value.data)) return value.data;
+  return Object.values(value).filter((row) => row && typeof row === "object" && !Array.isArray(row));
+}
+
+function firstSnapshotRows(containers, fields) {
+  for (const field of fields) {
+    for (const container of containers) {
+      const rows = snapshotRows(container?.[field]);
+      if (rows.length) return rows;
+    }
+  }
+  return [];
+}
+
+const PHASE_RESULT_LIMITS = Object.freeze({ q2: 16, q3: 10 });
+
+function phaseRowToken(row) {
+  for (const value of [row?.id, row?._id, row?.car_number, row?.racing_number, row?.driver_number, row?.abbr, row?.short_name]) {
+    if (value !== null && value !== undefined && value !== "") return String(value).trim().toUpperCase();
+  }
+  return "";
+}
+
+function mergePhaseRows(baseRows, phaseRows) {
+  if (!phaseRows.length || baseRows.length <= phaseRows.length) return phaseRows;
+  const byToken = new Map();
+  const byPosition = new Map();
+  for (const row of phaseRows) {
+    const token = phaseRowToken(row);
+    if (token) byToken.set(token, row);
+    const position = asNumber(row?.position);
+    if (position !== null) byPosition.set(position, row);
+  }
+  return baseRows.map((row) => {
+    const token = phaseRowToken(row);
+    const phaseRow = (token && byToken.get(token)) || byPosition.get(asNumber(row?.position));
+    return phaseRow ? { ...row, ...phaseRow } : row;
+  });
+}
+
+function clearMissingPhaseResult(row) {
+  return {
+    ...row,
+    status: null,
+    time: null,
+    duration: null,
+    fastest_lap_time: "",
+    best_lap_time: "",
+    lap_time: "",
+    last_lap_time: "",
+    last_lap_duration: null,
+    gap_to_leader: null,
+    interval: null,
+    laps: null,
+    lap: null,
+    number_of_laps: null,
+    pitstop_count: null,
+    pitstop: null,
+    pit_stops: null,
+    last_lap_time_color: "",
+    best_lap_time_color: "",
+    sectors: [],
+    mini_sectors: [],
+    is_result_missing: true,
+    phase_result_missing: true,
+  };
+}
+
+function normalisePhaseRows(rows, phase, mapping) {
+  const limit = PHASE_RESULT_LIMITS[phase] ?? null;
+  return rows.map((row, index) => {
+    const mapped = normaliseNanaCompetitor(row, mapping);
+    const position = asNumber(mapped?.position);
+    const missing = limit !== null && (position !== null ? position < 1 || position > limit : index >= limit);
+    return missing ? clearMissingPhaseResult(mapped) : mapped;
+  });
+}
+
+export function normaliseNanaSnapshot(value, mapping = DEFAULT_NANA_MAPPING, options = {}) {
   const source = value && typeof value === "object" && !Array.isArray(value) ? value : {};
   const activeMapping = normaliseNanaMapping(mapping);
   const sourceExtra = source.extra && typeof source.extra === "object" && !Array.isArray(source.extra) ? source.extra : {};
-  const rawCompetitors = Array.isArray(source.competitors)
-    ? source.competitors
-    : Array.isArray(sourceExtra.leaderboard) ? sourceExtra.leaderboard
-      : Array.isArray(sourceExtra.leaderboard_overall_data) ? sourceExtra.leaderboard_overall_data : [];
-  const competitors = rawCompetitors.map((row) => normaliseNanaCompetitor(row, activeMapping));
-  const winnerSource = source.winner && typeof source.winner === "object" ? source.winner : competitors.find((row) => Number(row.position) === 1);
+  const phase = String(options.sessionPhase || "").toLowerCase();
+  const phaseField = ["q1", "q2", "q3"].includes(phase) ? `leaderboard_${phase}_data` : null;
+  const containers = [source, sourceExtra];
+  const baseCompetitors = firstSnapshotRows(containers, ["competitors", "leaderboard", "leaderboard_overall_data", "leaderboard_q3_data", "leaderboard_q2_data", "leaderboard_q1_data"]);
+  const selectedPhaseRows = phaseField ? firstSnapshotRows(containers, [phaseField]) : [];
+  const rawCompetitors = selectedPhaseRows.length ? mergePhaseRows(baseCompetitors, selectedPhaseRows) : baseCompetitors;
+  const competitors = normalisePhaseRows(rawCompetitors, phase, activeMapping);
+  const phaseWinner = phaseField ? competitors.find((row) => Number(row.position) === 1) : null;
+  const winnerSource = phaseWinner || (source.winner && typeof source.winner === "object" ? source.winner : competitors.find((row) => Number(row.position) === 1));
   const eventTime = timestampIso(source.time);
   const startTime = timestampIso(source.start_time);
   const endTime = timestampIso(source.end_time);
-  const weather = normaliseNanaWeather(sourceExtra.weather, source.time);
+  const weatherSource = source.weather ?? sourceExtra.weather ?? snapshotRows(sourceExtra.weather_records).at(-1) ?? sourceExtra.weather_data;
+  const weather = normaliseNanaWeather(weatherSource, source.time);
   const messages = normaliseNanaMessages(source.messages || sourceExtra.race_control_messages, source.time);
   const winner = winnerSource ? normaliseNanaCompetitor(winnerSource, activeMapping) : null;
   const extra = {
@@ -372,7 +477,11 @@ export function normaliseNanaSnapshot(value, mapping = DEFAULT_NANA_MAPPING) {
     ...mapExtraByCar(sourceExtra, competitors, activeMapping),
   };
   for (const key of ["leaderboard", "leaderboard_overall_data", "leaderboard_q1_data", "leaderboard_q2_data", "leaderboard_q3_data"]) {
-    if (Array.isArray(sourceExtra[key])) extra[key] = sourceExtra[key].map((row) => normaliseNanaCompetitor(row, activeMapping));
+    const rows = firstSnapshotRows(containers, [key]);
+    if (rows.length) {
+      const leaderboardPhase = key.match(/^leaderboard_(q[123])_data$/)?.[1] || "";
+      extra[key] = normalisePhaseRows(rows, leaderboardPhase, activeMapping);
+    }
   }
   return {
     ...source,

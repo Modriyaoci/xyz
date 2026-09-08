@@ -24,6 +24,29 @@ import {
 } from "./nami-source.mjs";
 
 const root = path.dirname(fileURLToPath(import.meta.url));
+
+async function loadLocalEnvironment(file) {
+  let contents;
+  try {
+    contents = await fs.readFile(file, "utf8");
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+  for (const sourceLine of contents.split(/\r?\n/)) {
+    const line = sourceLine.trim().replace(/^export\s+/, "");
+    if (!line || line.startsWith("#")) continue;
+    const separator = line.indexOf("=");
+    if (separator < 1) continue;
+    const key = line.slice(0, separator).trim();
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || process.env[key] !== undefined) continue;
+    let value = line.slice(separator + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+    process.env[key] = value;
+  }
+}
+
+await loadLocalEnvironment(path.join(root, ".env.local"));
 // Cloud hosts provide PORT; keep F1_PORT for local and existing deployments.
 const port = Number(process.env.PORT || process.env.F1_PORT || 4174);
 const host = String(process.env.F1_HOST || "127.0.0.1");
@@ -406,6 +429,9 @@ function mergeLiveArray(previous, incoming) {
 }
 
 function mergeLiveValue(previous, incoming, key = "") {
+  // This describes the provenance of one complete Nami snapshot. Retaining
+  // null values from an older request would leave stale fallback diagnostics.
+  if (key === "nami" && isPlainObject(incoming)) return incoming;
   if (Array.isArray(incoming)) {
     if (key === "competitors") return mergeLiveCompetitors(previous, incoming);
     if (key === "messages" || key === "race_control") return mergeLiveMessages(previous, incoming);
@@ -1280,6 +1306,10 @@ async function namiHistoricalSessionData(stageId, provider) {
     recordCount: result.recordCount,
     recordTime: result.recordTime,
     recordTimeIso: result.recordTimeIso,
+    upstreamPid: result.upstreamPid,
+    fallback: result.fallback,
+    fallbackStageId: result.fallbackStageId,
+    validatedAgainstStageId: result.validatedAgainstStageId,
     recordTimes: result.recordTimes,
   });
   return { data, source: `nami-${result.provider.key}`, cache: false };
@@ -1288,7 +1318,7 @@ async function namiHistoricalSessionData(stageId, provider) {
 async function namiLiveData(stageId, provider) {
   const result = await fetchNamiRequest(provider, stageId, true);
   const key = `${result.provider.key}:${result.stage.stage_id}`;
-  const previous = namiLiveStates.get(key) || { data: null, sequence: 0, recordTime: null };
+  const previous = namiLiveStates.get(key) || { data: null, sequence: 0, recordVersion: null };
   const receivedAt = new Date().toISOString();
   const incoming = canonicalBackendSnapshot(namiBackendSnapshot(result.data, nanaMapping, {
     provider: result.provider.key,
@@ -1297,9 +1327,13 @@ async function namiLiveData(stageId, provider) {
     recordCount: result.recordCount,
     recordTime: result.recordTime,
     recordTimeIso: result.recordTimeIso,
+    upstreamPid: result.upstreamPid,
+    fallback: result.fallback,
+    fallbackStageId: result.fallbackStageId,
+    validatedAgainstStageId: result.validatedAgainstStageId,
     recordTimes: result.recordTimes,
   }));
-  const changed = previous.recordTime !== result.recordTime;
+  const changed = previous.recordVersion !== result.recordVersion;
   const sequence = changed || !previous.data ? previous.sequence + 1 : previous.sequence;
   const data = mergeLiveBridgeSnapshot(previous.data, {
     ...incoming,
@@ -1312,7 +1346,7 @@ async function namiLiveData(stageId, provider) {
     },
   });
   namiLiveStates.delete(key);
-  namiLiveStates.set(key, { data, sequence, recordTime: result.recordTime, updatedAt: Date.now() });
+  namiLiveStates.set(key, { data, sequence, recordVersion: result.recordVersion, updatedAt: Date.now() });
   while (namiLiveStates.size > namiLiveStateLimit) namiLiveStates.delete(namiLiveStates.keys().next().value);
   return { data, source: `nami-${result.provider.key}`, live: true, sequence, changed, cache: false };
 }
@@ -1418,10 +1452,7 @@ async function liveSessionData(meetingKey, sessionKey) {
 }
 
 async function serveStatic(req, res, pathname) {
-  if (pathname === "/" && !authenticated(req)) {
-    res.writeHead(302, { location: "/login" }); res.end(); return;
-  }
-  if (pathname === "/site/index.html" && !authenticated(req)) {
+  if (["/", "/index.html", "/site/index.html"].includes(pathname) && !authenticated(req)) {
     res.writeHead(302, { location: "/login" }); res.end(); return;
   }
   const requested = pathname === "/" ? "/site/index.html" : pathname === "/login" ? "/site/login.html" : pathname;

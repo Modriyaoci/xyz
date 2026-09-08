@@ -1887,13 +1887,15 @@ function renderLiveDriverDetails() {
 
 function renderLiveWeather() {
   const data = state.liveTiming.data || {};
+  const backend = liveBackendPayload(data);
   const weather = liveWeatherRows(data).slice().sort((a, b) => (Date.parse(a.date || "") || 0) - (Date.parse(b.date || "") || 0));
   const latest = weather.at(-1);
   const badge = $("liveWeatherBadge");
   if (badge) badge.textContent = weather.length ? `${weather.length} 条` : "--";
   if (!latest) {
-    $("liveWeatherSnapshot").innerHTML = `<div class="empty-cell">暂无天气记录</div>`;
-    $("liveWeatherTable").querySelector("tbody").innerHTML = `<tr><td colspan="8" class="empty-cell">暂无天气记录</td></tr>`;
+    const emptyText = data?.data_source === "nami" || backend?.data_source === "nami" ? "纳米当前快照未提供天气记录" : "暂无天气记录";
+    $("liveWeatherSnapshot").innerHTML = `<div class="empty-cell">${emptyText}</div>`;
+    $("liveWeatherTable").querySelector("tbody").innerHTML = `<tr><td colspan="8" class="empty-cell">${emptyText}</td></tr>`;
     return;
   }
   $("liveWeatherSnapshot").innerHTML = [["气温", `${fixed(latest.air_temperature, 1)} °C`], ["赛道", `${fixed(latest.track_temperature, 1)} °C`], ["湿度", `${fixed(latest.humidity, 1)} %`], ["风速", `${fixed(latest.wind_speed, 1)} m/s`], ["风向", `${fixed(latest.wind_direction, 0)}°`]].map(([label, value]) => `<div class="weather-item"><label>${label}</label><strong>${esc(value)}</strong></div>`).join("");
@@ -2777,7 +2779,12 @@ function renderWeather() {
   const latest = weather.at(-1);
   $("metricWeather").textContent = number(weather.length);
   $("weatherBadge").textContent = weather.length ? `${weather.length} 条` : "--";
-  if (!latest) { $("weatherSnapshot").innerHTML = `<div class="empty-cell">暂无天气记录</div>`; return; }
+  if (!latest) {
+    const emptyText = state.data?.data_source === "nami" ? "纳米当前快照未提供天气记录" : "暂无天气记录";
+    $("weatherSnapshot").innerHTML = `<div class="empty-cell">${emptyText}</div>`;
+    $("weatherTable").querySelector("tbody").innerHTML = `<tr><td colspan="8" class="empty-cell">${emptyText}</td></tr>`;
+    return;
+  }
   $("weatherSnapshot").innerHTML = [["气温", `${fixed(latest.air_temperature, 1)} °C`], ["赛道", `${fixed(latest.track_temperature, 1)} °C`], ["湿度", `${fixed(latest.humidity, 1)} %`], ["风速", `${fixed(latest.wind_speed, 1)} m/s`], ["风向", `${fixed(latest.wind_direction, 0)}°`]].map(([label, value]) => `<div class="weather-item"><label>${label}</label><strong>${esc(value)}</strong></div>`).join("");
   const limit = state.weatherView === "all" ? weather.length : Number(state.weatherView);
   const visible = weather.slice(Math.max(0, weather.length - limit)).reverse();
