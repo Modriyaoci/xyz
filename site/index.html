@@ -7,8 +7,7 @@
     <title>F1 赛后数据</title>
     <link rel="stylesheet" href="./styles.css?v=20260904-live-controls-v5" />
     <script>
-      const localServer = ["localhost", "127.0.0.1", "::1"].includes(window.location.hostname);
-      const staticPages = new URLSearchParams(window.location.search).get("static") === "1" || (!localServer && !window.location.pathname.startsWith("/site/"));
+      const staticPages = new URLSearchParams(window.location.search).get("static") === "1" || window.location.hostname.endsWith(".github.io");
       if (staticPages && window.localStorage.getItem("f1-static-auth") !== "1") window.location.replace("./login.html");
     </script>
   </head>
@@ -378,6 +377,6 @@
         <div class="mapping-modal-footer"><button class="ghost-button" id="nanaMappingReloadBtn" type="button">重新读取</button><button class="primary-button" id="nanaMappingSaveBtn" type="button">保存映射</button></div>
       </section>
     </div>
-    <script type="module" src="./app.js?v=20260904-auth-session-v7"></script>
+    <script type="module" src="./app.js?v=20260908-nami-qualifying-v9"></script>
   </body>
 </html>
