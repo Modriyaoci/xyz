@@ -1,12 +1,12 @@
 {
   "season": 2026,
-  "captured_at": "2026-09-08T01:14:37.418Z",
+  "captured_at": "2026-09-14T00:11:47.543Z",
   "sync_status": {
     "status": "success",
-    "trigger": "manual",
-    "attempted_at": "2026-09-08T01:14:37.418Z",
-    "last_success_at": "2026-09-08T01:14:37.418Z",
-    "last_automatic_at": "2026-09-07T00:13:01.835Z",
+    "trigger": "automatic",
+    "attempted_at": "2026-09-14T00:11:47.543Z",
+    "last_success_at": "2026-09-14T00:11:47.543Z",
+    "last_automatic_at": "2026-09-14T00:11:47.543Z",
     "last_manual_at": "2026-09-08T01:14:37.418Z"
   },
   "source": {
@@ -20,7 +20,7 @@
       "code": "ANT",
       "nationality": "ITA",
       "team": "Mercedes",
-      "points": 267,
+      "points": 292,
       "url": "https://www.formula1.com/en/results/2026/drivers/ANDANT01/kimi-antonelli"
     },
     {
@@ -29,7 +29,7 @@
       "code": "RUS",
       "nationality": "GBR",
       "team": "Mercedes",
-      "points": 201,
+      "points": 211,
       "url": "https://www.formula1.com/en/results/2026/drivers/GEORUS01/george-russell"
     },
     {
@@ -47,7 +47,7 @@
       "code": "NOR",
       "nationality": "GBR",
       "team": "McLaren",
-      "points": 171,
+      "points": 186,
       "url": "https://www.formula1.com/en/results/2026/drivers/LANNOR01/lando-norris"
     },
     {
@@ -56,7 +56,7 @@
       "code": "LEC",
       "nationality": "MON",
       "team": "Ferrari",
-      "points": 155,
+      "points": 167,
       "url": "https://www.formula1.com/en/results/2026/drivers/CHALEC01/charles-leclerc"
     },
     {
@@ -65,7 +65,7 @@
       "code": "VER",
       "nationality": "NED",
       "team": "Red Bull Racing",
-      "points": 127,
+      "points": 145,
       "url": "https://www.formula1.com/en/results/2026/drivers/MAXVER01/max-verstappen"
     },
     {
@@ -74,7 +74,7 @@
       "code": "PIA",
       "nationality": "AUS",
       "team": "McLaren",
-      "points": 116,
+      "points": 120,
       "url": "https://www.formula1.com/en/results/2026/drivers/OSCPIA01/oscar-piastri"
     },
     {
@@ -91,8 +91,8 @@
       "name": "Liam Lawson",
       "code": "LAW",
       "nationality": "NZL",
-      "team": "Racing Bulls",
-      "points": 51,
+      "team": "Red Bull Racing",
+      "points": 59,
       "url": "https://www.formula1.com/en/results/2026/drivers/LIALAW01/liam-lawson"
     },
     {
@@ -110,7 +110,7 @@
       "code": "LIN",
       "nationality": "GBR",
       "team": "Racing Bulls",
-      "points": 29,
+      "points": 31,
       "url": "https://www.formula1.com/en/results/2026/drivers/ARVLIN01/arvid-lindblad"
     },
     {
@@ -119,7 +119,7 @@
       "code": "COL",
       "nationality": "ARG",
       "team": "Alpine",
-      "points": 21,
+      "points": 27,
       "url": "https://www.formula1.com/en/results/2026/drivers/FRACOL01/franco-colapinto"
     },
     {
@@ -146,7 +146,7 @@
       "code": "HUL",
       "nationality": "GER",
       "team": "Audi",
-      "points": 6,
+      "points": 7,
       "url": "https://www.formula1.com/en/results/2026/drivers/NICHUL01/nico-hulkenberg"
     },
     {
@@ -226,37 +226,37 @@
     {
       "position": 1,
       "name": "Mercedes",
-      "points": 468,
+      "points": 503,
       "url": "https://www.formula1.com/en/results/2026/team/Mercedes"
     },
     {
       "position": 2,
       "name": "Ferrari",
-      "points": 346,
+      "points": 358,
       "url": "https://www.formula1.com/en/results/2026/team/Ferrari"
     },
     {
       "position": 3,
       "name": "McLaren",
-      "points": 287,
+      "points": 306,
       "url": "https://www.formula1.com/en/results/2026/team/McLaren-Mercedes"
     },
     {
       "position": 4,
       "name": "Red Bull Racing",
-      "points": 204,
+      "points": 230,
       "url": "https://www.formula1.com/en/results/2026/team/Red-Bull-Racing-Red-Bull-Ford"
     },
     {
       "position": 5,
       "name": "Racing Bulls",
-      "points": 75,
+      "points": 77,
       "url": "https://www.formula1.com/en/results/2026/team/Racing-Bulls-Red-Bull-Ford"
     },
     {
       "position": 6,
       "name": "Alpine",
-      "points": 62,
+      "points": 68,
       "url": "https://www.formula1.com/en/results/2026/team/Alpine-Mercedes"
     },
     {
@@ -268,7 +268,7 @@
     {
       "position": 8,
       "name": "Audi",
-      "points": 16,
+      "points": 17,
       "url": "https://www.formula1.com/en/results/2026/team/Audi"
     },
     {
