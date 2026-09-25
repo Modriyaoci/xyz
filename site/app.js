@@ -828,7 +828,8 @@ const resultColumnDefinitions = Object.freeze([
   { key: "driverId", label: "后台车手ID" },
   { key: "teamId", label: "后台车队ID" },
   { key: "laps", label: "圈数" },
-  { key: "time", label: "总时间 / 差距", raceOnly: true },
+  // Total time / gap is useful for every live session, including practice and qualifying.
+  { key: "time", label: "总时间 / 差距" },
   { key: "points", label: "积分", raceOnly: true },
   { key: "status", label: "状态" },
   { key: "lastLap", label: "上一圈" },
@@ -1180,6 +1181,29 @@ function liveResultValue(row, key) {
   return value.slice().reverse().find((item) => item !== null && item !== undefined && item !== "") ?? null;
 }
 
+function liveTimeValue(value) {
+  if (Array.isArray(value)) return value.slice().reverse().find((item) => item !== null && item !== undefined && item !== "") ?? null;
+  const normalized = value && typeof value === "object" ? value.value ?? value.time ?? value.duration ?? null : value ?? null;
+  return normalized === "" ? null : normalized;
+}
+
+function liveTimeKind(value, fallback = null) {
+  if (value === null || value === undefined || value === "") return fallback;
+  const text = String(value).trim();
+  if (/^\+/.test(text) || /\b(?:LAPS?|L)\b/i.test(text)) return "gap";
+  if (text.includes(":")) return "total";
+  return fallback;
+}
+
+function liveTimeText(row) {
+  const value = row?.time ?? row?.gap;
+  if (value === null || value === undefined || value === "") return "--";
+  if (row?.timeKind === "total") return `${row?.timeEstimated ? "≈" : ""}${displayLapTime(value)}`;
+  if (row?.timeKind === "gap") return displayGap(value);
+  const text = String(value).trim();
+  return text.includes(":") ? text : displayGap(value);
+}
+
 function isBackendLivePayload(data) {
   return Boolean(data && typeof data === "object" && !Array.isArray(data)
     && (Array.isArray(data.competitors) || data.winner || data.fields || Array.isArray(data.messages) || data.extra));
@@ -1197,7 +1221,19 @@ function liveMessageTimestamp(row) {
 }
 
 function liveCompetitorStatus(row, fallback) {
-  if (row?.position_desc && String(row.position_desc).toUpperCase() !== "NC") return String(row.position_desc);
+  const description = row?.position_desc ?? row?.position_text ?? row?.status_desc ?? row?.status_text ?? row?.status_name ?? row?.state_text ?? row?.state;
+  if (description !== null && description !== undefined && String(description).trim() !== "") {
+    const raw = String(description).trim();
+    const key = raw.toUpperCase().replace(/[ _-]+/g, " ");
+    const labels = {
+      PIT: "进站", "IN PIT": "进站", "PIT LANE": "进站", PITSTOP: "进站",
+      RUNNING: "运行中", "ON TRACK": "运行中", LIVE: "运行中",
+      FINISHED: "完成", COMPLETE: "完成", COMPLETED: "完成",
+      DNS: "DNS", "DID NOT START": "DNS", DSQ: "DSQ", DISQUALIFIED: "DSQ",
+      DNF: "DNF", RETIRED: "DNF", NC: "NC",
+    };
+    return labels[key] || raw;
+  }
   const labels = { 301: "运行中", 302: "完成", 303: "DNS", 304: "DSQ", 305: "DNF" };
   return labels[Number(row?.status)] || fallback;
 }
@@ -1303,8 +1339,8 @@ function buildLiveRows(data) {
     const status = liveCompetitorStatus(mapped, fallbackStatus);
     const mappedId = mapped._id ?? mapped.id ?? resolveBackendDriverId(driver);
     const mappedTeamId = mapped.teamuid ?? mapped.team_id ?? sharedResolveBackendTeamId(driver.team_name);
-    const gap = mapped.gap_to_leader || liveResultValue(result, "gap_to_leader") || interval.gap_to_leader || null;
-    const intervalValue = mapped.interval || liveResultValue(result, "interval") || interval.interval || null;
+    const gap = liveTimeValue(mapped.gap_to_leader) ?? liveTimeValue(liveResultValue(result, "gap_to_leader")) ?? liveTimeValue(interval.gap_to_leader);
+    const intervalValue = liveTimeValue(mapped.interval) ?? liveTimeValue(liveResultValue(result, "interval")) ?? liveTimeValue(interval.interval);
     const mappedLastLap = mappedId != null ? mappedExtra.last_lap_time?.[String(mappedId)] || mapped.last_lap_time : mapped.last_lap_time;
     const mappedBestLap = mapped.fastest_lap_time || mapped.best_lap_time || null;
     const directSectors = [1, 2, 3].map((sector) => ({
@@ -1320,6 +1356,17 @@ function buildLiveRows(data) {
     }));
     const directTyreHistory = (data?.stints || []).filter((stint) => Number(stint.driver_number) === car).slice().sort((a, b) => Number(a.stint_number) - Number(b.stint_number));
     const directTyreInfo = directTyreHistory.at(-1) || null;
+    const controlRows = Array.isArray(data?.race_control) && data.race_control.length ? data.race_control : null;
+    const carPattern = new RegExp(`\\bCAR\\s*#?${car}\\b`, "i");
+    const directTrackLimits = controlRows
+      ? controlRows.filter((event) => /TRACK LIMITS/i.test(event?.message || "")
+        && (Number(event?.driver_number) === car || carPattern.test(String(event?.message || "")))).length
+      : null;
+    const mappedTime = liveTimeValue(mapped.time);
+    const directTime = liveTimeValue(liveResultValue(result, "time")) ?? liveTimeValue(liveResultValue(result, "duration"));
+    const isRace = ["race", "sprint"].includes(String(data?.session?.session_name || backend.type || "").toLowerCase());
+    const estimatedDuration = history.map((lap) => numeric(lap.lap_duration)).filter((value) => value != null).reduce((sum, value) => sum + value, 0);
+    const time = mappedTime ?? directTime ?? (isRace && resultPosition === 1 && estimatedDuration > 0 ? estimatedDuration : null);
     const profile = liveDriverProfiles.get(Number(mappedId)) || {};
     const name = driver.full_name || `${driver.first_name || ""} ${driver.last_name || ""}`.trim() || mapped.name || mapped.driver_name || profile.name || `车手 ${car}`;
     return {
@@ -1335,7 +1382,9 @@ function buildLiveRows(data) {
       bestLap: mappedBestLap || result.best_lap_duration || bestLap?.lap_duration || null,
       gap,
       interval: intervalValue,
-      time: mapped.time && typeof mapped.time === "object" ? mapped.time.value ?? null : mapped.time ?? null,
+      time,
+      timeEstimated: mappedTime == null && directTime == null && time === estimatedDuration,
+      timeKind: liveTimeKind(time, time === estimatedDuration ? "total" : liveTimeKind(mappedTime, mappedTime != null ? "total" : null) || liveTimeKind(directTime, directTime != null ? "total" : null)),
       points: mapped.points ?? result.points ?? null,
       status,
       positionDesc: mapped.position_desc ?? "",
@@ -1346,15 +1395,18 @@ function buildLiveRows(data) {
       lapsLed: mapped.laps_led ?? null,
       pitCount: mapped.pitstop_count ?? mapped.pitstop ?? pit?.count ?? 0,
       mapped,
-      extra: mappedId != null ? {
-        lastLapColor: mappedExtra.last_lap_time_color?.[String(mappedId)] || null,
-        bestLapColor: mappedExtra.best_lap_time_color?.[String(mappedId)] || null,
-        sectors: mappedExtra.sectors?.[String(mappedId)] || mapped.sectors || directSectors,
-        miniSectors: mappedExtra.mini_sectors?.[String(mappedId)] || mappedExtra.mini_sectors_data?.[String(mappedId)] || directMiniSectors,
-        tyreInfo: mappedExtra.tire_info?.[String(mappedId)] || directTyreInfo,
-        tyreHistory: mappedExtra.tire_history?.[String(mappedId)] || directTyreHistory,
-        trackLimits: mappedExtra.track_limits?.[String(mappedId)] ?? mapped.track_limits ?? null,
-      } : null,
+      // Keep direct OpenF1/Nami live data even when backend ID mapping is not ready.
+      // Previously this entire object became null, hiding tyre and track-limit fields
+      // until the post-session mapping was available.
+      extra: {
+        lastLapColor: mappedId != null ? mappedExtra.last_lap_time_color?.[String(mappedId)] || mapped.last_lap_time_color || null : mapped.last_lap_time_color || null,
+        bestLapColor: mappedId != null ? mappedExtra.best_lap_time_color?.[String(mappedId)] || mapped.best_lap_time_color || null : mapped.best_lap_time_color || null,
+        sectors: mappedId != null ? mappedExtra.sectors?.[String(mappedId)] || mapped.sectors || directSectors : mapped.sectors || directSectors,
+        miniSectors: mappedId != null ? mappedExtra.mini_sectors?.[String(mappedId)] || mappedExtra.mini_sectors_data?.[String(mappedId)] || mapped.mini_sectors || directMiniSectors : mapped.mini_sectors || directMiniSectors,
+        tyreInfo: mappedId != null ? mappedExtra.tire_info?.[String(mappedId)] || mapped.tire_info || directTyreInfo : mapped.tire_info || directTyreInfo,
+        tyreHistory: mappedId != null ? mappedExtra.tire_history?.[String(mappedId)] || mapped.tire_history || directTyreHistory : mapped.tire_history || directTyreHistory,
+        trackLimits: mappedId != null ? mappedExtra.track_limits?.[String(mappedId)] ?? mapped.track_limits ?? directTrackLimits : mapped.track_limits ?? directTrackLimits,
+      },
       updatedAt: lastActivity ? new Date(lastActivity).toISOString() : data?.fetched_at,
     };
   });
@@ -1780,7 +1832,7 @@ function renderLiveTiming() {
         driverId: `<td>${esc(row.driverId ?? "--")}</td>`,
         teamId: `<td>${esc(row.teamId ?? "--")}</td>`,
         laps: `<td>${esc(row.lap ?? "--")}</td>`,
-        time: `<td>${esc(displayGap(row.time || row.gap))}</td>`,
+        time: `<td>${esc(liveTimeText(row))}</td>`,
         points: `<td>${esc(row.points ?? "--")}</td>`,
         status: `<td><span class="live-row-status ${statusClass}">${esc(row.status)}</span></td>`,
         lastLap: `<td>${displayLapTime(row.lastLap)} ${colorBadgeOrEmpty(row.extra?.lastLapColor)}</td>`,
@@ -1789,7 +1841,7 @@ function renderLiveTiming() {
         gap: `<td>${esc(displayGap(row.gap))}</td>`,
         pit: `<td>${esc(row.pitCount ?? "--")}</td>`,
         nc: `<td>${ncCell}</td>`,
-        tyre: `<td>${currentTyre ? tyreChip(currentTyre, `${currentTyre} · ${currentTyreLaps ?? "--"} 圈`) : "--"}</td>`,
+        tyre: `<td>${currentTyre ? tyreChip(currentTyre, currentTyre) : "--"}</td>`,
         trackLimits: `<td>${esc(row.extra?.trackLimits ?? "--")}</td>`,
         miniSectors: `<td><div class="row-colors">${miniSectorSummary(row.extra?.miniSectors)}</div></td>`,
         sectors: `<td>${sectorSummary(row.extra?.sectors)}</td>`,
@@ -2414,6 +2466,7 @@ const tyreClass = (compound) => {
   const value = String(compound || "unknown").toLowerCase();
   return ["soft", "medium", "hard", "intermediate", "wet"].includes(value) ? value : "unknown";
 };
+const tyreAbbreviation = (compound) => ({ soft: "S", medium: "M", hard: "H", intermediate: "I", wet: "W" })[String(compound || "").toLowerCase()] || String(compound || "?").slice(0, 1).toUpperCase();
 const tyreChip = (compound, text = compound || "--") => `<span class="tyre-chip tyre-${tyreClass(compound)}"><i></i>${esc(text)}</span>`;
 const colorFromStatus = (status) => statusColors[Number(status)] || "gray";
 
@@ -2722,7 +2775,7 @@ function renderResults() {
       gap: `<td>${esc(gapToLeaderText(row))}</td>`,
       pit: `<td>${esc(row.mapped.pitstop_count ?? extension.pits ?? "--")}</td>`,
       nc: `<td>${ncCell}</td>`,
-      tyre: `<td>${currentTyre ? tyreChip(currentTyre, `${currentTyre} · ${currentTyreLaps ?? "--"} 圈`) : "--"}</td>`,
+      tyre: `<td>${currentTyre ? tyreChip(currentTyre, currentTyre) : "--"}</td>`,
       trackLimits: `<td>${esc(extension.trackLimits ?? "--")}</td>`,
       miniSectors: `<td><div class="row-colors">${colorText}</div></td>`,
       sectors: `<td>${sectorSummary(extension.sectors)}</td>`,
