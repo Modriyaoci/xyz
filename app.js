@@ -1235,6 +1235,10 @@ function liveCompetitorStatus(row, fallback) {
     return labels[key] || raw;
   }
   const labels = { 301: "运行中", 302: "完成", 303: "DNS", 304: "DSQ", 305: "DNF" };
+  // Nana uses 302 for a classified timing row even while a session is still
+  // live. The session clock/polling state is authoritative for the display;
+  // keep the live fallback (运行中/进站) until the session has actually ended.
+  if (Number(row?.status) === 302 && (fallback === "运行中" || fallback === "进站")) return fallback;
   return labels[Number(row?.status)] || fallback;
 }
 
