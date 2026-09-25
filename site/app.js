@@ -1235,6 +1235,7 @@ function liveCompetitorStatus(row, fallback) {
     return labels[key] || raw;
   }
   const labels = { 301: "运行中", 302: "完成", 303: "DNS", 304: "DSQ", 305: "DNF" };
+  if (Number(row?.status) === 302 && (fallback === "运行中" || fallback === "进站")) return fallback;
   return labels[Number(row?.status)] || fallback;
 }
 
