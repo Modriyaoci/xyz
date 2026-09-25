@@ -126,6 +126,28 @@ function hasOwn(value, key) {
   return Boolean(value && Object.prototype.hasOwnProperty.call(value, key));
 }
 
+// Nana feeds have used several names for the human-readable running state
+// over time. Keep that value intact for the UI instead of reducing every
+// non-terminal row to status 301 (运行中). Numeric result codes remain handled
+// by the existing status mapping.
+function normalisePositionDescription(row) {
+  const value = firstPresent(row, [
+    "position_desc", "position_text", "status_desc", "status_text",
+    "status_name", "state_text", "state", "driver_status",
+  ], undefined);
+  if (value === undefined || value === null || value === "") return undefined;
+  const raw = String(value).trim();
+  const key = raw.toUpperCase().replace(/[ _-]+/g, " ");
+  const labels = {
+    PIT: "进站", "IN PIT": "进站", "PIT LANE": "进站", "PITSTOP": "进站",
+    RUNNING: "运行中", "ON TRACK": "运行中", LIVE: "运行中",
+    FINISHED: "完成", COMPLETE: "完成", COMPLETED: "完成",
+    DNS: "DNS", "DID NOT START": "DNS", DSQ: "DSQ", DISQUALIFIED: "DSQ",
+    DNF: "DNF", RETIRED: "DNF", NC: "NC",
+  };
+  return labels[key] || raw;
+}
+
 function configuredIdentity(mapping, car) {
   const row = mapping?.cars?.[String(car)];
   return row && typeof row === "object" ? row : null;
@@ -193,7 +215,8 @@ export function normaliseNanaCompetitor(row, mapping = DEFAULT_NANA_MAPPING) {
   if (identity.driverName) output.name = identity.driverName;
   if (identity.driverCode) output.abbr = identity.driverCode;
   if (identity.teamName) output.teamname = identity.teamName;
-  if (output.position_desc === undefined && row.position_text !== undefined) output.position_desc = row.position_text;
+  const positionDescription = normalisePositionDescription(row);
+  if (positionDescription !== undefined) output.position_desc = positionDescription;
   if (output.last_lap_time_color !== undefined) output.last_lap_time_color = colour(output.last_lap_time_color);
   if (output.best_lap_time_color !== undefined) output.best_lap_time_color = colour(output.best_lap_time_color);
   if (Array.isArray(output.sectors)) output.sectors = normaliseSectorRows(output.sectors);
