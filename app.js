@@ -1232,9 +1232,11 @@ function liveCompetitorStatus(row, fallback) {
       DNS: "DNS", "DID NOT START": "DNS", DSQ: "DSQ", DISQUALIFIED: "DSQ",
       DNF: "DNF", RETIRED: "DNF", NC: "NC",
     };
+    if (fallback === "未开赛" && ["运行中", "进站"].includes(labels[key] || raw)) return fallback;
     return labels[key] || raw;
   }
   const labels = { 301: "运行中", 302: "完成", 303: "DNS", 304: "DSQ", 305: "DNF" };
+  if (fallback === "未开赛" && [301, 302].includes(Number(row?.status))) return fallback;
   // Nana uses 302 for a classified timing row even while a session is still
   // live. The session clock/polling state is authoritative for the display;
   // keep the live fallback (运行中/进站) until the session has actually ended.
@@ -1339,7 +1341,9 @@ function buildLiveRows(data) {
     const livePosition = numeric(position.position);
     const pitAt = Date.parse(pit?.latest?.date || "") || 0;
     const recentPit = pitAt > 0 && pitAt >= (Date.parse(latestLap.date_start || "") || 0) && snapshotTime - pitAt < 120000;
-    const fallbackStatus = result.dsq ? "DSQ" : result.dns ? "DNS" : result.dnf ? "DNF" : recentPit ? "进站" : data?.session?.date_end && Date.parse(data.session.date_end) < snapshotTime ? "完成" : "运行中";
+    const sessionStart = Date.parse(data?.session?.date_start || "");
+    const sessionEnd = Date.parse(data?.session?.date_end || "");
+    const fallbackStatus = result.dsq ? "DSQ" : result.dns ? "DNS" : result.dnf ? "DNF" : sessionStart > snapshotTime ? "未开赛" : recentPit ? "进站" : sessionEnd && sessionEnd < snapshotTime ? "完成" : "运行中";
     const status = liveCompetitorStatus(mapped, fallbackStatus);
     const mappedId = mapped._id ?? mapped.id ?? resolveBackendDriverId(driver);
     const mappedTeamId = mapped.teamuid ?? mapped.team_id ?? sharedResolveBackendTeamId(driver.team_name);
