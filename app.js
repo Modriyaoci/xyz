@@ -1343,7 +1343,7 @@ function buildLiveRows(data) {
     const recentPit = pitAt > 0 && pitAt >= (Date.parse(latestLap.date_start || "") || 0) && snapshotTime - pitAt < 120000;
     const sessionStart = Date.parse(data?.session?.date_start || "");
     const sessionEnd = Date.parse(data?.session?.date_end || "");
-    const fallbackStatus = result.dsq ? "DSQ" : result.dns ? "DNS" : result.dnf ? "DNF" : sessionStart > snapshotTime ? "未开赛" : recentPit ? "进站" : sessionEnd && sessionEnd < snapshotTime ? "完成" : "运行中";
+    const fallbackStatus = sessionStart > snapshotTime ? "未开赛" : result.dsq ? "DSQ" : result.dns ? "DNS" : result.dnf ? "DNF" : recentPit ? "进站" : sessionEnd && sessionEnd < snapshotTime ? "完成" : "运行中";
     const status = liveCompetitorStatus(mapped, fallbackStatus);
     const mappedId = mapped._id ?? mapped.id ?? resolveBackendDriverId(driver);
     const mappedTeamId = mapped.teamuid ?? mapped.team_id ?? sharedResolveBackendTeamId(driver.team_name);
@@ -1937,6 +1937,8 @@ function renderLiveDriverDetails() {
   const tyreLaps = tyre?.total_laps ?? "--";
   const historyLaps = (extension.tyreHistory || []).reduce((sum, item) => sum + (Number(item.total_laps) || 0), 0);
   container.innerHTML = `<div class="detail-content">${detailIdentityHtml({ driverId: row.driverId, teamId: row.teamId, name: row.name, car: row.car, team: row.team })}<div class="detail-grid">
+    <div class="detail-item"><label>状态</label><strong>${esc(row.status ?? "--")}</strong></div>
+    <div class="detail-item"><label>与第一名间距</label><strong>${esc(displayGap(row.gap))}</strong></div>
     <div class="detail-item"><label>上一圈</label><strong>${displayLapTime(row.lastLap)} ${colorBadgeOrEmpty(extension.lastLapColor)}</strong></div>
     <div class="detail-item"><label>最快圈</label><strong>${displayLapTime(row.bestLap)} ${colorBadgeOrEmpty(extension.bestLapColor)}</strong></div>
     <div class="detail-item"><label>当前轮胎</label><strong>${tyre ? tyreChip(tyre.compound, `${tyre.compound} · ${tyreLaps} 圈`) : "--"}</strong></div>
