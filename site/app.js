@@ -66,6 +66,9 @@ const state = {
     sequence: 0,
     stream: null,
     mapping: null,
+    miniSectorState: Object.create(null),
+    rankChanges: Object.create(null),
+    rankPositions: Object.create(null),
     mappingLoading: false,
     mappingSaving: false,
     mappingError: null,
@@ -1835,7 +1838,7 @@ function renderLiveTiming() {
         ? `<span class="nc-badge" title="完成 ${esc(row.lap ?? "--")} 圈，小于实时 NC 阈值 ${esc(row.ncThreshold ?? "--")} 圈">NC</span>`
         : "--";
       const cells = {
-        position: `<td class="position">${esc(row.isNc ? "NC" : row.position ?? "--")}</td>`,
+        position: `<td class="position"><span class="rank-value rank-${live.rankChanges[row.car]?.direction || "steady"}">${esc(row.isNc ? "NC" : row.position ?? "--")}</span></td>`,
         car: `<td>${esc(row.car)}</td>`,
         driver: `<td class="driver-cell"><strong>${esc(row.name)}</strong><span class="driver-code">${esc(row.code)}</span></td>`,
         team: `<td>${esc(row.team)}</td>`,
@@ -1853,7 +1856,7 @@ function renderLiveTiming() {
         nc: `<td>${ncCell}</td>`,
         tyre: `<td>${currentTyre ? tyreChip(currentTyre, currentTyre) : "--"}</td>`,
         trackLimits: `<td>${esc(row.extra?.trackLimits ?? "--")}</td>`,
-        miniSectors: `<td><div class="row-colors">${miniSectorSummary(row.extra?.miniSectors)}</div></td>`,
+        miniSectors: `<td><div class="row-colors">${miniSectorSummary(liveMiniSectorView(row))}</div></td>`,
         sectors: `<td>${sectorSummary(row.extra?.sectors)}</td>`,
       };
       return `<tr data-live-car="${esc(row.car)}" class="${live.selectedDriver === row.car ? "selected" : ""}">${visibleResultColumns(true).map((column) => cells[column.key]).join("")}</tr>`;
@@ -2008,8 +2011,27 @@ function resetLiveTiming() {
   live.started = false;
   live.lastAt = null;
   live.loading = false;
+  live.miniSectorState = Object.create(null);
+  live.rankChanges = Object.create(null);
+  live.rankPositions = Object.create(null);
   renderLiveTiming();
 }
+
+function mergeLiveMiniSectors(rows) {
+  const live = state.liveTiming;
+  for (const row of rows || []) {
+    const incoming = row?.extra?.miniSectors;
+    if (!Array.isArray(incoming) || !incoming.some((s) => s?.mini_sectors?.length)) continue;
+    const key = String(row.car), lap = numeric(row.lap), previous = live.miniSectorState[key];
+    if (!previous || (lap != null && previous.lap != null && lap !== previous.lap)) { live.miniSectorState[key] = { lap, sectors: incoming }; continue; }
+    live.miniSectorState[key] = { lap: lap ?? previous.lap, sectors: incoming.map((sector, i) => {
+      const values = new Map((previous.sectors?.[i]?.mini_sectors || []).map((m) => [Number(m.mini_sector), m]));
+      for (const mini of sector.mini_sectors || []) if (mini?.mini_sector != null) values.set(Number(mini.mini_sector), mini);
+      return { ...sector, mini_sectors: [...values.values()].sort((a, b) => Number(a.mini_sector) - Number(b.mini_sector)) };
+    }) };
+  }
+}
+function liveMiniSectorView(row) { return state.liveTiming.miniSectorState[String(row?.car)]?.sectors || row?.extra?.miniSectors; }
 
 function openLiveBridgeStream({ source, onState, onError, onClose } = {}) {
   const bridgeName = liveBridgeSourceName(source);
@@ -2104,6 +2126,13 @@ function acceptLiveTimingSnapshot(data, token, sourceLabel) {
   renderLiveMeetingMeta(live.data);
   setConnection(true, sourceLabel ? `${sourceLabel} 已连接` : "实时接口已连接");
   live.rows = buildLiveRows(live.data);
+  mergeLiveMiniSectors(live.rows);
+  const nextRanks = Object.fromEntries(live.rows.filter((row) => row.position != null).map((row) => [row.car, Number(row.position)]));
+  live.rankChanges = Object.fromEntries(Object.entries(nextRanks).flatMap(([car, position]) => {
+    const previous = live.rankPositions[car];
+    return previous == null || previous === position ? [] : [[car, { direction: position < previous ? "up" : "down" }]];
+  }));
+  live.rankPositions = nextRanks;
   live.events = buildLiveEvents(live.data);
   live.logs = buildLiveLogs(live.data);
   live.received += 1;

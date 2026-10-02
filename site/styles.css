@@ -269,6 +269,11 @@ h2 { margin: 2px 0 0; font-size: 16px; letter-spacing: 0; }
 .mini-sector-group { display: inline-flex; flex: 0 0 auto; align-items: center; gap: 2px; padding-right: 12px; border-right: 1px solid var(--line-strong); }
 .mini-sector-group:last-child { padding-right: 0; border-right: 0; }
 .mini-dot { width: 7px; height: 7px; border-radius: 2px; display: inline-block; }
+.rank-value { display: inline-block; min-width: 1.5em; border-radius: 5px; padding: 1px 4px; }
+.rank-up, .rank-down { animation: rank-shift 900ms ease-out; }
+.rank-up { color: #15803d; font-weight: 800; }
+.rank-down { color: #b45309; font-weight: 800; }
+@keyframes rank-shift { 0% { background: #dbeafe; transform: translateY(-3px); } 100% { background: transparent; transform: translateY(0); } }
 .tyre-chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 4px; padding: 3px 6px; font-size: 11px; font-weight: 750; white-space: nowrap; }
 .tyre-chip i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; }
 .tyre-soft { color: #dc2626; background: #fef2f2; }
