@@ -1837,8 +1837,10 @@ function renderLiveTiming() {
       const ncCell = row.isNc
         ? `<span class="nc-badge" title="完成 ${esc(row.lap ?? "--")} 圈，小于实时 NC 阈值 ${esc(row.ncThreshold ?? "--")} 圈">NC</span>`
         : "--";
+      const rankDirection = live.rankChanges[row.car]?.direction || "steady";
+      const rankArrow = rankDirection === "up" ? "▲" : rankDirection === "down" ? "▼" : "";
       const cells = {
-        position: `<td class="position"><span class="rank-value rank-${live.rankChanges[row.car]?.direction || "steady"}">${esc(row.isNc ? "NC" : row.position ?? "--")}</span></td>`,
+        position: `<td class="position"><span class="rank-value rank-${rankDirection}">${rankArrow ? `<span class="rank-arrow" aria-hidden="true">${rankArrow}</span>` : ""}${esc(row.isNc ? "NC" : row.position ?? "--")}</span></td>`,
         car: `<td>${esc(row.car)}</td>`,
         driver: `<td class="driver-cell"><strong>${esc(row.name)}</strong><span class="driver-code">${esc(row.code)}</span></td>`,
         team: `<td>${esc(row.team)}</td>`,
@@ -1859,7 +1861,7 @@ function renderLiveTiming() {
         miniSectors: `<td><div class="row-colors">${miniSectorSummary(liveMiniSectorView(row))}</div></td>`,
         sectors: `<td>${sectorSummary(row.extra?.sectors)}</td>`,
       };
-      return `<tr data-live-car="${esc(row.car)}" class="${live.selectedDriver === row.car ? "selected" : ""}">${visibleResultColumns(true).map((column) => cells[column.key]).join("")}</tr>`;
+      return `<tr data-live-car="${esc(row.car)}" class="${[live.selectedDriver === row.car ? "selected" : "", rankDirection !== "steady" ? `rank-row-${rankDirection}` : ""].filter(Boolean).join(" ")}">${visibleResultColumns(true).map((column) => cells[column.key]).join("")}</tr>`;
     }).join("")
     : `<tr><td colspan="${liveResultColumnCount()}" class="empty-cell">${live.rows.length ? "没有匹配的车手" : "点击开始推送"}</td></tr>`;
   table.querySelectorAll("tr[data-live-car]").forEach((tr) => tr.addEventListener("click", () => {
@@ -2665,8 +2667,8 @@ function miniSectorSummary(miniSectors) {
   if (!Array.isArray(miniSectors) || !miniSectors.length) return "--";
   const groups = miniSectors.map((sector) => {
     const dots = (sector?.mini_sectors || [])
-      .filter((mini) => mini && ((mini.status !== null && mini.status !== undefined && mini.status !== "") || (mini.color && mini.color !== "gray")) && mini.color)
-      .map((mini) => '<i class="mini-dot color-' + colorKey(mini.color) + '" aria-hidden="true"></i>');
+      .filter((mini) => mini && ((mini.status !== null && mini.status !== undefined && mini.status !== "") || (mini.color && mini.color !== "gray")))
+      .map((mini) => `<i class="mini-dot color-${colorKey(mini.color || colorFromStatus(mini.status))}" aria-hidden="true"></i>`);
     return dots.length ? '<span class="mini-sector-group">' + dots.join("") + '</span>' : "";
   }).filter(Boolean);
   return groups.length ? '<div class="mini-sector-summary">' + groups.join("") + '</div>' : "--";

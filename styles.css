@@ -273,7 +273,12 @@ h2 { margin: 2px 0 0; font-size: 16px; letter-spacing: 0; }
 .rank-up, .rank-down { animation: rank-shift 900ms ease-out; }
 .rank-up { color: #15803d; font-weight: 800; }
 .rank-down { color: #b45309; font-weight: 800; }
+.rank-arrow { display: inline-block; margin-right: 3px; font-size: 10px; }
+.rank-row-up td, .rank-row-down td { animation: rank-row-shift 1100ms ease-out; }
+.rank-row-up td { background: rgba(34, 197, 94, .14); }
+.rank-row-down td { background: rgba(245, 158, 11, .14); }
 @keyframes rank-shift { 0% { background: #dbeafe; transform: translateY(-3px); } 100% { background: transparent; transform: translateY(0); } }
+@keyframes rank-row-shift { 0% { transform: translateX(-8px); opacity: .55; } 55% { transform: translateX(2px); opacity: 1; } 100% { transform: translateX(0); opacity: 1; } }
 .tyre-chip { display: inline-flex; align-items: center; gap: 5px; border-radius: 4px; padding: 3px 6px; font-size: 11px; font-weight: 750; white-space: nowrap; }
 .tyre-chip i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; display: inline-block; }
 .tyre-soft { color: #dc2626; background: #fef2f2; }
