@@ -1221,6 +1221,7 @@ function liveMessageTimestamp(row) {
 }
 
 function liveCompetitorStatus(row, fallback) {
+  if (fallback === "未开赛") return fallback;
   const description = row?.position_desc ?? row?.position_text ?? row?.status_desc ?? row?.status_text ?? row?.status_name ?? row?.state_text ?? row?.state;
   if (description !== null && description !== undefined && String(description).trim() !== "") {
     const raw = String(description).trim();
@@ -1237,6 +1238,9 @@ function liveCompetitorStatus(row, fallback) {
   }
   const labels = { 301: "运行中", 302: "完成", 303: "DNS", 304: "DSQ", 305: "DNF" };
   if (fallback === "未开赛" && [301, 302].includes(Number(row?.status))) return fallback;
+  // Nana uses 302 for a classified timing row even while a session is still
+  // live. The session clock/polling state is authoritative for the display;
+  // keep the live fallback (运行中/进站) until the session has actually ended.
   if (Number(row?.status) === 302 && (fallback === "运行中" || fallback === "进站")) return fallback;
   return labels[Number(row?.status)] || fallback;
 }
@@ -1340,7 +1344,8 @@ function buildLiveRows(data) {
     const recentPit = pitAt > 0 && pitAt >= (Date.parse(latestLap.date_start || "") || 0) && snapshotTime - pitAt < 120000;
     const sessionStart = Date.parse(data?.session?.date_start || "");
     const sessionEnd = Date.parse(data?.session?.date_end || "");
-    const fallbackStatus = result.dsq ? "DSQ" : result.dns ? "DNS" : result.dnf ? "DNF" : sessionStart > snapshotTime ? "未开赛" : recentPit ? "进站" : sessionEnd && sessionEnd < snapshotTime ? "完成" : "运行中";
+    const hasLiveActivity = lastActivity != null || Number(latestLap.lap_number) > 0 || Number(mapped.laps) > 0 || livePosition != null;
+    const fallbackStatus = sessionStart > snapshotTime && !hasLiveActivity ? "未开赛" : result.dsq ? "DSQ" : result.dns ? "DNS" : result.dnf ? "DNF" : recentPit ? "进站" : sessionEnd && sessionEnd < snapshotTime ? "完成" : "运行中";
     const status = liveCompetitorStatus(mapped, fallbackStatus);
     const mappedId = mapped._id ?? mapped.id ?? resolveBackendDriverId(driver);
     const mappedTeamId = mapped.teamuid ?? mapped.team_id ?? sharedResolveBackendTeamId(driver.team_name);
@@ -1934,6 +1939,8 @@ function renderLiveDriverDetails() {
   const tyreLaps = tyre?.total_laps ?? "--";
   const historyLaps = (extension.tyreHistory || []).reduce((sum, item) => sum + (Number(item.total_laps) || 0), 0);
   container.innerHTML = `<div class="detail-content">${detailIdentityHtml({ driverId: row.driverId, teamId: row.teamId, name: row.name, car: row.car, team: row.team })}<div class="detail-grid">
+    <div class="detail-item"><label>状态</label><strong>${esc(row.status ?? "--")}</strong></div>
+    <div class="detail-item"><label>与第一名间距</label><strong>${esc(displayGap(row.gap))}</strong></div>
     <div class="detail-item"><label>上一圈</label><strong>${displayLapTime(row.lastLap)} ${colorBadgeOrEmpty(extension.lastLapColor)}</strong></div>
     <div class="detail-item"><label>最快圈</label><strong>${displayLapTime(row.bestLap)} ${colorBadgeOrEmpty(extension.bestLapColor)}</strong></div>
     <div class="detail-item"><label>当前轮胎</label><strong>${tyre ? tyreChip(tyre.compound, `${tyre.compound} · ${tyreLaps} 圈`) : "--"}</strong></div>
