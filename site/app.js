@@ -1236,8 +1236,8 @@ function liveCompetitorStatus(row, fallback) {
     if (fallback === "未开赛" && ["运行中", "进站"].includes(labels[key] || raw)) return fallback;
     return labels[key] || raw;
   }
-  const labels = { 301: "运行中", 302: "完成", 303: "DNS", 304: "DSQ", 305: "DNF" };
-  if (fallback === "未开赛" && [301, 302].includes(Number(row?.status))) return fallback;
+  const labels = { 301: "进站", 302: "完成", 303: "DNS", 304: "DSQ", 305: "DNF", 306: "运行中" };
+  if (fallback === "未开赛" && [301, 302, 306].includes(Number(row?.status))) return fallback;
   // Nana uses 302 for a classified timing row even while a session is still
   // live. The session clock/polling state is authoritative for the display;
   // keep the live fallback (运行中/进站) until the session has actually ended.
