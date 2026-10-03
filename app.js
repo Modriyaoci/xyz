@@ -4,6 +4,7 @@ import {
   resolveBackendTeamId as sharedResolveBackendTeamId,
 } from "./backend-fields.mjs";
 import { openF1TelemetryStream } from "./f1telemetry.mjs";
+import { retainCompleteLiveLaps } from "./complete-live-laps.mjs";
 import { collectSessionFeedRows, completeSessionResultRows, isCompleteLapRecord } from "./session-feed-rules.mjs";
 
 const state = {
@@ -67,8 +68,18 @@ const state = {
     stream: null,
     mapping: null,
     miniSectorState: Object.create(null),
+    miniSectorChanged: Object.create(null),
+    completeLapCache: new Map(),
+    partialLapCache: new Map(),
+    completeLapScope: null,
     rankChanges: Object.create(null),
     rankPositions: Object.create(null),
+    // A position is only treated as a real race change after it is present in
+    // two consecutive snapshots. Feeds can briefly omit/reorder position
+    // rows while they are being assembled; those transient values must not
+    // animate the entire table.
+    rankPending: Object.create(null),
+    rankStablePositions: Object.create(null),
     mappingLoading: false,
     mappingSaving: false,
     mappingError: null,
@@ -822,7 +833,8 @@ const isRaceSession = () => raceSessionNames.has(state.activeSession?.session_na
 const isQualifyingSession = () => qualifyingSessionNames.has(state.activeSession?.session_name);
 const CURRENT_STANDINGS_SEASON = 2026;
 const standingsSeasons = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018];
-const RESULT_COLUMN_STORAGE_KEY = "f1-result-columns-v1";
+const RESULT_COLUMN_STORAGE_KEY = "f1-result-columns-v2";
+const defaultResultColumns = new Set(["position", "driver", "laps", "status", "lastLap", "fastestLap", "gap", "pit", "tyre", "miniSectors", "sectors"]);
 const resultColumnDefinitions = Object.freeze([
   { key: "position", label: "名次" },
   { key: "car", label: "车号" },
@@ -850,7 +862,7 @@ function ensureResultColumnVisibility() {
   if (state.resultColumnVisibility) return state.resultColumnVisibility;
   let saved = {};
   try { saved = JSON.parse(window.localStorage.getItem(RESULT_COLUMN_STORAGE_KEY) || "{}"); } catch { saved = {}; }
-  state.resultColumnVisibility = Object.fromEntries(resultColumnDefinitions.map(({ key }) => [key, saved[key] !== false]));
+  state.resultColumnVisibility = Object.fromEntries(resultColumnDefinitions.map(({ key }) => [key, typeof saved?.[key] === "boolean" ? saved[key] : defaultResultColumns.has(key)]));
   return state.resultColumnVisibility;
 }
 function availableResultColumns(live = false) {
@@ -1302,6 +1314,7 @@ function isLiveNotClassified(rows, context) {
 }
 
 function buildLiveRows(data) {
+  const live = state.liveTiming;
   const drivers = new Map((data?.drivers || []).map((driver) => [Number(driver.driver_number), driver]));
   const results = new Map((data?.session_result || []).map((result) => [Number(result.driver_number), result]));
   const backend = liveBackendPayload(data);
@@ -1383,7 +1396,8 @@ function buildLiveRows(data) {
     const profile = liveDriverProfiles.get(Number(mappedId)) || {};
     const name = driver.full_name || `${driver.first_name || ""} ${driver.last_name || ""}`.trim() || mapped.name || mapped.driver_name || profile.name || `车手 ${car}`;
     return {
-      position: numeric(mapped.position) ?? resultPosition ?? livePosition ?? null,
+      position: numeric(mapped.position) ?? resultPosition ?? livePosition ?? live.rankStablePositions[car] ?? null,
+      positionSource: numeric(mapped.position) != null || resultPosition != null || livePosition != null ? "source" : "fallback",
       car,
       name,
       code: driver.name_acronym || mapped.abbr || mapped.short_name || profile.code || "",
@@ -1432,6 +1446,15 @@ function buildLiveRows(data) {
     return (aGap ?? Infinity) - (bGap ?? Infinity) || a.car - b.car;
   });
   rows.forEach((row, index) => { if (row.position == null) row.position = index + 1; });
+  if (namiLiveProvider(live.source)) {
+    const scope = `${live.source}:${data?.session?.session_key ?? data?.id ?? live.stageId}`;
+    if (live.completeLapScope !== scope) {
+      live.completeLapCache.clear();
+      live.partialLapCache.clear();
+      live.completeLapScope = scope;
+    }
+    retainCompleteLiveLaps(rows, live.completeLapCache, live.partialLapCache, { displayPartial: true });
+  }
   return rows;
 }
 
@@ -1815,10 +1838,151 @@ async function saveNanaMapping() {
   }
 }
 
+function liveRowCells(row, previous, rankDirection) {
+  const live = state.liveTiming;
+  const currentTyre = row.extra?.tyreInfo?.compound;
+  const previousGap = previous ? row.interval || (numeric(row.gap) != null && numeric(previous.gap) != null ? displayGap(Math.max(0, numeric(row.gap) - numeric(previous.gap))) : "--") : "--";
+  const statusClass = row.status === "进站" ? "is-pit" : row.status === "运行中" ? "is-running" : "is-warning";
+  const ncCell = row.isNc ? `<span class="nc-badge" title="完成 ${esc(row.lap ?? "--")} 圈，小于实时 NC 阈值 ${esc(row.ncThreshold ?? "--")} 圈">NC</span>` : "--";
+  const rankArrow = rankDirection === "up" ? "▲" : rankDirection === "down" ? "▼" : "";
+  return {
+    position: `<td class="position"><span class="rank-value rank-${rankDirection}">${rankArrow ? `<span class="rank-arrow" aria-hidden="true">${rankArrow}</span>` : ""}${esc(row.isNc ? "NC" : row.position ?? "--")}</span></td>`,
+    car: `<td>${esc(row.car)}</td>`,
+    driver: `<td class="driver-cell"><strong>${esc(row.name)}</strong><span class="driver-code">${esc(row.code)}</span></td>`,
+    team: `<td>${esc(row.team)}</td>`,
+    driverId: `<td>${esc(row.driverId ?? "--")}</td>`,
+    teamId: `<td>${esc(row.teamId ?? "--")}</td>`,
+    laps: `<td>${esc(row.lap ?? "--")}</td>`,
+    time: `<td>${esc(liveTimeText(row))}</td>`,
+    points: `<td>${esc(row.points ?? "--")}</td>`,
+    status: `<td><span class="live-row-status ${statusClass}">${esc(row.status)}</span></td>`,
+    lastLap: `<td>${displayLapTime(row.lastLap)} ${colorBadgeOrEmpty(row.extra?.lastLapColor)}</td>`,
+    fastestLap: `<td>${displayLapTime(row.bestLap)} ${colorBadgeOrEmpty(row.extra?.bestLapColor)}</td>`,
+    interval: `<td>${esc(displayGap(previousGap))}</td>`,
+    gap: `<td>${esc(displayGap(row.gap))}</td>`,
+    pit: `<td>${esc(row.pitCount ?? "--")}</td>`,
+    nc: `<td>${ncCell}</td>`,
+    tyre: `<td>${currentTyre ? tyreChip(currentTyre, currentTyre) : "--"}</td>`,
+    trackLimits: `<td>${esc(row.extra?.trackLimits ?? "--")}</td>`,
+    miniSectors: `<td class="mini-sector-td" data-live-column="miniSectors"><div class="row-colors">${miniSectorSummary(liveMiniSectorView(row), { changed: live.miniSectorChanged[String(row.car)] })}</div></td>`,
+    sectors: `<td data-live-column="sectors">${sectorSummary(row.extra?.sectors)}</td>`,
+  };
+}
+
+function patchLiveTimingRows(table, filteredRows) {
+  const live = state.liveTiming;
+  const allowRankMotion = Object.keys(live.rankChanges).length > 0;
+  const tbody = table.querySelector("tbody");
+  if (!tbody) return;
+  const columns = visibleResultColumns(true);
+  const columnSignature = columns.map((column) => column.key).join(",");
+  if (table.dataset.liveColumnSignature !== columnSignature) {
+    // The column picker changes both the header and the cell indexes. Rebuild
+    // row cells once so an old DOM column cannot be mistaken for a new one.
+    tbody.innerHTML = "";
+    table.dataset.liveColumnSignature = columnSignature;
+  }
+  const oldRows = new Map([...tbody.querySelectorAll("tr[data-live-car]")].map((tr) => [String(tr.dataset.liveCar), tr]));
+  const oldRects = new Map([...oldRows].map(([key, tr]) => [key, tr.getBoundingClientRect()]));
+  if (!filteredRows.length) {
+    tbody.innerHTML = `<tr><td colspan="${liveResultColumnCount()}" class="empty-cell">${live.rows.length ? "没有匹配的车手" : "点击开始推送"}</td></tr>`;
+    live.rowElements = new Map();
+    return;
+  }
+  // Remove the initial empty-state row before appending live driver rows.
+  // Leaving it in tbody creates a permanent phantom row above the ranking.
+  tbody.querySelectorAll("tr:not([data-live-car])").forEach((tr) => tr.remove());
+  const next = new Map();
+  filteredRows.forEach((row, visibleIndex) => {
+    const key = String(row.car);
+    const rowIndex = live.rows.indexOf(row);
+    const previous = rowIndex > 0 ? live.rows[rowIndex - 1] : null;
+    const direction = live.rankChanges[row.car]?.direction || "steady";
+    const cells = liveRowCells(row, previous, direction);
+    let tr = oldRows.get(key);
+    if (tr && (tr.__liveColumnSignature !== columnSignature || tr.children.length !== columns.length)) {
+      tr.remove();
+      tr = null;
+    }
+    const firstPaint = !tr;
+    if (!tr) {
+      tr = document.createElement("tr");
+      tr.dataset.liveCar = row.car;
+      tr.addEventListener("click", () => { live.selectedDriver = Number(tr.dataset.liveCar); renderLiveTiming(); });
+    }
+    if (tr.__liveExitTimer) {
+      clearTimeout(tr.__liveExitTimer);
+      tr.__liveExitTimer = null;
+      tr.classList.remove("live-row-exit");
+    }
+    const previousSnapshot = tr.__liveSnapshot || {};
+    const domColumnSignature = [...tr.children].map((cell) => cell.dataset.liveColumn || "").join(",");
+    if (tr.children.length && domColumnSignature !== columnSignature) {
+      tr.innerHTML = "";
+      tr.__liveSnapshot = {};
+    }
+    // Do not patch a row by stale child indexes after the column picker has
+    // changed shape. Otherwise the timing-sector cell can land in the
+    // mini-sector column and the two areas overlap visually.
+    if (tr.children.length !== columns.length) {
+      tr.innerHTML = "";
+      tr.__liveSnapshot = {};
+    }
+    // Keep the row and its mini-sector DOM alive between snapshots. Rebuilding
+    // the complete <tr> every five seconds made every unchanged dot a new DOM
+    // node, which looked like a flash and prevented the browser from showing a
+    // genuine one-by-one update. Only replace a cell when its rendered value
+    // actually changed; the column picker still forces a full rebuild above.
+    columns.forEach((column, index) => {
+      const html = cells[column.key] ?? "<td>--</td>";
+      const holder = document.createElement("template");
+      holder.innerHTML = html.trim();
+      const nextCell = holder.content.firstElementChild;
+      if (nextCell) {
+        nextCell.dataset.liveColumn = column.key;
+        if (!tr.children[index] || tr.children[index].outerHTML !== nextCell.outerHTML) {
+          const currentCell = tr.children[index];
+          if (currentCell) currentCell.replaceWith(nextCell);
+          else tr.appendChild(nextCell);
+        }
+      }
+    });
+    tr.__liveSnapshot = cells;
+    tr.__liveColumnSignature = columnSignature;
+    tr.className = [live.selectedDriver === row.car ? "selected" : "", direction !== "steady" ? `rank-row-${direction}` : "", firstPaint ? "live-row-enter" : ""].filter(Boolean).join(" ");
+    next.set(key, tr);
+    tbody.appendChild(tr);
+    const oldRect = oldRects.get(key);
+    if (oldRect && allowRankMotion) {
+      const newRect = tr.getBoundingClientRect();
+      const delta = oldRect.top - newRect.top;
+      if (Math.abs(delta) > 1) {
+        tr.style.transform = `translateY(${delta}px)`;
+        tr.style.transition = "none";
+        requestAnimationFrame(() => { tr.style.transition = "transform 620ms cubic-bezier(.2,.8,.2,1)"; tr.style.transform = "translateY(0)"; });
+      }
+    } else if (!allowRankMotion) {
+      tr.style.transform = "";
+      tr.style.transition = "";
+    }
+  });
+  oldRows.forEach((tr, key) => {
+    if (!next.has(key)) {
+      tr.classList.add("live-row-exit");
+      tr.__liveExitTimer = setTimeout(() => {
+        if (!next.has(key) && tr.parentNode === tbody) tr.remove();
+        tr.__liveExitTimer = null;
+      }, 260);
+    }
+  });
+  live.rowElements = next;
+}
+
 function renderLiveTiming() {
   const live = state.liveTiming;
   const table = $("liveTimingTable");
   if (!table) return;
+  table.classList.toggle("column-filtered", visibleResultColumns(true).length < availableResultColumns(true).length);
   renderLiveSourceControl();
   renderNanaMapping();
   renderLiveMeetingMeta();
@@ -1826,7 +1990,18 @@ function renderLiveTiming() {
   table.querySelector("thead").innerHTML = liveResultHeaderHtml();
   const query = String(live.search || "").trim().toLowerCase();
   const filteredRows = live.rows.filter((row) => !query || [row.car, row.name, row.team, row.code].some((value) => String(value ?? "").toLowerCase().includes(query)));
-  table.querySelector("tbody").innerHTML = filteredRows.length
+  patchLiveTimingRows(table, filteredRows);
+  // Change markers are for this paint only. Re-rendering the page without a
+  // new snapshot must not replay mini-sector animations.
+  live.miniSectorChanged = Object.create(null);
+  /*
+   * Keep the table rows alive between snapshots.  The feed arrives every few
+   * seconds, but replacing tbody made it look like a page refresh and also
+   * prevented CSS transitions from ever seeing an old position.
+   */
+  /* old renderer intentionally removed; patchLiveTimingRows owns row DOM */
+  /*
+    filteredRows.length
     ? filteredRows.map((row) => {
       const rowIndex = live.rows.indexOf(row);
       const previous = live.rows[rowIndex - 1];
@@ -1858,16 +2033,13 @@ function renderLiveTiming() {
         nc: `<td>${ncCell}</td>`,
         tyre: `<td>${currentTyre ? tyreChip(currentTyre, currentTyre) : "--"}</td>`,
         trackLimits: `<td>${esc(row.extra?.trackLimits ?? "--")}</td>`,
-        miniSectors: `<td><div class="row-colors">${miniSectorSummary(liveMiniSectorView(row))}</div></td>`,
-        sectors: `<td>${sectorSummary(row.extra?.sectors)}</td>`,
+        miniSectors: `<td class="mini-sector-td" data-live-column="miniSectors"><div class="row-colors">${miniSectorSummary(liveMiniSectorView(row))}</div></td>`,
+        sectors: `<td data-live-column="sectors">${sectorSummary(row.extra?.sectors)}</td>`,
       };
       return `<tr data-live-car="${esc(row.car)}" class="${[live.selectedDriver === row.car ? "selected" : "", rankDirection !== "steady" ? `rank-row-${rankDirection}` : ""].filter(Boolean).join(" ")}">${visibleResultColumns(true).map((column) => cells[column.key]).join("")}</tr>`;
     }).join("")
     : `<tr><td colspan="${liveResultColumnCount()}" class="empty-cell">${live.rows.length ? "没有匹配的车手" : "点击开始推送"}</td></tr>`;
-  table.querySelectorAll("tr[data-live-car]").forEach((tr) => tr.addEventListener("click", () => {
-    live.selectedDriver = Number(tr.dataset.liveCar);
-    renderLiveTiming();
-  }));
+  */
   const data = live.data || {};
   const backend = liveBackendPayload(data);
   const liveClassification = liveNcContext(data);
@@ -2014,33 +2186,87 @@ function resetLiveTiming() {
   live.lastAt = null;
   live.loading = false;
   live.miniSectorState = Object.create(null);
+  live.miniSectorChanged = Object.create(null);
+  live.completeLapCache.clear();
+  live.partialLapCache.clear();
+  live.completeLapScope = null;
   live.rankChanges = Object.create(null);
   live.rankPositions = Object.create(null);
+  live.rankPending = Object.create(null);
+  live.rankStablePositions = Object.create(null);
   renderLiveTiming();
 }
 
 function mergeLiveMiniSectors(rows) {
   const live = state.liveTiming;
+  live.miniSectorChanged = Object.create(null);
+  const usableMini = (mini) => {
+    if (!mini) return false;
+    const status = mini.status;
+    const hasStatus = status !== null && status !== undefined && status !== "";
+    const color = String(mini.color || "").trim().toLowerCase();
+    // Dash uses status=0 (and often leaves color="red") as an empty
+    // placeholder.  A few payloads only contain the colour, so accept that
+    // form too, but never let the placeholder overwrite a value already
+    // received for this lap.
+    if (hasStatus) return Number(status) !== 0 && color !== "red" && color !== "gray";
+    return Boolean(color) && color !== "red" && color !== "gray";
+  };
   for (const row of rows || []) {
     const incoming = row?.extra?.miniSectors;
-    if (!Array.isArray(incoming) || !incoming.some((s) => s?.mini_sectors?.length)) continue;
+    if (!Array.isArray(incoming)) continue;
     const key = String(row.car);
     const lap = numeric(row.lap);
     const previous = live.miniSectorState[key];
-    if (!previous || (lap != null && previous.lap != null && lap !== previous.lap)) {
-      live.miniSectorState[key] = { lap, sectors: incoming };
-      continue;
-    }
-    live.miniSectorState[key] = { lap: lap ?? previous.lap, sectors: incoming.map((sector, i) => {
-      const values = new Map((previous.sectors?.[i]?.mini_sectors || []).map((m) => [Number(m.mini_sector), m]));
-      for (const mini of sector.mini_sectors || []) if (mini?.mini_sector != null) values.set(Number(mini.mini_sector), mini);
-      return { ...sector, mini_sectors: [...values.values()].sort((a, b) => Number(a.mini_sector) - Number(b.mini_sector)) };
-    }) };
+    const newLap = !previous || (lap != null && previous.lap != null && lap !== previous.lap);
+    // A new lap must be a fresh working buffer. Keep the layout reported by
+    // this circuit/feed; different circuits have different minisector counts.
+    // This matters when the source briefly publishes three empty sector arrays
+    // at the start of a lap: those arrays are a reset event, not "no update".
+    if (!newLap && !incoming.some((s) => s?.mini_sectors?.length)) continue;
+    const expected = (previous?.expected || [0, 0, 0]).map((count) => Math.max(Number(count) || 0, 0));
+    const changed = new Set();
+    const sectors = [1, 2, 3].map((sectorNumber, index) => {
+      const incomingSector = incoming.find((sector) => Number(sector?.sector) === sectorNumber) || incoming[index];
+      const oldSector = newLap ? null : previous?.sectors?.find((sector) => Number(sector?.sector) === sectorNumber);
+      const oldValues = new Map((oldSector?.mini_sectors || []).map((mini) => [Number(mini?.mini_sector), mini]));
+      const incomingValues = new Map((incomingSector?.mini_sectors || []).map((mini) => [Number(mini?.mini_sector), mini]));
+      expected[index] = Math.max(Number(expected[index]) || 0, incomingValues.size ? Math.max(...incomingValues.keys()) : 0);
+      const slots = [];
+      for (let slot = 1; slot <= expected[index]; slot += 1) {
+        const incomingValue = incomingValues.get(slot) || null;
+        // A zero/red value is the feed's placeholder for "not received yet".
+        // During the same lap it must not erase a minisector already received;
+        // after a new lap, the old lap is deliberately discarded.
+        const next = usableMini(incomingValue)
+          ? incomingValue
+          : (!newLap && usableMini(oldValues.get(slot)) ? oldValues.get(slot) : incomingValue);
+        const old = oldValues.get(slot);
+        const hasValue = usableMini(next);
+        const oldSignature = old ? `${old.status ?? ""}|${old.color ?? ""}` : "";
+        const nextSignature = next ? `${next.status ?? ""}|${next.color ?? ""}` : "";
+        const miniKey = `${key}-${lap ?? "current"}-${sectorNumber}-${slot}`;
+        if (hasValue && oldSignature !== nextSignature) changed.add(miniKey);
+        slots.push({ ...(next || {}), mini_sector: slot, _miniKey: miniKey, status: next?.status ?? null, color: next?.color ?? "" });
+      }
+      return { sector: sectorNumber, mini_sectors: slots };
+    });
+    live.miniSectorState[key] = { lap: lap ?? previous?.lap ?? null, expected, sectors };
+    if (changed.size) live.miniSectorChanged[key] = changed;
   }
 }
 
 function liveMiniSectorView(row) {
-  return state.liveTiming.miniSectorState[String(row?.car)]?.sectors || row?.extra?.miniSectors;
+  const buffered = state.liveTiming.miniSectorState[String(row?.car)]?.sectors;
+  const direct = row?.extra?.miniSectors;
+  // Never let a malformed/mapped sector-time array fall through into the
+  // minisector column. Only the explicit mini_sectors shape belongs here;
+  // otherwise render an empty track; its length is unknown until this feed
+  // reports the circuit's actual mini_sector indexes.
+  const valid = (value) => Array.isArray(value) && value.some((sector) => Array.isArray(sector?.mini_sectors));
+  if (valid(buffered)) return buffered;
+  if (valid(direct)) return direct;
+  return [1, 2, 3].map((sector) => ({ sector, mini_sectors: [] }));
 }
 
 function openLiveBridgeStream({ source, onState, onError, onClose } = {}) {
@@ -2135,14 +2361,65 @@ function acceptLiveTimingSnapshot(data, token, sourceLabel) {
   live.data = isBackendLivePayload(data) ? data : enrichBackendMapping(data || {});
   renderLiveMeetingMeta(live.data);
   setConnection(true, sourceLabel ? `${sourceLabel} 已连接` : "实时接口已连接");
+  const previousRows = new Map((live.rows || []).map((row) => [String(row.car), row]));
   live.rows = buildLiveRows(live.data);
+  // Nana/Dash sends partial snapshots while a lap is being built. Preserve
+  // the last usable sector values when this snapshot omits them; a transient
+  // omission must never flash the whole cell back to "--".
+  live.rows.forEach((row) => {
+    const previous = previousRows.get(String(row.car));
+    if (!previous) return;
+    const hasSectorValue = (value) => Array.isArray(value) && value.some((sector) =>
+      Array.isArray(sector?.mini_sectors)
+        ? sector.mini_sectors.some((mini) => mini && mini.status != null && Number(mini.status) !== 0)
+        : sector?.time || sector?.best_time,
+    );
+    if (!hasSectorValue(row.extra?.sectors) && hasSectorValue(previous.extra?.sectors)) {
+      row.extra.sectors = previous.extra.sectors;
+    }
+  });
   mergeLiveMiniSectors(live.rows);
-  const nextRanks = Object.fromEntries(live.rows.filter((row) => row.position != null).map((row) => [row.car, Number(row.position)]));
-  live.rankChanges = Object.fromEntries(Object.entries(nextRanks).flatMap(([car, position]) => {
-    const previous = live.rankPositions[car];
-    return previous == null || previous === position ? [] : [[car, { direction: position < previous ? "up" : "down" }]];
-  }));
-  live.rankPositions = nextRanks;
+  // Only source positions are eligible for rank animation. Indexes assigned
+  // to rows without a position are display fallbacks and must never count as
+  // a driver moving on track. Require the same source position twice before
+  // committing it, which filters transient partial snapshots from dash.
+  const observedRanks = Object.fromEntries(live.rows
+    .filter((row) => row.positionSource === "source" && Number.isFinite(Number(row.position)))
+    .map((row) => [row.car, Number(row.position)]));
+  const nextStable = { ...live.rankStablePositions };
+  const nextPending = { ...live.rankPending };
+  const changes = {};
+  Object.entries(observedRanks).forEach(([car, position]) => {
+    const stable = nextStable[car];
+    if (stable == null) {
+      nextStable[car] = position;
+      delete nextPending[car];
+      return;
+    }
+    if (stable === position) {
+      delete nextPending[car];
+      return;
+    }
+    const pending = nextPending[car];
+    if (pending && pending.position === position) {
+      nextStable[car] = position;
+      delete nextPending[car];
+      changes[car] = { direction: position < stable ? "up" : "down" };
+    } else {
+      nextPending[car] = { position };
+    }
+  });
+  live.rankStablePositions = nextStable;
+  live.rankPending = nextPending;
+  live.rankChanges = changes;
+  // Render the confirmed order only. A one-snapshot source reorder stays in
+  // its previous place until the next snapshot confirms it.
+  live.rows.forEach((row) => {
+    const stable = nextStable[row.car];
+    if (Number.isFinite(Number(stable))) row.position = Number(stable);
+  });
+  live.rows.sort((a, b) => (Number(a.position) || Infinity) - (Number(b.position) || Infinity) || a.car - b.car);
+  live.rankPositions = Object.fromEntries(live.rows.map((row) => [row.car, Number(row.position)]).filter(([, position]) => Number.isFinite(position)));
   live.events = buildLiveEvents(live.data);
   live.logs = buildLiveLogs(live.data);
   live.received += 1;
@@ -2151,6 +2428,9 @@ function acceptLiveTimingSnapshot(data, token, sourceLabel) {
   live.lastAt = live.data.fetched_at || new Date().toISOString();
   live.loading = false;
   renderLiveTiming();
+  window.setTimeout(() => {
+    if (token === live.token) { live.rankChanges = Object.create(null); renderLiveTiming(); }
+  }, 1400);
   return true;
 }
 
@@ -2512,7 +2792,9 @@ async function selectSessionNode(key) {
   await loadCurrentData();
 }
 
-const statusColors = { 0: "red", 2048: "yellow", 2049: "green", 2051: "purple", 2064: "blue" };
+// Status 0 means no usable mini-sector timing; keep it neutral instead of
+// presenting it as a red performance/status signal.
+const statusColors = { 0: "gray", 2048: "yellow", 2049: "green", 2051: "purple", 2064: "blue" };
 const tyreClass = (compound) => {
   const value = String(compound || "unknown").toLowerCase();
   return ["soft", "medium", "hard", "intermediate", "wet"].includes(value) ? value : "unknown";
@@ -2663,12 +2945,31 @@ function sectorSummary(sectors) {
   return rows ? `<div class="sector-summary">${rows}</div>` : "--";
 }
 
-function miniSectorSummary(miniSectors) {
+function miniSectorSummary(miniSectors, { changed = null } = {}) {
   if (!Array.isArray(miniSectors) || !miniSectors.length) return "--";
+  const changedOrder = changed instanceof Set ? new Map([...changed].map((key, index) => [key, index])) : null;
   const groups = miniSectors.map((sector) => {
     const dots = (sector?.mini_sectors || [])
-      .filter((mini) => mini && ((mini.status !== null && mini.status !== undefined && mini.status !== "") || (mini.color && mini.color !== "gray")))
-      .map((mini) => `<i class="mini-dot color-${colorKey(mini.color || colorFromStatus(mini.status))}" aria-hidden="true"></i>`);
+      .filter((mini) => mini && mini.mini_sector != null)
+      .map((mini) => {
+        const rawStatus = mini.status;
+        const rawColor = String(mini.color || "").trim().toLowerCase();
+        const hasStatus = rawStatus !== null && rawStatus !== undefined && rawStatus !== "";
+        const hasValue = hasStatus
+          ? Number(rawStatus) !== 0 && rawColor !== "red" && rawColor !== "gray"
+          : Boolean(rawColor) && rawColor !== "red" && rawColor !== "gray";
+        const key = mini._miniKey || "";
+        // Some feeds keep a stale red colour on an empty/invalid mini-sector.
+        // Treat both status 0 and that legacy red marker as the neutral gray
+        // placeholder; red is not a valid mini-sector result colour here.
+        const resolvedColor = Number(mini.status) === 0 || rawColor === "red"
+          ? "gray"
+          : colorKey(mini.color || colorFromStatus(mini.status));
+        const classes = hasValue ? `mini-dot color-${resolvedColor}` : "mini-dot mini-dot-empty";
+        const fresh = hasValue && changed?.has(key) ? " mini-dot-new" : "";
+        const delay = changedOrder?.has(key) ? ` style="--mini-delay:${Math.min(changedOrder.get(key), 7) * 42}ms"` : "";
+        return `<i class="${classes}${fresh}" data-mini-key="${esc(key)}"${delay} aria-hidden="true"></i>`;
+      });
     return dots.length ? '<span class="mini-sector-group">' + dots.join("") + '</span>' : "";
   }).filter(Boolean);
   return groups.length ? '<div class="mini-sector-summary">' + groups.join("") + '</div>' : "--";
@@ -2795,6 +3096,7 @@ function renderResults() {
   const query = state.search.trim().toLowerCase();
   const filtered = rows.filter((row) => !query || [row.car, row.driver.full_name, row.driver.team_name, row.driver.name_acronym].some((value) => String(value ?? "").toLowerCase().includes(query)));
   const body = $("resultsTable").querySelector("tbody");
+  $("resultsTable").classList.toggle("column-filtered", visibleResultColumns(false).length < availableResultColumns(false).length);
   if (!filtered.length) body.innerHTML = `<tr><td colspan="${resultColumnCount()}" class="empty-cell">没有匹配的车手</td></tr>`;
   else body.innerHTML = filtered.map((row) => {
     const status = statusLabel(row.raw);

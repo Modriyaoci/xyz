@@ -79,7 +79,9 @@ const TEAM_IDS = {
 const UNMAPPED_HISTORICAL_TEAMS = new Set([
 ]);
 
-const STATUS_COLORS = { 0: "red", 2048: "yellow", 2049: "green", 2051: "purple", 2064: "blue" };
+// Status 0 means that no timing colour was supplied.  It must stay neutral
+// instead of being rendered as a red mini-sector.
+const STATUS_COLORS = { 0: "gray", 2048: "yellow", 2049: "green", 2051: "purple", 2064: "blue" };
 const RACE_SESSIONS = new Set(["Race", "Sprint"]);
 
 export const backendDriverIds = Object.freeze({ ...DRIVER_IDS });

@@ -529,15 +529,16 @@ export function namiSessionData(decoded, mapping, metadata = {}) {
   const laps = competitors.map((row) => {
     const key = row._id === null || row._id === undefined ? null : String(row._id);
     const sectors = key ? extra.sectors?.[key] : null;
+    const sector = (number) => sectors?.find((item) => Number(item?.sector) === number) || sectors?.[number - 1] || {};
     return {
       meeting_key: stage.meeting_key,
       session_key: stage.stage_id,
       driver_number: row.car_number,
       lap_number: numeric(row.laps),
       lap_duration: durationSeconds(key ? extra.last_lap_time?.[key] : null),
-      duration_sector_1: durationSeconds(sectors?.[0]?.time),
-      duration_sector_2: durationSeconds(sectors?.[1]?.time),
-      duration_sector_3: durationSeconds(sectors?.[2]?.time),
+      duration_sector_1: durationSeconds(sector(1).time),
+      duration_sector_2: durationSeconds(sector(2).time),
+      duration_sector_3: durationSeconds(sector(3).time),
       date_start: recordDate,
       is_pit_out_lap: false,
     };
