@@ -4,6 +4,7 @@ import {
   resolveBackendTeamId as sharedResolveBackendTeamId,
 } from "./backend-fields.mjs";
 import { openF1TelemetryStream } from "./f1telemetry.mjs";
+import { retainCompleteLiveLaps } from "./complete-live-laps.mjs";
 import { collectSessionFeedRows, completeSessionResultRows, isCompleteLapRecord } from "./session-feed-rules.mjs";
 
 const state = {
@@ -67,8 +68,14 @@ const state = {
     stream: null,
     mapping: null,
     miniSectorState: Object.create(null),
+    miniSectorChanged: Object.create(null),
+    completeLapCache: new Map(),
+    partialLapCache: new Map(),
+    completeLapScope: null,
     rankChanges: Object.create(null),
     rankPositions: Object.create(null),
+    rankPending: Object.create(null),
+    rankStablePositions: Object.create(null),
     mappingLoading: false,
     mappingSaving: false,
     mappingError: null,
@@ -822,7 +829,8 @@ const isRaceSession = () => raceSessionNames.has(state.activeSession?.session_na
 const isQualifyingSession = () => qualifyingSessionNames.has(state.activeSession?.session_name);
 const CURRENT_STANDINGS_SEASON = 2026;
 const standingsSeasons = [2026, 2025, 2024, 2023, 2022, 2021, 2020, 2019, 2018];
-const RESULT_COLUMN_STORAGE_KEY = "f1-result-columns-v1";
+const RESULT_COLUMN_STORAGE_KEY = "f1-result-columns-v2";
+const defaultResultColumns = new Set(["position", "driver", "laps", "status", "lastLap", "fastestLap", "gap", "pit", "tyre", "miniSectors", "sectors"]);
 const resultColumnDefinitions = Object.freeze([
   { key: "position", label: "名次" },
   { key: "car", label: "车号" },
@@ -850,7 +858,7 @@ function ensureResultColumnVisibility() {
   if (state.resultColumnVisibility) return state.resultColumnVisibility;
   let saved = {};
   try { saved = JSON.parse(window.localStorage.getItem(RESULT_COLUMN_STORAGE_KEY) || "{}"); } catch { saved = {}; }
-  state.resultColumnVisibility = Object.fromEntries(resultColumnDefinitions.map(({ key }) => [key, saved[key] !== false]));
+  state.resultColumnVisibility = Object.fromEntries(resultColumnDefinitions.map(({ key }) => [key, typeof saved?.[key] === "boolean" ? saved[key] : defaultResultColumns.has(key)]));
   return state.resultColumnVisibility;
 }
 function availableResultColumns(live = false) {
@@ -1302,6 +1310,7 @@ function isLiveNotClassified(rows, context) {
 }
 
 function buildLiveRows(data) {
+  const live = state.liveTiming;
   const drivers = new Map((data?.drivers || []).map((driver) => [Number(driver.driver_number), driver]));
   const results = new Map((data?.session_result || []).map((result) => [Number(result.driver_number), result]));
   const backend = liveBackendPayload(data);
@@ -1383,7 +1392,8 @@ function buildLiveRows(data) {
     const profile = liveDriverProfiles.get(Number(mappedId)) || {};
     const name = driver.full_name || `${driver.first_name || ""} ${driver.last_name || ""}`.trim() || mapped.name || mapped.driver_name || profile.name || `车手 ${car}`;
     return {
-      position: numeric(mapped.position) ?? resultPosition ?? livePosition ?? null,
+      position: numeric(mapped.position) ?? resultPosition ?? livePosition ?? live.rankStablePositions[car] ?? null,
+      positionSource: numeric(mapped.position) != null || resultPosition != null || livePosition != null ? "source" : "fallback",
       car,
       name,
       code: driver.name_acronym || mapped.abbr || mapped.short_name || profile.code || "",
@@ -1432,6 +1442,15 @@ function buildLiveRows(data) {
     return (aGap ?? Infinity) - (bGap ?? Infinity) || a.car - b.car;
   });
   rows.forEach((row, index) => { if (row.position == null) row.position = index + 1; });
+  if (namiLiveProvider(live.source)) {
+    const scope = `${live.source}:${data?.session?.session_key ?? data?.id ?? live.stageId}`;
+    if (live.completeLapScope !== scope) {
+      live.completeLapCache.clear();
+      live.partialLapCache.clear();
+      live.completeLapScope = scope;
+    }
+    retainCompleteLiveLaps(rows, live.completeLapCache, live.partialLapCache, { displayPartial: true });
+  }
   return rows;
 }
 
@@ -1815,10 +1834,81 @@ async function saveNanaMapping() {
   }
 }
 
+function liveRowCells(row, previous, rankDirection) {
+  const currentTyre = row.extra?.tyreInfo?.compound;
+  const previousGap = previous ? row.interval || (numeric(row.gap) != null && numeric(previous.gap) != null ? displayGap(Math.max(0, numeric(row.gap) - numeric(previous.gap))) : "--") : "--";
+  const statusClass = row.status === "进站" ? "is-pit" : row.status === "运行中" ? "is-running" : "is-warning";
+  const ncCell = row.isNc ? `<span class="nc-badge">NC</span>` : "--";
+  const arrow = rankDirection === "up" ? "▲" : rankDirection === "down" ? "▼" : "";
+  return { position:`<td class="position"><span class="rank-value rank-${rankDirection}">${arrow ? `<span class="rank-arrow">${arrow}</span>` : ""}${esc(row.isNc ? "NC" : row.position ?? "--")}</span></td>`, car:`<td>${esc(row.car)}</td>`, driver:`<td class="driver-cell"><strong>${esc(row.name)}</strong><span class="driver-code">${esc(row.code)}</span></td>`, team:`<td>${esc(row.team)}</td>`, driverId:`<td>${esc(row.driverId ?? "--")}</td>`, teamId:`<td>${esc(row.teamId ?? "--")}</td>`, laps:`<td>${esc(row.lap ?? "--")}</td>`, time:`<td>${esc(liveTimeText(row))}</td>`, points:`<td>${esc(row.points ?? "--")}</td>`, status:`<td><span class="live-row-status ${statusClass}">${esc(row.status)}</span></td>`, lastLap:`<td>${displayLapTime(row.lastLap)} ${colorBadgeOrEmpty(row.extra?.lastLapColor)}</td>`, fastestLap:`<td>${displayLapTime(row.bestLap)} ${colorBadgeOrEmpty(row.extra?.bestLapColor)}</td>`, interval:`<td>${esc(displayGap(previousGap))}</td>`, gap:`<td>${esc(displayGap(row.gap))}</td>`, pit:`<td>${esc(row.pitCount ?? "--")}</td>`, nc:`<td>${ncCell}</td>`, tyre:`<td>${currentTyre ? tyreChip(currentTyre, currentTyre) : "--"}</td>`, trackLimits:`<td>${esc(row.extra?.trackLimits ?? "--")}</td>`, miniSectors:`<td class="mini-sector-td" data-live-column="miniSectors"><div class="row-colors">${miniSectorSummary(liveMiniSectorView(row), { changed: state.liveTiming.miniSectorChanged[String(row.car)] })}</div></td>`, sectors:`<td data-live-column="sectors">${sectorSummary(row.extra?.sectors)}</td>` };
+}
+function patchLiveTimingRows(table, rows) {
+  const live = state.liveTiming, tbody = table.querySelector("tbody"); if (!tbody) return;
+  const columns = visibleResultColumns(true), columnSignature = columns.map((column) => column.key).join(",");
+  if (table.dataset.liveColumnSignature !== columnSignature) {
+    // The column picker changes both the header and the cell indexes. Rebuild
+    // row cells once so an old DOM column cannot be mistaken for a new one.
+    tbody.innerHTML = "";
+    table.dataset.liveColumnSignature = columnSignature;
+  }
+  const allowRankMotion = Object.keys(live.rankChanges).length > 0;
+  const old = new Map([...tbody.querySelectorAll("tr[data-live-car]")].map((tr) => [String(tr.dataset.liveCar), tr]));
+  const rects = new Map([...old].map(([key,tr]) => [key,tr.getBoundingClientRect()]));
+  if (!rows.length) { tbody.innerHTML = `<tr><td colspan="${liveResultColumnCount()}" class="empty-cell">${live.rows.length ? "没有匹配的车手" : "点击开始推送"}</td></tr>`; return; }
+  // Remove the initial empty-state row before appending live driver rows.
+  // Leaving it in tbody creates a permanent phantom row above the ranking.
+  tbody.querySelectorAll("tr:not([data-live-car])").forEach((tr) => tr.remove());
+  const next = new Map();
+  rows.forEach((row) => {
+    const key = String(row.car), index = live.rows.indexOf(row), previous = index > 0 ? live.rows[index - 1] : null, direction = live.rankChanges[row.car]?.direction || "steady", cells = liveRowCells(row, previous, direction);
+    let tr = old.get(key);
+    // Rows can survive a column-picker repaint. Reuse them only when their
+    // child count and column signature still match the current header.
+    if (tr && (tr.__liveColumnSignature !== columnSignature || tr.children.length !== columns.length)) { tr.remove(); tr = null; }
+    const first = !tr;
+    if (!tr) { tr = document.createElement("tr"); tr.dataset.liveCar = row.car; tr.addEventListener("click", () => { live.selectedDriver = Number(tr.dataset.liveCar); renderLiveTiming(); }); }
+    if (tr.__liveExitTimer) { clearTimeout(tr.__liveExitTimer); tr.__liveExitTimer = null; tr.classList.remove("live-row-exit"); }
+    const snapshot = tr.__liveSnapshot || {};
+    const domColumnSignature = [...tr.children].map((cell) => cell.dataset.liveColumn || "").join(",");
+    const expectedColumnSignature = columns.map((column) => column.key).join(",");
+    // Rebuild legacy/stale rows when the semantic column markers do not match.
+    // This prevents a previous column order from putting the timing-sector
+    // summary into the minisector cell after a picker or hot reload.
+    if (tr.children.length && domColumnSignature !== expectedColumnSignature) { tr.innerHTML = ""; tr.__liveSnapshot = {}; }
+    // Rebuild a stale row rather than patching cells by index.  This keeps a
+    // sector summary from landing in the mini-sector cell after a picker
+    // change or a legacy snapshot with a different column shape.
+    if (tr.children.length !== columns.length) { tr.innerHTML = ""; tr.__liveSnapshot = {}; }
+    // Keep unchanged cells (especially minisectors) mounted between snapshots.
+    // Replacing the whole row every five seconds made the live table flash and
+    // made every dot look newly received. The picker still rebuilds the row
+    // above when its column signature changes; normal polling only patches
+    // cells whose HTML changed.
+    columns.forEach((column, index) => {
+      const html = cells[column.key] ?? "<td>--</td>";
+      const holder = document.createElement("template");
+      holder.innerHTML = html.trim();
+      const nextCell = holder.content.firstElementChild;
+      if (nextCell) {
+        nextCell.dataset.liveColumn = column.key;
+        if (!tr.children[index] || tr.children[index].outerHTML !== nextCell.outerHTML) {
+          const currentCell = tr.children[index];
+          if (currentCell) currentCell.replaceWith(nextCell);
+          else tr.appendChild(nextCell);
+        }
+      }
+    });
+    tr.__liveSnapshot = cells; tr.__liveColumnSignature = columnSignature; tr.className = [live.selectedDriver === row.car ? "selected" : "", direction !== "steady" ? `rank-row-${direction}` : "", first ? "live-row-enter" : ""].filter(Boolean).join(" "); next.set(key,tr); tbody.appendChild(tr);
+    const oldRect = rects.get(key); if (oldRect && allowRankMotion) { const delta = oldRect.top - tr.getBoundingClientRect().top; if (Math.abs(delta) > 1) { tr.style.transform = `translateY(${delta}px)`; tr.style.transition = "none"; requestAnimationFrame(() => { tr.style.transition = "transform 620ms cubic-bezier(.2,.8,.2,1)"; tr.style.transform = "translateY(0)"; }); } } else if (!allowRankMotion) { tr.style.transform = ""; tr.style.transition = ""; }
+  });
+  old.forEach((tr,key) => { if (!next.has(key)) { tr.classList.add("live-row-exit"); tr.__liveExitTimer = setTimeout(() => { if (!next.has(key) && tr.parentNode === tbody) tr.remove(); tr.__liveExitTimer = null; }, 260); } });
+}
+
 function renderLiveTiming() {
   const live = state.liveTiming;
   const table = $("liveTimingTable");
   if (!table) return;
+  table.classList.toggle("column-filtered", visibleResultColumns(true).length < availableResultColumns(true).length);
   renderLiveSourceControl();
   renderNanaMapping();
   renderLiveMeetingMeta();
@@ -1826,7 +1916,10 @@ function renderLiveTiming() {
   table.querySelector("thead").innerHTML = liveResultHeaderHtml();
   const query = String(live.search || "").trim().toLowerCase();
   const filteredRows = live.rows.filter((row) => !query || [row.car, row.name, row.team, row.code].some((value) => String(value ?? "").toLowerCase().includes(query)));
-  table.querySelector("tbody").innerHTML = filteredRows.length
+  patchLiveTimingRows(table, filteredRows);
+  live.miniSectorChanged = Object.create(null);
+  /* legacy string renderer retained below as documentation; rows are patched above */
+  /* filteredRows.length
     ? filteredRows.map((row) => {
       const rowIndex = live.rows.indexOf(row);
       const previous = live.rows[rowIndex - 1];
@@ -1858,16 +1951,12 @@ function renderLiveTiming() {
         nc: `<td>${ncCell}</td>`,
         tyre: `<td>${currentTyre ? tyreChip(currentTyre, currentTyre) : "--"}</td>`,
         trackLimits: `<td>${esc(row.extra?.trackLimits ?? "--")}</td>`,
-        miniSectors: `<td><div class="row-colors">${miniSectorSummary(liveMiniSectorView(row))}</div></td>`,
-        sectors: `<td>${sectorSummary(row.extra?.sectors)}</td>`,
+        miniSectors: `<td class="mini-sector-td" data-live-column="miniSectors"><div class="row-colors">${miniSectorSummary(liveMiniSectorView(row))}</div></td>`,
+        sectors: `<td data-live-column="sectors">${sectorSummary(row.extra?.sectors)}</td>`,
       };
       return `<tr data-live-car="${esc(row.car)}" class="${[live.selectedDriver === row.car ? "selected" : "", rankDirection !== "steady" ? `rank-row-${rankDirection}` : ""].filter(Boolean).join(" ")}">${visibleResultColumns(true).map((column) => cells[column.key]).join("")}</tr>`;
     }).join("")
-    : `<tr><td colspan="${liveResultColumnCount()}" class="empty-cell">${live.rows.length ? "没有匹配的车手" : "点击开始推送"}</td></tr>`;
-  table.querySelectorAll("tr[data-live-car]").forEach((tr) => tr.addEventListener("click", () => {
-    live.selectedDriver = Number(tr.dataset.liveCar);
-    renderLiveTiming();
-  }));
+    : `<tr><td colspan="${liveResultColumnCount()}" class="empty-cell">${live.rows.length ? "没有匹配的车手" : "点击开始推送"}</td></tr>`; */
   const data = live.data || {};
   const backend = liveBackendPayload(data);
   const liveClassification = liveNcContext(data);
@@ -2014,26 +2103,70 @@ function resetLiveTiming() {
   live.lastAt = null;
   live.loading = false;
   live.miniSectorState = Object.create(null);
+  live.miniSectorChanged = Object.create(null);
+  live.completeLapCache.clear();
+  live.partialLapCache.clear();
+  live.completeLapScope = null;
   live.rankChanges = Object.create(null);
   live.rankPositions = Object.create(null);
+  live.rankPending = Object.create(null);
+  live.rankStablePositions = Object.create(null);
   renderLiveTiming();
 }
 
 function mergeLiveMiniSectors(rows) {
   const live = state.liveTiming;
+  live.miniSectorChanged = Object.create(null);
+  const usableMini = (mini) => {
+    if (!mini) return false;
+    const status = mini.status;
+    const hasStatus = status !== null && status !== undefined && status !== "";
+    const color = String(mini.color || "").trim().toLowerCase();
+    if (hasStatus) return Number(status) !== 0 && color !== "red" && color !== "gray";
+    return Boolean(color) && color !== "red" && color !== "gray";
+  };
   for (const row of rows || []) {
     const incoming = row?.extra?.miniSectors;
-    if (!Array.isArray(incoming) || !incoming.some((s) => s?.mini_sectors?.length)) continue;
+    if (!Array.isArray(incoming)) continue;
     const key = String(row.car), lap = numeric(row.lap), previous = live.miniSectorState[key];
-    if (!previous || (lap != null && previous.lap != null && lap !== previous.lap)) { live.miniSectorState[key] = { lap, sectors: incoming }; continue; }
-    live.miniSectorState[key] = { lap: lap ?? previous.lap, sectors: incoming.map((sector, i) => {
-      const values = new Map((previous.sectors?.[i]?.mini_sectors || []).map((m) => [Number(m.mini_sector), m]));
-      for (const mini of sector.mini_sectors || []) if (mini?.mini_sector != null) values.set(Number(mini.mini_sector), mini);
-      return { ...sector, mini_sectors: [...values.values()].sort((a, b) => Number(a.mini_sector) - Number(b.mini_sector)) };
-    }) };
+    const newLap = !previous || (lap != null && previous.lap != null && lap !== previous.lap);
+    // Empty sector arrays at the start of a new lap are a real reset event.
+    // Preserve only the known slot layout, never the previous lap's colours.
+    if (!newLap && !incoming.some((s) => s?.mini_sectors?.length)) continue;
+    const expected = (previous?.expected || [0, 0, 0]).map((count) => Math.max(Number(count) || 0, 0)), changed = new Set();
+    const sectors = [1, 2, 3].map((sectorNumber, index) => {
+      const incomingSector = incoming.find((sector) => Number(sector?.sector) === sectorNumber) || incoming[index];
+      const oldSector = newLap ? null : previous?.sectors?.find((sector) => Number(sector?.sector) === sectorNumber);
+      const oldValues = new Map((oldSector?.mini_sectors || []).map((mini) => [Number(mini?.mini_sector), mini]));
+      const incomingValues = new Map((incomingSector?.mini_sectors || []).map((mini) => [Number(mini?.mini_sector), mini]));
+      expected[index] = Math.max(Number(expected[index]) || 0, incomingValues.size ? Math.max(...incomingValues.keys()) : 0);
+      const slots = [];
+      for (let slot = 1; slot <= expected[index]; slot += 1) {
+        const incomingValue = incomingValues.get(slot) || null;
+        const next = usableMini(incomingValue)
+          ? incomingValue
+          : (!newLap && usableMini(oldValues.get(slot)) ? oldValues.get(slot) : incomingValue);
+        const old = oldValues.get(slot);
+        const hasValue = usableMini(next);
+        const oldSignature = old ? `${old.status ?? ""}|${old.color ?? ""}` : "", nextSignature = next ? `${next.status ?? ""}|${next.color ?? ""}` : "";
+        const miniKey = `${key}-${lap ?? "current"}-${sectorNumber}-${slot}`;
+        if (hasValue && oldSignature !== nextSignature) changed.add(miniKey);
+        slots.push({ ...(next || {}), mini_sector: slot, _miniKey: miniKey, status: next?.status ?? null, color: next?.color ?? "" });
+      }
+      return { sector: sectorNumber, mini_sectors: slots };
+    });
+    live.miniSectorState[key] = { lap: lap ?? previous?.lap ?? null, expected, sectors };
+    if (changed.size) live.miniSectorChanged[key] = changed;
   }
 }
-function liveMiniSectorView(row) { return state.liveTiming.miniSectorState[String(row?.car)]?.sectors || row?.extra?.miniSectors; }
+function liveMiniSectorView(row) {
+  const buffered = state.liveTiming.miniSectorState[String(row?.car)]?.sectors;
+  const direct = row?.extra?.miniSectors;
+  const valid = (value) => Array.isArray(value) && value.some((sector) => Array.isArray(sector?.mini_sectors));
+  if (valid(buffered)) return buffered;
+  if (valid(direct)) return direct;
+  return [1, 2, 3].map((sector) => ({ sector, mini_sectors: [] }));
+}
 
 function openLiveBridgeStream({ source, onState, onError, onClose } = {}) {
   const bridgeName = liveBridgeSourceName(source);
@@ -2127,14 +2260,56 @@ function acceptLiveTimingSnapshot(data, token, sourceLabel) {
   live.data = isBackendLivePayload(data) ? data : enrichBackendMapping(data || {});
   renderLiveMeetingMeta(live.data);
   setConnection(true, sourceLabel ? `${sourceLabel} 已连接` : "实时接口已连接");
+  const previousRows = new Map((live.rows || []).map((row) => [String(row.car), row]));
   live.rows = buildLiveRows(live.data);
+  live.rows.forEach((row) => {
+    const previous = previousRows.get(String(row.car));
+    if (!previous) return;
+    const hasSectorValue = (value) => Array.isArray(value) && value.some((sector) =>
+      Array.isArray(sector?.mini_sectors)
+        ? sector.mini_sectors.some((mini) => mini && mini.status != null && Number(mini.status) !== 0)
+        : sector?.time || sector?.best_time,
+    );
+    if (!hasSectorValue(row.extra?.sectors) && hasSectorValue(previous.extra?.sectors)) {
+      row.extra.sectors = previous.extra.sectors;
+    }
+  });
   mergeLiveMiniSectors(live.rows);
-  const nextRanks = Object.fromEntries(live.rows.filter((row) => row.position != null).map((row) => [row.car, Number(row.position)]));
-  live.rankChanges = Object.fromEntries(Object.entries(nextRanks).flatMap(([car, position]) => {
-    const previous = live.rankPositions[car];
-    return previous == null || previous === position ? [] : [[car, { direction: position < previous ? "up" : "down" }]];
-  }));
-  live.rankPositions = nextRanks;
+  const observedRanks = Object.fromEntries(live.rows
+    .filter((row) => row.positionSource === "source" && Number.isFinite(Number(row.position)))
+    .map((row) => [row.car, Number(row.position)]));
+  const nextStable = { ...live.rankStablePositions };
+  const nextPending = { ...live.rankPending };
+  const changes = {};
+  Object.entries(observedRanks).forEach(([car, position]) => {
+    const stable = nextStable[car];
+    if (stable == null) {
+      nextStable[car] = position;
+      delete nextPending[car];
+      return;
+    }
+    if (stable === position) {
+      delete nextPending[car];
+      return;
+    }
+    const pending = nextPending[car];
+    if (pending && pending.position === position) {
+      nextStable[car] = position;
+      delete nextPending[car];
+      changes[car] = { direction: position < stable ? "up" : "down" };
+    } else nextPending[car] = { position };
+  });
+  live.rankStablePositions = nextStable;
+  live.rankPending = nextPending;
+  live.rankChanges = changes;
+  // Render the confirmed order only. A one-snapshot source reorder stays in
+  // its previous place until the next snapshot confirms it.
+  live.rows.forEach((row) => {
+    const stable = nextStable[row.car];
+    if (Number.isFinite(Number(stable))) row.position = Number(stable);
+  });
+  live.rows.sort((a, b) => (Number(a.position) || Infinity) - (Number(b.position) || Infinity) || a.car - b.car);
+  live.rankPositions = Object.fromEntries(live.rows.map((row) => [row.car, Number(row.position)]).filter(([, position]) => Number.isFinite(position)));
   live.events = buildLiveEvents(live.data);
   live.logs = buildLiveLogs(live.data);
   live.received += 1;
@@ -2143,6 +2318,9 @@ function acceptLiveTimingSnapshot(data, token, sourceLabel) {
   live.lastAt = live.data.fetched_at || new Date().toISOString();
   live.loading = false;
   renderLiveTiming();
+  window.setTimeout(() => {
+    if (token === live.token) { live.rankChanges = Object.create(null); renderLiveTiming(); }
+  }, 1400);
   return true;
 }
 
@@ -2504,7 +2682,9 @@ async function selectSessionNode(key) {
   await loadCurrentData();
 }
 
-const statusColors = { 0: "red", 2048: "yellow", 2049: "green", 2051: "purple", 2064: "blue" };
+// Status 0 means no usable mini-sector timing; keep it neutral instead of
+// presenting it as a red performance/status signal.
+const statusColors = { 0: "gray", 2048: "yellow", 2049: "green", 2051: "purple", 2064: "blue" };
 const tyreClass = (compound) => {
   const value = String(compound || "unknown").toLowerCase();
   return ["soft", "medium", "hard", "intermediate", "wet"].includes(value) ? value : "unknown";
@@ -2655,12 +2835,31 @@ function sectorSummary(sectors) {
   return rows ? `<div class="sector-summary">${rows}</div>` : "--";
 }
 
-function miniSectorSummary(miniSectors) {
+function miniSectorSummary(miniSectors, { changed = null } = {}) {
   if (!Array.isArray(miniSectors) || !miniSectors.length) return "--";
+  const changedOrder = changed instanceof Set ? new Map([...changed].map((key, index) => [key, index])) : null;
   const groups = miniSectors.map((sector) => {
     const dots = (sector?.mini_sectors || [])
-      .filter((mini) => mini && ((mini.status !== null && mini.status !== undefined && mini.status !== "") || (mini.color && mini.color !== "gray")))
-      .map((mini) => `<i class="mini-dot color-${colorKey(mini.color || colorFromStatus(mini.status))}" aria-hidden="true"></i>`);
+      .filter((mini) => mini && mini.mini_sector != null)
+      .map((mini) => {
+        const rawStatus = mini.status;
+        const rawColor = String(mini.color || "").trim().toLowerCase();
+        const hasStatus = rawStatus !== null && rawStatus !== undefined && rawStatus !== "";
+        const hasValue = hasStatus
+          ? Number(rawStatus) !== 0 && rawColor !== "red" && rawColor !== "gray"
+          : Boolean(rawColor) && rawColor !== "red" && rawColor !== "gray";
+        const key = mini._miniKey || "";
+        // Some feeds keep a stale red colour on an empty/invalid mini-sector.
+        // Treat both status 0 and that legacy red marker as the neutral gray
+        // placeholder; red is not a valid mini-sector result colour here.
+        const resolvedColor = Number(mini.status) === 0 || rawColor === "red"
+          ? "gray"
+          : colorKey(mini.color || colorFromStatus(mini.status));
+        const classes = hasValue ? `mini-dot color-${resolvedColor}` : "mini-dot mini-dot-empty";
+        const fresh = hasValue && changed?.has(key) ? " mini-dot-new" : "";
+        const delay = changedOrder?.has(key) ? ` style="--mini-delay:${Math.min(changedOrder.get(key), 7) * 42}ms"` : "";
+        return `<i class="${classes}${fresh}" data-mini-key="${esc(key)}"${delay} aria-hidden="true"></i>`;
+      });
     return dots.length ? '<span class="mini-sector-group">' + dots.join("") + '</span>' : "";
   }).filter(Boolean);
   return groups.length ? '<div class="mini-sector-summary">' + groups.join("") + '</div>' : "--";
@@ -2787,6 +2986,7 @@ function renderResults() {
   const query = state.search.trim().toLowerCase();
   const filtered = rows.filter((row) => !query || [row.car, row.driver.full_name, row.driver.team_name, row.driver.name_acronym].some((value) => String(value ?? "").toLowerCase().includes(query)));
   const body = $("resultsTable").querySelector("tbody");
+  $("resultsTable").classList.toggle("column-filtered", visibleResultColumns(false).length < availableResultColumns(false).length);
   if (!filtered.length) body.innerHTML = `<tr><td colspan="${resultColumnCount()}" class="empty-cell">没有匹配的车手</td></tr>`;
   else body.innerHTML = filtered.map((row) => {
     const status = statusLabel(row.raw);
