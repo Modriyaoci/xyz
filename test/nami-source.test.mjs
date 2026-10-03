@@ -469,6 +469,21 @@ test("selects the nearest Nami node and only polls around a live session", () =>
   assert.equal(mondayBeforeSleep.polling, false);
 });
 
+test("uses the rescheduled Bahrain round-four weekend for automatic Nami polling", () => {
+  const beforeBahrain = namiLiveTargetAt("2026-10-02T00:45:00.000Z");
+  assert.equal(beforeBahrain.meeting_name, "Bahrain Grand Prix");
+  assert.equal(beforeBahrain.round, 4);
+  assert.equal(beforeBahrain.stage_id, 103584);
+  assert.equal(beforeBahrain.auto_state, "next");
+  assert.equal(beforeBahrain.polling, false);
+
+  const BahrainPractice = namiLiveTargetAt("2026-10-02T04:45:00.000Z");
+  assert.equal(BahrainPractice.meeting_name, "Bahrain Grand Prix");
+  assert.equal(BahrainPractice.stage_id, 103584);
+  assert.equal(BahrainPractice.auto_state, "active");
+  assert.equal(BahrainPractice.polling, true);
+});
+
 test("defaults live timing to Nami Dash in both deployed site copies", () => {
   for (const file of ["../app.js", "../site/app.js"]) {
     const script = readFileSync(new URL(file, import.meta.url), "utf8");
@@ -484,7 +499,7 @@ test("defaults live timing to Nami Dash in both deployed site copies", () => {
     assert.match(html, /option value="nami-dash" selected>纳米-dash<\/option>/);
     assert.doesNotMatch(html, /option value="nana" selected/);
     assert.match(html, /id="namiModeSelect"/);
-    assert.match(html, /app\.js\?v=20260908-nami-qualifying-v9/);
+    assert.match(html, /app\.js\?v=20261003-columns-v6/);
     assert.doesNotMatch(html, /!localServer && !window\.location\.pathname\.startsWith/);
     assert.match(html, /window\.location\.hostname\.endsWith\("\.github\.io"\)/);
   }
